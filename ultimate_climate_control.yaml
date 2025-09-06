@@ -947,8 +947,9 @@ action:
       
       # Dynamic adaptation calculations
       time_in_current_mode: >
-        {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
-          {{ ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) | round(1) }}
+        {% set mode_time_val = states(helper_mode_time) if helper_mode_time else 'unknown' %}
+        {% if mode_time_val not in ['unknown', 'unavailable', '', None] %}
+          {{ ((as_timestamp(now()) - as_timestamp(mode_time_val)) / 60) | round(1) | abs }}
         {% else %}
           0
         {% endif %}
@@ -1020,10 +1021,13 @@ action:
       minutes_since_presence: >
         {% if room_presence_detected %}
           0
-        {% elif presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-          {{ ((as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60) | round(0) }}
         {% else %}
-          999
+          {% set presence_time_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
+          {% if presence_time_val not in ['unknown', 'unavailable', '', None] %}
+            {{ ((as_timestamp(now()) - as_timestamp(presence_time_val)) / 60) | round(0) | abs }}
+          {% else %}
+            999
+          {% endif %}
         {% endif %}
       
       current_distance: >
