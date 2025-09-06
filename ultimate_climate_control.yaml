@@ -904,11 +904,46 @@ action:
                         {{ available_fans[-1] if available_fans else 'auto' }}
                       {% endif %}
           
-          - service: climate.set_swing_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              swing_mode: !input swing_mode_active
+          # Set swing mode with compatibility check
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                    desired_swing: !input swing_mode_active
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: >
+                      {% if desired_swing in available_swings %}
+                        {{ desired_swing }}
+                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        3D
+                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        Both
+                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        vertical
+                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        Horizontal
+                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        horizontal
+                      {% elif 'both' in available_swings %}
+                        both
+                      {% elif 'Both' in available_swings %}
+                        Both
+                      {% elif '3D' in available_swings %}
+                        3D
+                      {% elif 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif 'vertical' in available_swings %}
+                        vertical
+                      {% else %}
+                        {{ available_swings[0] if available_swings else 'off' }}
+                      {% endif %}
           
           - service: input_text.set_value
             target:
