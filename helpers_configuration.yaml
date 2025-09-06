@@ -2,6 +2,72 @@
 # Add these to your configuration.yaml or create via UI
 # IMPORTANT: Create unique helpers for EACH room/automation
 
+# Smart Mode Control Helpers
+input_select:
+  climate_control_mode_living_room:
+    name: Climate Control Mode - Living Room
+    options:
+      - "Auto"      # Full automation with all features
+      - "Manual"    # Keeps current settings, proximity safety only
+      - "Smart"     # Auto with aggressive presence detection
+    initial: "Auto"
+    icon: mdi:robot
+
+  climate_control_mode_bedroom:
+    name: Climate Control Mode - Bedroom
+    options:
+      - "Auto"
+      - "Manual"
+      - "Smart"
+    initial: "Auto"
+    icon: mdi:robot
+
+  climate_control_mode_office:
+    name: Climate Control Mode - Office
+    options:
+      - "Auto"
+      - "Manual"
+      - "Smart"
+    initial: "Auto"
+    icon: mdi:robot
+
+# Presence Tracking Helpers
+input_datetime:
+  presence_last_detected_living_room:
+    name: Last Presence - Living Room
+    has_date: true
+    has_time: true
+    icon: mdi:motion-sensor
+
+  presence_last_detected_bedroom:
+    name: Last Presence - Bedroom
+    has_date: true
+    has_time: true
+    icon: mdi:motion-sensor
+
+  presence_last_detected_office:
+    name: Last Presence - Office
+    has_date: true
+    has_time: true
+    icon: mdi:motion-sensor
+
+# Emergency Override Helpers
+input_boolean:
+  climate_proximity_override_living_room:
+    name: Proximity Override - Living Room
+    initial: false
+    icon: mdi:alert-circle
+
+  climate_proximity_override_bedroom:
+    name: Proximity Override - Bedroom
+    initial: false
+    icon: mdi:alert-circle
+
+  climate_proximity_override_office:
+    name: Proximity Override - Office
+    initial: false
+    icon: mdi:alert-circle
+
 # Example for Living Room
 input_text:
   climate_last_mode_living_room:

@@ -1,0 +1,170 @@
+# Smart Climate Control Dashboard Script
+# Add this to your scripts.yaml or create via UI
+
+smart_climate_control_mode_toggle:
+  alias: Smart Climate Control Mode Toggle
+  description: Cycles through Auto → Manual → Smart modes for climate control
+  icon: mdi:robot
+  fields:
+    room:
+      description: Room name (living_room, bedroom, office)
+      example: living_room
+      required: true
+      selector:
+        text:
+  sequence:
+    - variables:
+        mode_entity: "input_select.climate_control_mode_{{ room }}"
+        current_mode: "{{ states(mode_entity) }}"
+    
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Auto' }}"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: "{{ mode_entity }}"
+              data:
+                option: "Manual"
+            - service: notify.notify
+              data:
+                title: "Climate Control Mode"
+                message: "{{ room | title }} climate control set to MANUAL mode. Only proximity safety override active."
+        
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Manual' }}"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: "{{ mode_entity }}"
+              data:
+                option: "Smart"
+            - service: notify.notify
+              data:
+                title: "Climate Control Mode"
+                message: "{{ room | title }} climate control set to SMART mode. Aggressive presence detection active."
+        
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Smart' }}"
+          sequence:
+            - service: input_select.select_option
+              target:
+                entity_id: "{{ mode_entity }}"
+              data:
+                option: "Auto"
+            - service: notify.notify
+              data:
+                title: "Climate Control Mode"
+                message: "{{ room | title }} climate control set to AUTO mode. Full automation active."
+      
+      default:
+        - service: input_select.select_option
+          target:
+            entity_id: "{{ mode_entity }}"
+          data:
+            option: "Auto"
+        - service: notify.notify
+          data:
+            title: "Climate Control Mode"
+            message: "{{ room | title }} climate control reset to AUTO mode."
+
+# Individual room scripts for easier dashboard integration
+smart_climate_living_room_toggle:
+  alias: Living Room Climate Mode Toggle
+  description: Toggle climate control mode for living room
+  icon: mdi:sofa
+  sequence:
+    - service: script.smart_climate_control_mode_toggle
+      data:
+        room: "living_room"
+
+smart_climate_bedroom_toggle:
+  alias: Bedroom Climate Mode Toggle
+  description: Toggle climate control mode for bedroom
+  icon: mdi:bed
+  sequence:
+    - service: script.smart_climate_control_mode_toggle
+      data:
+        room: "bedroom"
+
+smart_climate_office_toggle:
+  alias: Office Climate Mode Toggle
+  description: Toggle climate control mode for office
+  icon: mdi:desk
+  sequence:
+    - service: script.smart_climate_control_mode_toggle
+      data:
+        room: "office"
+
+# Emergency override script
+climate_emergency_override:
+  alias: Climate Emergency Override
+  description: Immediately activate climate control regardless of mode
+  icon: mdi:alert
+  fields:
+    room:
+      description: Room name (living_room, bedroom, office)
+      example: living_room
+      required: true
+      selector:
+        text:
+    action:
+      description: Emergency action (cool/heat)
+      example: cool
+      required: true
+      selector:
+        select:
+          options:
+            - cool
+            - heat
+  sequence:
+    - variables:
+        override_entity: "input_boolean.climate_proximity_override_{{ room }}"
+        mode_entity: "input_select.climate_control_mode_{{ room }}"
+        
+    - service: input_boolean.turn_on
+      target:
+        entity_id: "{{ override_entity }}"
+    
+    - service: notify.notify
+      data:
+        title: "Climate Emergency Override"
+        message: "Emergency {{ action }} activated for {{ room | title }}. Override will auto-reset in 30 minutes."
+    
+    # Auto-reset the override after 30 minutes
+    - delay: "00:30:00"
+    
+    - service: input_boolean.turn_off
+      target:
+        entity_id: "{{ override_entity }}"
+    
+    - service: notify.notify
+      data:
+        title: "Climate Emergency Override"
+        message: "Emergency override for {{ room | title }} has been automatically reset."
+
+# Status script for displaying current mode
+get_climate_status:
+  alias: Get Climate Control Status
+  description: Returns status of all climate control modes
+  icon: mdi:information
+  sequence:
+    - variables:
+        living_room_mode: "{{ states('input_select.climate_control_mode_living_room') | default('Unknown') }}"
+        bedroom_mode: "{{ states('input_select.climate_control_mode_bedroom') | default('Unknown') }}"
+        office_mode: "{{ states('input_select.climate_control_mode_office') | default('Unknown') }}"
+    
+    - service: notify.notify
+      data:
+        title: "Climate Control Status"
+        message: >
+          Living Room: {{ living_room_mode }}
+          Bedroom: {{ bedroom_mode }}
+          Office: {{ office_mode }}
+          
+          Auto = Full automation
+          Manual = Current settings only + safety
+          Smart = Aggressive presence detection

@@ -1,7 +1,7 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v1.0
+  name: Ultimate Smart Climate Control - v2.0
   description: >-
-    📌 Version: 1.0.0
+    📌 Version: 2.0.0
     
     
     🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
@@ -10,6 +10,12 @@ blueprint:
     
     
     ⚡ KEY FEATURES:
+    
+    • Smart Mode Control - Auto/Manual/Smart modes with presence timeout
+    
+    • Room-Specific Presence - BLE/PIR sensors for accurate occupancy
+    
+    • Proximity Zones - Different behaviors based on distance from home
     
     • Eco Mode - Reduces energy use by 30-40% vs on/off cycling
     
@@ -49,6 +55,15 @@ blueprint:
     • Has time: ✅ Yes
     
     • Icon: mdi:clock-outline
+    
+    
+    🧠 SMART MODE HELPERS (for advanced control):
+    
+    • input_select.climate_control_mode_[room] (Auto/Manual/Smart modes)
+    
+    • input_datetime.presence_last_detected_[room] (presence timeout tracking)
+    
+    • input_boolean.climate_proximity_override_[room] (emergency override)
     
     
     🧠 DYNAMIC ADAPTATION HELPERS (for smart escalation):
@@ -579,6 +594,130 @@ blueprint:
           max: 4.0
           step: 0.5
           unit_of_measurement: "°C"
+    
+    # Smart Mode Settings
+    helper_control_mode:
+      name: Control Mode Helper Entity
+      description: >
+        Input Select helper for control mode (Auto/Manual/Smart).
+        Example: input_select.climate_control_mode_living_room
+      selector:
+        entity:
+          domain: input_select
+    
+    helper_presence_detected:
+      name: Last Presence Helper Entity
+      description: >
+        Input DateTime helper to track when presence was last detected.
+        Example: input_datetime.presence_last_detected_living_room
+      selector:
+        entity:
+          domain: input_datetime
+    
+    helper_proximity_override:
+      name: Proximity Override Helper Entity
+      description: >
+        Input Boolean helper for emergency temperature override.
+        Example: input_boolean.climate_proximity_override_living_room
+      selector:
+        entity:
+          domain: input_boolean
+    
+    presence_timeout_minutes:
+      name: Presence Timeout
+      description: >
+        Minutes to wait after leaving room before taking action.
+        Prevents shutdown during brief departures (bathroom, etc.)
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 60
+          step: 5
+          unit_of_measurement: minutes
+    
+    proximity_near_zone:
+      name: Near Zone Distance
+      description: >
+        Distance threshold for "nearby" (e.g., local shops).
+        Within this distance, maintain comfort temperature.
+      default: 5000
+      selector:
+        number:
+          min: 1000
+          max: 10000
+          step: 500
+          unit_of_measurement: m
+    
+    proximity_medium_zone:
+      name: Medium Zone Distance
+      description: >
+        Distance threshold for "medium" distance.
+        Between near and medium zone, switch to eco mode.
+      default: 15000
+      selector:
+        number:
+          min: 5000
+          max: 30000
+          step: 1000
+          unit_of_measurement: m
+    
+    room_presence_sensors:
+      name: Room Presence Sensors (Optional)
+      description: >
+        BLE, PIR or other sensors for room-specific presence.
+        These override GPS-based presence when someone is detected.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          domain: 
+            - binary_sensor
+            - sensor
+    
+    smart_mode_behavior:
+      name: Smart Mode Behavior
+      description: >
+        What to do when briefly away in Smart mode.
+        Eco: Switch to eco mode | Maintain: Keep current temp | Off: Turn off
+      default: "eco"
+      selector:
+        select:
+          options:
+            - "eco"
+            - "maintain"
+            - "off"
+    
+    extreme_temp_override:
+      name: Extreme Temperature Override
+      description: >
+        Temperature thresholds that override Manual mode for safety.
+        Above high or below low will activate climate even in Manual mode.
+      default: true
+      selector:
+        boolean:
+    
+    extreme_high_temp:
+      name: Extreme High Temperature
+      description: Safety threshold - activate cooling even in Manual mode
+      default: 30
+      selector:
+        number:
+          min: 28
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    extreme_low_temp:
+      name: Extreme Low Temperature
+      description: Safety threshold - activate heating even in Manual mode
+      default: 15
+      selector:
+        number:
+          min: 10
+          max: 18
+          step: 0.5
+          unit_of_measurement: "°C"
 
 variables:
   climate_list: !input climate_entities
@@ -620,6 +759,18 @@ variables:
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
+  # Smart mode settings
+  control_mode_helper: !input helper_control_mode
+  presence_detected_helper: !input helper_presence_detected
+  proximity_override_helper: !input helper_proximity_override
+  presence_timeout: !input presence_timeout_minutes
+  near_zone_distance: !input proximity_near_zone
+  medium_zone_distance: !input proximity_medium_zone
+  room_sensors: !input room_presence_sensors
+  smart_behavior: !input smart_mode_behavior
+  extreme_override: !input extreme_temp_override
+  extreme_high: !input extreme_high_temp
+  extreme_low: !input extreme_low_temp
 
 trigger:
   - platform: state
@@ -842,6 +993,104 @@ action:
           false
         {% endif %}
       
+      # Smart mode calculations
+      control_mode: >
+        {% if control_mode_helper %}
+          {{ states(control_mode_helper) | default('Auto') }}
+        {% else %}
+          Auto
+        {% endif %}
+      
+      room_presence_detected: >
+        {% set presence = namespace(value=false) %}
+        {% for sensor in room_sensors %}
+          {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
+            {% set presence.value = true %}
+          {% endif %}
+        {% endfor %}
+        {{ presence.value }}
+      
+      last_presence_time: >
+        {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+          {{ states(presence_detected_helper) | as_datetime }}
+        {% else %}
+          {{ now() }}
+        {% endif %}
+      
+      minutes_since_presence: >
+        {% if room_presence_detected %}
+          0
+        {% elif presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+          {{ ((now() - (states(presence_detected_helper) | as_datetime)).total_seconds() / 60) | round(0) }}
+        {% else %}
+          999
+        {% endif %}
+      
+      current_distance: >
+        {% if proximity_sensor %}
+          {{ states(proximity_sensor) | float(99999) }}
+        {% else %}
+          99999
+        {% endif %}
+      
+      proximity_zone: >
+        {% if current_distance < near_zone_distance %}
+          near
+        {% elif current_distance < medium_zone_distance %}
+          medium
+        {% else %}
+          far
+        {% endif %}
+      
+      smart_presence_active: >
+        {% if control_mode == 'Manual' %}
+          false
+        {% elif room_presence_detected %}
+          true
+        {% elif minutes_since_presence < presence_timeout %}
+          true
+        {% elif proximity_zone == 'near' %}
+          true
+        {% elif proximity_zone == 'medium' and smart_behavior != 'off' %}
+          true
+        {% elif anyone_home and control_mode == 'Auto' %}
+          true
+        {% else %}
+          false
+        {% endif %}
+      
+      extreme_temp_detected: >
+        {% if not extreme_override %}
+          false
+        {% elif current_temp > extreme_high %}
+          hot
+        {% elif current_temp < extreme_low %}
+          cold
+        {% else %}
+          false
+        {% endif %}
+      
+      should_activate: >
+        {% if control_mode == 'Manual' and extreme_temp_detected %}
+          true
+        {% elif control_mode == 'Manual' %}
+          false
+        {% elif control_mode == 'Smart' %}
+          {{ smart_presence_active }}
+        {% else %}
+          {{ anyone_home or approaching_home }}
+        {% endif %}
+  
+  # Update presence helper if room presence is detected
+  - condition: template
+    value_template: "{{ room_presence_detected and presence_detected_helper }}"
+  - service: input_datetime.set_datetime
+    target:
+      entity_id: "{{ presence_detected_helper }}"
+    data:
+      datetime: "{{ now() }}"
+  
+  - variables:
       should_deescalate: >
         {% if not dynamic_enabled %}
           false
@@ -906,7 +1155,7 @@ action:
           - condition: template
             value_template: "{{ should_escalate }}"
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -1012,7 +1261,7 @@ action:
           - condition: template
             value_template: "{{ should_deescalate }}"
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ last_mode in ['cooling_escalated', 'heating_escalated'] }}"
         sequence:
@@ -1168,12 +1417,12 @@ action:
                 Pre-conditioning started - approaching home.
                 Current: {{ current_temp }}°C
       
-      # Away mode
+      # Away mode (Smart Mode Compatible)
       - conditions:
           - condition: template
             value_template: "{{ enable_away_mode }}"
           - condition: template
-            value_template: "{{ not anyone_home }}"
+            value_template: "{{ not should_activate }}"
           - condition: template
             value_template: "{{ time_since_change > offtime_min }}"
         sequence:
@@ -1287,7 +1536,7 @@ action:
       # High cooling mode
       - conditions:
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ current_temp > cooling_high_temp }}"
           - condition: template
@@ -1427,7 +1676,7 @@ action:
       # Medium cooling mode
       - conditions:
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ current_temp > cooling_medium_temp and current_temp <= cooling_high_temp }}"
           - condition: template
@@ -1550,7 +1799,7 @@ action:
       # Low heating mode
       - conditions:
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ current_temp < heating_low_temp }}"
           - condition: template
@@ -1646,7 +1895,7 @@ action:
       # Medium heating mode
       - conditions:
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ current_temp < heating_medium_temp and current_temp >= heating_low_temp }}"
           - condition: template
@@ -1728,7 +1977,7 @@ action:
       # Comfort zone - Eco mode
       - conditions:
           - condition: template
-            value_template: "{{ anyone_home }}"
+            value_template: "{{ should_activate }}"
           - condition: template
             value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
           - condition: template

@@ -12,6 +12,14 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
 - **Custom fan speeds**: Configure speeds for each operating mode
 - **Notification options**: Choose what and when to be notified
 
+### 🧠 Smart Mode Control (NEW!)
+- **Auto Mode**: Full automation with all features enabled
+- **Manual Mode**: Keeps current climate settings, only proximity safety override active
+- **Smart Mode**: Auto mode with aggressive presence detection and room-specific sensors
+- **Presence Timeout**: Configurable delay (5-60 min) before taking action when leaving room
+- **Proximity Zones**: Different behaviors based on distance from home
+- **Room-Specific Presence**: Optional BLE/PIR sensors for accurate room occupancy
+
 ### ⚡ Power Efficiency Improvements
 
 #### Why This Blueprint is More Efficient
@@ -50,13 +58,18 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
 
 2. **Create Helper Entities** (REQUIRED - unique for each room):
    - Via UI: Settings → Devices & Services → Helpers → Create Helper
-   - For Living Room:
+   - **Basic Helpers (Required)**:
      - Input Text: `input_text.climate_last_mode_living_room`
      - Input DateTime: `input_datetime.climate_last_change_living_room` (with date AND time)
-   - For Bedroom:
-     - Input Text: `input_text.climate_last_mode_bedroom`
-     - Input DateTime: `input_datetime.climate_last_change_bedroom` (with date AND time)
-   - Name them uniquely for each room/zone you're controlling
+   - **Smart Mode Helpers (Required for Smart Mode)**:
+     - Input Select: `input_select.climate_control_mode_living_room` (Auto/Manual/Smart)
+     - Input DateTime: `input_datetime.presence_last_detected_living_room` (presence tracking)
+     - Input Boolean: `input_boolean.climate_proximity_override_living_room` (emergency override)
+   - **Dynamic Adaptation Helpers (Optional)**:
+     - Input Number: Temperature history, effectiveness scores
+     - Input Text: Trend tracking
+     - Input DateTime: Mode start times
+   - Copy and rename for each room (bedroom, office, etc.)
 
 3. **Setup Proximity Sensors**: Add to your `configuration.yaml`:
    ```yaml
@@ -82,6 +95,35 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
    - Click "Create Automation"
    - Choose "Ultimate Smart Climate Control - v1.0"
    - Configure all options to your preference
+
+7. **Add Dashboard Scripts** (Optional):
+   - Copy contents from `dashboard_control_script.yaml`
+   - Add to your `scripts.yaml` or create via UI
+   - Create dashboard buttons for mode control
+
+## Smart Mode Scenarios
+
+### Real-World Examples
+
+#### **Bathroom Break (5 minutes away)**
+- **Auto/Smart Mode**: Presence timeout prevents shutdown, climate continues
+- **Manual Mode**: No change, keeps current settings
+
+#### **Local Shop (<5km away)**
+- **Auto/Smart Mode**: Near zone keeps comfort temperature, ready when you return
+- **Manual Mode**: No change unless extreme temperature
+
+#### **Different Room in House**
+- **With Room Sensors**: Climate adjusts based on actual room occupancy
+- **Without Room Sensors**: Uses GPS proximity + presence timeout
+
+#### **Long Trip (>15km away)**
+- **Auto/Smart Mode**: Far zone switches to eco mode or turns off
+- **Manual Mode**: Keeps current settings + extreme temperature safety
+
+#### **Dashboard Control**
+- **Toggle Button**: Cycles Auto → Manual → Smart → Auto
+- **Emergency Override**: Force cooling/heating regardless of mode
 
 ## Configuration Guide
 
