@@ -705,7 +705,14 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              hvac_mode: auto
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
           
           - service: climate.set_temperature
             target:
@@ -819,7 +826,14 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              hvac_mode: auto
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
           
           - service: climate.set_temperature
             target:
@@ -883,7 +897,14 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              hvac_mode: auto
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
           
           - service: climate.set_temperature
             target:
@@ -939,7 +960,14 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              hvac_mode: auto
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
           
           - service: climate.set_temperature
             target:
@@ -1003,7 +1031,14 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              hvac_mode: auto
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
           
           - service: climate.set_temperature
             target:
