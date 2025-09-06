@@ -6,9 +6,8 @@ smart_climate_control_mode_toggle:
   description: >-
     Cycles through Auto → Manual → Smart modes for climate control.
     
-    AUTO MODE: Full automation with temperature scheduling, occupancy detection, 
-    weather integration, and all smart features active. System automatically 
-    adjusts temperature based on presence, time of day, and external conditions.
+    AUTO MODE: Full automation with occupancy detection and presence-based control. 
+    System automatically adjusts temperature when you're home or away.
     
     MANUAL MODE: Full manual control with no automation. 
     You control temperature, fan speed, and on/off manually.
@@ -70,7 +69,7 @@ smart_climate_control_mode_toggle:
             - service: notify.notify
               data:
                 title: "Climate Control Mode"
-                message: "{{ room | title }} climate control set to AUTO mode. Schedule-based automation with home/away detection."
+                message: "{{ room | title }} climate control set to AUTO mode. Automatic control based on home/away detection."
       
       default:
         - service: input_select.select_option
@@ -81,7 +80,7 @@ smart_climate_control_mode_toggle:
         - service: notify.notify
           data:
             title: "Climate Control Mode"
-            message: "{{ room | title }} climate control reset to AUTO mode. Schedule-based automation with home/away detection."
+            message: "{{ room | title }} climate control reset to AUTO mode. Automatic control based on home/away detection."
 
 # Individual room scripts for easier dashboard integration
 smart_climate_living_room_toggle:

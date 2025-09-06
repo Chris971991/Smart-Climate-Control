@@ -11,9 +11,8 @@ blueprint:
     
     🧠 CONTROL MODES EXPLAINED:
     
-    • AUTO MODE: Full automation with temperature scheduling, occupancy detection, 
-      weather integration, and all smart features active. System automatically 
-      adjusts temperature based on presence, time of day, and external conditions.
+    • AUTO MODE: Full automation with occupancy detection and presence-based control. 
+      System automatically adjusts temperature when you're home or away.
     
     • MANUAL MODE: Full manual control with no automation. 
       You control temperature, fan speed, and on/off manually.

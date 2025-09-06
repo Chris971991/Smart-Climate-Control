@@ -18,7 +18,7 @@ Before setting up a new room, you need:
    - **Name**: `Climate Control Mode [Room Display Name]`
    - **Entity ID**: `climate_control_mode_[room_name]`
    - **Options**: 
-     - `Auto` (Schedule-based automation with home/away detection)
+     - `Auto` (Automatic control based on home/away detection)
      - `Manual` (Full manual control - no automation)
      - `Smart` (Room-specific presence detection and predictive cooling)
    - **Icon**: `mdi:air-conditioner`
