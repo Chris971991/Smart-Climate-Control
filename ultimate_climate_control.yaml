@@ -1125,7 +1125,7 @@ action:
   
   # Update temperature history and trend tracking
   - condition: template
-    value_template: "{{ dynamic_enabled and helper_temp_history }}"
+    value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
   - service: input_number.set_value
     target:
       entity_id: "{{ helper_temp_history }}"
@@ -1133,7 +1133,7 @@ action:
       value: "{{ current_temp }}"
   
   - condition: template
-    value_template: "{{ dynamic_enabled and helper_trend }}"  
+    value_template: "{{ dynamic_enabled and helper_trend not in [none, '', 'unavailable', 'unknown'] }}"  
   - service: input_text.set_value
     target:
       entity_id: "{{ helper_trend }}"
@@ -1240,7 +1240,7 @@ action:
           
           # Record mode start time
           - condition: template
-            value_template: "{{ helper_mode_time }}"
+            value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
