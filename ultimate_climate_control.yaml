@@ -866,8 +866,12 @@ action:
       should_proceed: >
         {% if trigger.id == 'periodic_check' %}
           {% set mins = now().minute %}
-          {% set interval = check_interval | int %}
-          {{ mins % interval == 0 }}
+          {% set interval = check_interval | int(1) %}
+          {% if interval > 0 %}
+            {{ (mins % interval) == 0 }}
+          {% else %}
+            true
+          {% endif %}
         {% else %}
           true
         {% endif %}
@@ -942,7 +946,12 @@ action:
       
       temp_change_rate: >
         {% if previous_temp > 0 and current_temp != previous_temp %}
-          {{ ((current_temp - previous_temp) / check_interval) | round(2) }}
+          {% set interval_num = check_interval | int(1) %}
+          {% if interval_num > 0 %}
+            {{ ((current_temp - previous_temp) / interval_num) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
         {% else %}
           0
         {% endif %}
