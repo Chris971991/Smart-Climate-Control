@@ -834,7 +834,8 @@ condition: []
 action:
   # Store inputs as variables first
   - variables:
-      check_interval: !input check_interval_minutes
+      check_interval_raw: !input check_interval_minutes
+      check_interval: "{{ check_interval_raw | string | regex_replace('[^0-9]', '') | int(1) }}"
       debug_enabled: !input enable_debug_logging
       proximity_sensor: "{{ proximity_sensor_input if proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
       direction_sensor: "{{ direction_sensor_input if direction_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
