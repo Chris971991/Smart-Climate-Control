@@ -1196,8 +1196,10 @@ action:
               temperature: >
                 {% if current_temp > comfort_max_temp %}
                   {{ cooling_target_temp }}
-                {% else %}
+                {% elif current_temp < comfort_min_temp %}
                   {{ heating_target_temp }}
+                {% else %}
+                  {{ ((comfort_min_temp + comfort_max_temp) / 2) | round(1) }}
                 {% endif %}
           
           # Set maximum fan speed
@@ -1829,12 +1831,7 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: >
-                {% if gradual_enabled %}
-                  {{ [heating_target_temp, current_temp + 2] | min }}
-                {% else %}
-                  {{ heating_target_temp }}
-                {% endif %}
+              temperature: {{ heating_target_temp }}
           
           # Set max fan mode with compatibility check
           - repeat:
@@ -1925,12 +1922,7 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: >
-                {% if gradual_enabled %}
-                  {{ [heating_target_temp, current_temp + 1] | min }}
-                {% else %}
-                  {{ heating_target_temp }}
-                {% endif %}
+              temperature: {{ heating_target_temp }}
           
           - service: climate.set_fan_mode
             target:
@@ -2013,7 +2005,7 @@ action:
                       entity_id: !input climate_entities
                     data:
                       temperature: >
-                        {{ ((comfort_min_temp + comfort_max_temp) / 2) | round(1) }}
+                        {{ 21.0 }}
                   
                   # Set eco fan mode with compatibility check
                   - repeat:
