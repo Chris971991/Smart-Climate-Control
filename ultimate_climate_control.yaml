@@ -701,21 +701,16 @@ blueprint:
         check_interval_minutes:
           name: Check Interval
           description: >
-            How often to check conditions (minutes).
-            Options: 1, 2, 3, 5, 10, 15, 20, 30
-            Note: Uses /N pattern (e.g., /5 = every 5 minutes)
-          default: "5"
+            How often to check conditions and evaluate temperature (in minutes).
+            The automation will run exactly at this interval.
+          default: 5
           selector:
-            select:
-              options:
-                - "1"
-                - "2" 
-                - "3"
-                - "5"
-                - "10"
-                - "15"
-                - "20"
-                - "30"
+            number:
+              min: 1
+              max: 30
+              step: 1
+              unit_of_measurement: minutes
+              mode: slider
 
     # Notification Settings
     notifications:
@@ -834,8 +829,7 @@ condition: []
 action:
   # Store inputs as variables first
   - variables:
-      check_interval_raw: !input check_interval_minutes
-      check_interval: "{{ check_interval_raw | string | regex_replace('[^0-9]', '') | int(1) }}"
+      check_interval: !input check_interval_minutes
       debug_enabled: !input enable_debug_logging
       proximity_sensor: "{{ proximity_sensor_input if proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
       direction_sensor: "{{ direction_sensor_input if direction_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
