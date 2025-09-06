@@ -501,7 +501,7 @@ trigger:
     id: external_temp_change
   
   - platform: time_pattern
-    minutes: !input check_interval_minutes
+    minutes: "*"
     id: periodic_check
   
   - platform: numeric_state
@@ -535,6 +535,17 @@ trigger:
 condition: []
 
 action:
+  # Rate limit time_pattern trigger to respect check interval
+  - condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.id != 'periodic_check' }}"
+      - condition: template
+        value_template: >
+          {% set last_run = states.automation[this.entity_id].attributes.last_triggered | default(now() - timedelta(minutes=60)) %}
+          {% set minutes_passed = ((now() - last_run).total_seconds() / 60) | int %}
+          {{ minutes_passed >= check_interval_minutes }}
+  
   # Debug: Log automation trigger
   - condition: template
     value_template: "{{ debug_mode }}"
