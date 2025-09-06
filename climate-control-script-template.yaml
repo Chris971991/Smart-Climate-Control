@@ -1,0 +1,90 @@
+# Climate Control Script Template
+# Replace [ROOM_NAME] with the actual room name (e.g., living_room, bedroom, office)
+# Replace [ROOM_DISPLAY] with the display name (e.g., Living Room, Bedroom, Office)
+
+[ROOM_NAME]_enable_climate_control_and_act_immediately:
+  alias: [ROOM_DISPLAY] - Enable Climate Control and Act Immediately
+  sequence:
+    - variables:
+        current_mode: "{{ states('input_select.climate_control_mode_[ROOM_NAME]') }}"
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Auto' }}"
+          sequence:
+            - action: input_select.select_option
+              target:
+                entity_id: input_select.climate_control_mode_[ROOM_NAME]
+              data:
+                option: Manual
+            - action: persistent_notification.create
+              data:
+                title: Climate Control Mode
+                message: >-
+                  [ROOM_DISPLAY] climate control set to MANUAL mode. Only proximity safety
+                  override active.
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Manual' }}"
+          sequence:
+            - action: input_select.select_option
+              target:
+                entity_id: input_select.climate_control_mode_[ROOM_NAME]
+              data:
+                option: Smart
+            - action: persistent_notification.create
+              data:
+                title: Climate Control Mode
+                message: >-
+                  [ROOM_DISPLAY] climate control set to SMART mode. Aggressive presence
+                  detection active.
+        - conditions:
+            - condition: template
+              value_template: "{{ current_mode == 'Smart' }}"
+          sequence:
+            - action: input_select.select_option
+              target:
+                entity_id: input_select.climate_control_mode_[ROOM_NAME]
+              data:
+                option: Auto
+            - action: persistent_notification.create
+              data:
+                title: Climate Control Mode
+                message: [ROOM_DISPLAY] climate control set to AUTO mode. Full automation active.
+      default:
+        - action: input_select.select_option
+          target:
+            entity_id: input_select.climate_control_mode_[ROOM_NAME]
+          data:
+            option: Auto
+        - action: persistent_notification.create
+          data:
+            title: Climate Control Mode
+            message: [ROOM_DISPLAY] climate control reset to AUTO mode.
+  mode: restart
+  description: >-
+    Cycles through Auto → Manual → Smart climate control modes.
+    
+    AUTO MODE: Full automation with temperature scheduling, occupancy detection, 
+    weather integration, and all smart features active. System automatically 
+    adjusts temperature based on presence, time of day, and external conditions.
+    
+    MANUAL MODE: Basic operation with only proximity safety overrides active. 
+    Temperature control is manual but system still prevents unsafe operation 
+    when people are too close to vents or equipment.
+    
+    SMART MODE: Aggressive presence detection and advanced occupancy sensing. 
+    Uses motion sensors, door sensors, phone presence, and predictive algorithms 
+    to optimize temperature before occupancy and maintain comfort during use.
+
+# Example for office:
+# - Replace [ROOM_NAME] with "office"
+# - Replace [ROOM_DISPLAY] with "Office"
+# - Script name becomes: office_enable_climate_control_and_act_immediately
+# - Entity becomes: input_select.climate_control_mode_office
+
+# Example for living room:
+# - Replace [ROOM_NAME] with "living_room"
+# - Replace [ROOM_DISPLAY] with "Living Room"
+# - Script name becomes: living_room_enable_climate_control_and_act_immediately
+# - Entity becomes: input_select.climate_control_mode_living_room
