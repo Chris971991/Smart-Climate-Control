@@ -1,0 +1,59 @@
+# Helper Entities Configuration
+# Add these to your configuration.yaml or create via UI
+
+input_text:
+  climate_last_mode:
+    name: Last Climate Mode
+    initial: "off"
+    icon: mdi:air-conditioner
+
+input_datetime:
+  climate_last_change:
+    name: Last Climate Change Time
+    has_date: true
+    has_time: true
+    icon: mdi:clock-outline
+
+input_number:
+  climate_power_saving_score:
+    name: Climate Power Saving Score
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:leaf
+
+# Optional: Track energy usage
+sensor:
+  - platform: history_stats
+    name: Climate Runtime Today
+    entity_id: climate.living_room_air_conditioner_climate
+    state: 
+      - 'cool'
+      - 'heat'
+      - 'auto'
+    type: time
+    start: '{{ now().replace(hour=0, minute=0, second=0) }}'
+    end: '{{ now() }}'
+
+  - platform: template
+    sensors:
+      climate_efficiency_rating:
+        friendly_name: "Climate Efficiency Rating"
+        unit_of_measurement: "%"
+        value_template: >
+          {% set runtime = states('sensor.climate_runtime_today') | float(0) %}
+          {% set cycles = state_attr('automation.ultimate_smart_climate_control', 'current') | int(0) %}
+          {% if runtime > 0 %}
+            {{ (100 - (cycles * 5)) | max(0) }}
+          {% else %}
+            100
+          {% endif %}
+        icon_template: >
+          {% if states('sensor.climate_efficiency_rating') | float(0) > 80 %}
+            mdi:leaf
+          {% elif states('sensor.climate_efficiency_rating') | float(0) > 60 %}
+            mdi:leaf-circle-outline
+          {% else %}
+            mdi:alert-circle-outline
+          {% endif %}

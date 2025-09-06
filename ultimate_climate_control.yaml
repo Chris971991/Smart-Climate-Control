@@ -1,0 +1,811 @@
+blueprint:
+  name: Ultimate Smart Climate Control
+  description: >-
+    Advanced climate control with proximity-based pre-conditioning, presence detection,
+    and power-efficient operation. Supports multiple A/C units with full customization
+    of temperatures, distances, and operating modes. Implements intelligent cycling
+    prevention and eco-mode for optimal energy efficiency.
+    
+    REQUIRED HELPER ENTITIES:
+    You must create these helpers before using this blueprint (via UI or configuration.yaml):
+    
+    1. Input Text Helper:
+       - Entity ID: input_text.climate_last_mode
+       - Name: Last Climate Mode
+       - Icon: mdi:air-conditioner
+    
+    2. Input DateTime Helper:
+       - Entity ID: input_datetime.climate_last_change
+       - Name: Last Climate Change Time
+       - Has date: Yes
+       - Has time: Yes
+       - Icon: mdi:clock-outline
+    
+    To create via UI: Settings → Devices & Services → Helpers → Create Helper
+    
+    Optional for energy tracking:
+    - input_number.climate_power_saving_score (0-100%, tracks efficiency)
+    - sensor.climate_runtime_today (history_stats sensor for daily runtime)
+    - sensor.climate_efficiency_rating (template sensor for efficiency score)
+  domain: automation
+  input:
+    climate_entities:
+      name: Climate Entities
+      description: Select one or more A/C units to control
+      selector:
+        entity:
+          multiple: true
+          domain: climate
+    
+    # Presence & Proximity Configuration
+    presence_persons:
+      name: People to Track
+      description: Select people for presence detection
+      default: []
+      selector:
+        entity:
+          multiple: true
+          domain: person
+    
+    presence_devices:
+      name: Presence Detection Devices
+      description: Additional devices indicating presence (e.g., PC power states)
+      default: []
+      selector:
+        entity:
+          multiple: true
+    
+    proximity_sensor:
+      name: Proximity Distance Sensor
+      description: Sensor tracking nearest person's distance from home
+      default: sensor.home_nearest_distance
+      selector:
+        entity:
+          domain: sensor
+    
+    direction_sensor:
+      name: Direction of Travel Sensor
+      description: Sensor tracking direction of travel (towards/away/arrived)
+      default: sensor.home_nearest_direction_of_travel
+      selector:
+        entity:
+          domain: sensor
+    
+    # Distance Thresholds
+    approaching_distance:
+      name: Approaching Distance Threshold
+      description: Distance (meters) to start pre-conditioning when approaching
+      default: 5000
+      selector:
+        number:
+          min: 500
+          max: 20000
+          unit_of_measurement: meters
+          mode: slider
+    
+    leaving_distance:
+      name: Leaving Distance Threshold
+      description: Distance (meters) to trigger away mode
+      default: 5000
+      selector:
+        number:
+          min: 500
+          max: 20000
+          unit_of_measurement: meters
+          mode: slider
+    
+    # Temperature Thresholds - Cooling
+    cooling_high_temp:
+      name: High Cooling Temperature
+      description: Temperature above which maximum cooling is applied
+      default: 26
+      selector:
+        number:
+          min: 20
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    cooling_medium_temp:
+      name: Medium Cooling Temperature
+      description: Temperature above which medium cooling is applied
+      default: 24
+      selector:
+        number:
+          min: 20
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    # Temperature Thresholds - Heating
+    heating_low_temp:
+      name: Low Heating Temperature
+      description: Temperature below which maximum heating is applied
+      default: 18
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    heating_medium_temp:
+      name: Medium Heating Temperature
+      description: Temperature below which medium heating is applied
+      default: 20
+      selector:
+        number:
+          min: 10
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    # Comfort Zone
+    comfort_min_temp:
+      name: Comfort Zone Minimum
+      description: Lower bound of comfort zone (eco mode activates)
+      default: 21
+      selector:
+        number:
+          min: 18
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    comfort_max_temp:
+      name: Comfort Zone Maximum
+      description: Upper bound of comfort zone (eco mode activates)
+      default: 23
+      selector:
+        number:
+          min: 20
+          max: 28
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    # Target Temperatures
+    cooling_target_temp:
+      name: Cooling Target Temperature
+      description: Target temperature when cooling
+      default: 22
+      selector:
+        number:
+          min: 18
+          max: 28
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    heating_target_temp:
+      name: Heating Target Temperature
+      description: Target temperature when heating
+      default: 23
+      selector:
+        number:
+          min: 18
+          max: 28
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    precool_target_temp:
+      name: Pre-cooling Target Temperature
+      description: Target temperature for pre-conditioning
+      default: 22
+      selector:
+        number:
+          min: 18
+          max: 28
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    # Fan Speed Configuration
+    fan_speed_max:
+      name: Maximum Fan Speed
+      description: Fan speed for maximum cooling/heating
+      default: "Level 5"
+      selector:
+        select:
+          options:
+            - "auto"
+            - "Level 1"
+            - "Level 2"
+            - "Level 3"
+            - "Level 4"
+            - "Level 5"
+            - "high"
+            - "medium"
+            - "low"
+    
+    fan_speed_medium:
+      name: Medium Fan Speed
+      description: Fan speed for medium cooling/heating
+      default: "Level 4"
+      selector:
+        select:
+          options:
+            - "auto"
+            - "Level 1"
+            - "Level 2"
+            - "Level 3"
+            - "Level 4"
+            - "Level 5"
+            - "high"
+            - "medium"
+            - "low"
+    
+    fan_speed_eco:
+      name: Eco Fan Speed
+      description: Fan speed for eco mode (comfort zone)
+      default: "Level 2"
+      selector:
+        select:
+          options:
+            - "auto"
+            - "Level 1"
+            - "Level 2"
+            - "Level 3"
+            - "Level 4"
+            - "Level 5"
+            - "high"
+            - "medium"
+            - "low"
+    
+    # Swing Mode Configuration
+    swing_mode_active:
+      name: Active Swing Mode
+      description: Swing mode when actively cooling/heating
+      default: "both"
+      selector:
+        select:
+          options:
+            - "off"
+            - "both"
+            - "vertical"
+            - "horizontal"
+    
+    # Power Efficiency Settings
+    enable_eco_mode:
+      name: Enable Eco Mode
+      description: Use eco mode in comfort zone instead of turning off
+      default: true
+      selector:
+        boolean:
+    
+    eco_mode_setpoint_offset:
+      name: Eco Mode Setpoint Offset
+      description: Degrees to adjust setpoint in eco mode (reduces cycling)
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 3
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    min_runtime_minutes:
+      name: Minimum Runtime
+      description: Minimum minutes A/C must run before allowing mode change
+      default: 10
+      selector:
+        number:
+          min: 5
+          max: 30
+          unit_of_measurement: minutes
+    
+    min_off_time_minutes:
+      name: Minimum Off Time
+      description: Minimum minutes A/C must be off before restarting
+      default: 5
+      selector:
+        number:
+          min: 3
+          max: 15
+          unit_of_measurement: minutes
+    
+    enable_gradual_adjustment:
+      name: Enable Gradual Temperature Adjustment
+      description: Gradually adjust temperature instead of immediate changes
+      default: true
+      selector:
+        boolean:
+    
+    # Notification Settings
+    enable_notifications:
+      name: Enable Notifications
+      description: Send notifications about climate changes
+      default: true
+      selector:
+        boolean:
+    
+    notification_service:
+      name: Notification Service
+      description: Service to use for notifications
+      default: notify.notify
+      selector:
+        text:
+    
+    additional_notify_services:
+      name: Additional Notification Services
+      description: Additional services to notify (e.g., notify.mobile_app_phone)
+      default: []
+      selector:
+        text:
+          multiple: true
+    
+    # Advanced Settings
+    check_interval_minutes:
+      name: Check Interval
+      description: How often to check conditions (minutes)
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: minutes
+    
+    enable_pre_conditioning:
+      name: Enable Pre-conditioning
+      description: Pre-cool/heat when approaching home
+      default: true
+      selector:
+        boolean:
+    
+    enable_away_mode:
+      name: Enable Away Mode
+      description: Turn off or set to eco when everyone leaves
+      default: true
+      selector:
+        boolean:
+    
+    away_mode_action:
+      name: Away Mode Action
+      description: What to do when everyone leaves
+      default: "eco"
+      selector:
+        select:
+          options:
+            - "off"
+            - "eco"
+            - "maintain"
+
+variables:
+  climate_list: !input climate_entities
+  persons: !input presence_persons
+  devices: !input presence_devices
+  eco_enabled: !input enable_eco_mode
+  gradual_enabled: !input enable_gradual_adjustment
+  away_action: !input away_mode_action
+  last_mode: "{{ states('input_text.climate_last_mode') | default('off') }}"
+  last_change: "{{ states('input_datetime.climate_last_change') | default(now()) }}"
+  runtime_min: !input min_runtime_minutes
+  offtime_min: !input min_off_time_minutes
+
+trigger:
+  - platform: state
+    entity_id: !input climate_entities
+    attribute: current_temperature
+    id: temp_change
+  
+  - platform: time_pattern
+    minutes: !input check_interval_minutes
+    id: periodic_check
+  
+  - platform: numeric_state
+    entity_id: !input proximity_sensor
+    below: !input approaching_distance
+    id: approaching
+  
+  - platform: numeric_state
+    entity_id: !input proximity_sensor
+    above: !input leaving_distance
+    id: leaving
+  
+  - platform: state
+    entity_id: !input direction_sensor
+    to: "towards"
+    id: heading_home
+  
+  - platform: state
+    entity_id: !input direction_sensor
+    to: "arrived"
+    id: arrived
+  
+  - platform: state
+    entity_id: !input presence_persons
+    id: presence_change
+  
+  - platform: state
+    entity_id: !input presence_devices
+    id: device_change
+
+condition: []
+
+action:
+  - variables:
+      current_temp: >
+        {% set temps = namespace(values=[]) %}
+        {% for entity in climate_list %}
+          {% set temps.values = temps.values + [state_attr(entity, 'current_temperature')] %}
+        {% endfor %}
+        {{ temps.values | average | round(1) }}
+      
+      anyone_home: >
+        {% set home = namespace(value=false) %}
+        {% for person in persons %}
+          {% if is_state(person, 'home') %}
+            {% set home.value = true %}
+          {% endif %}
+        {% endfor %}
+        {% if not home.value %}
+          {% for device in devices %}
+            {% if is_state(device, 'on') or is_state(device, 'PowerOn') %}
+              {% set home.value = true %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ home.value }}
+      
+      approaching_home: >
+        {{ is_state(direction_sensor, 'towards') and 
+           states(proximity_sensor) | float(10000) < approaching_distance }}
+      
+      time_since_change: >
+        {{ (now() - states[climate_list[0]].last_changed).total_seconds() / 60 }}
+  
+  - choose:
+      # Pre-conditioning when approaching
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_pre_conditioning }}"
+          - condition: template
+            value_template: "{{ approaching_home }}"
+          - condition: template
+            value_template: "{{ current_temp > cooling_medium_temp or current_temp < heating_medium_temp }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: auto
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: !input precool_target_temp
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_medium
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "Climate Pre-conditioning"
+              message: >
+                Pre-conditioning started - approaching home.
+                Current: {{ current_temp }}°C
+      
+      # Away mode
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_away_mode }}"
+          - condition: template
+            value_template: "{{ not anyone_home }}"
+          - condition: template
+            value_template: "{{ time_since_change > offtime_min }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ away_action == 'off' }}"
+                sequence:
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
+              
+              - conditions:
+                  - condition: template
+                    value_template: "{{ away_action == 'eco' }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      hvac_mode: auto
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: >
+                        {% if current_temp > comfort_max_temp %}
+                          {{ cooling_target_temp + eco_mode_setpoint_offset }}
+                        {% else %}
+                          {{ heating_target_temp - eco_mode_setpoint_offset }}
+                        {% endif %}
+                  
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      fan_mode: !input fan_speed_eco
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "Climate Away Mode"
+              message: "{{ away_action | title }} mode activated - nobody home"
+      
+      # High cooling mode
+      - conditions:
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ current_temp > cooling_high_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: auto
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if gradual_enabled %}
+                  {{ [cooling_target_temp, current_temp - 2] | max }}
+                {% else %}
+                  {{ cooling_target_temp }}
+                {% endif %}
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_max
+          
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              swing_mode: !input swing_mode_active
+          
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.climate_last_mode
+            data:
+              value: "cooling"
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "Climate Control"
+              message: "High cooling mode - {{ current_temp }}°C"
+      
+      # Medium cooling mode
+      - conditions:
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ current_temp > cooling_medium_temp and current_temp <= cooling_high_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: auto
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if gradual_enabled %}
+                  {{ [cooling_target_temp, current_temp - 1] | max }}
+                {% else %}
+                  {{ cooling_target_temp }}
+                {% endif %}
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_medium
+          
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              swing_mode: !input swing_mode_active
+          
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.climate_last_mode
+            data:
+              value: "cooling"
+      
+      # Low heating mode
+      - conditions:
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ current_temp < heating_low_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: auto
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if gradual_enabled %}
+                  {{ [heating_target_temp, current_temp + 2] | min }}
+                {% else %}
+                  {{ heating_target_temp }}
+                {% endif %}
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_max
+          
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              swing_mode: !input swing_mode_active
+          
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.climate_last_mode
+            data:
+              value: "heating"
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "Climate Control"
+              message: "High heating mode - {{ current_temp }}°C"
+      
+      # Medium heating mode
+      - conditions:
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ current_temp < heating_medium_temp and current_temp >= heating_low_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+        sequence:
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: auto
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if gradual_enabled %}
+                  {{ [heating_target_temp, current_temp + 1] | min }}
+                {% else %}
+                  {{ heating_target_temp }}
+                {% endif %}
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_medium
+          
+          - service: climate.set_swing_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              swing_mode: !input swing_mode_active
+          
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.climate_last_mode
+            data:
+              value: "heating"
+      
+      # Comfort zone - Eco mode
+      - conditions:
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ eco_enabled }}"
+                sequence:
+                  # Eco mode - maintain with reduced fan and wider setpoint
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      hvac_mode: auto
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: >
+                        {{ ((comfort_min_temp + comfort_max_temp) / 2) | round(1) }}
+                  
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      fan_mode: !input fan_speed_eco
+                  
+                  - service: climate.set_swing_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      swing_mode: "off"
+                  
+                  - service: input_text.set_value
+                    target:
+                      entity_id: input_text.climate_last_mode
+                    data:
+                      value: "eco"
+                  
+                  - condition: template
+                    value_template: "{{ enable_notifications }}"
+                  
+                  - service: !input notification_service
+                    data:
+                      title: "Climate Control"
+                      message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
+            
+            default:
+              # Traditional off mode
+              - service: climate.turn_off
+                target:
+                  entity_id: !input climate_entities
+              
+              - service: input_text.set_value
+                target:
+                  entity_id: input_text.climate_last_mode
+                data:
+                  value: "off"
+              
+              - condition: template
+                value_template: "{{ enable_notifications }}"
+              
+              - service: !input notification_service
+                data:
+                  title: "Climate Control"
+                  message: "Turned off - Comfort zone ({{ current_temp }}°C)"
+
+mode: restart
