@@ -493,6 +493,22 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
+  proximity_sensor: !input proximity_sensor
+  direction_sensor: !input direction_sensor
+  approaching_distance: !input approaching_distance
+  leaving_distance: !input leaving_distance
+  cooling_high_temp: !input cooling_high_temp
+  cooling_medium_temp: !input cooling_medium_temp
+  heating_low_temp: !input heating_low_temp
+  heating_medium_temp: !input heating_medium_temp
+  comfort_min_temp: !input comfort_min_temp
+  comfort_max_temp: !input comfort_max_temp
+  cooling_target_temp: !input cooling_target_temp
+  heating_target_temp: !input heating_target_temp
+  enable_pre_conditioning: !input enable_pre_conditioning
+  enable_away_mode: !input enable_away_mode
+  enable_notifications: !input enable_notifications
+  eco_mode_setpoint_offset: !input eco_mode_setpoint_offset
   last_mode: "{{ states(helper_mode) | default('off') }}"
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
