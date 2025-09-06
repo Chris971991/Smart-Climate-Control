@@ -493,8 +493,8 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
-  proximity_sensor: !input proximity_sensor
-  direction_sensor: !input direction_sensor
+  proximity_sensor_input: !input proximity_sensor
+  direction_sensor_input: !input direction_sensor
   approaching_distance: !input approaching_distance
   leaving_distance: !input leaving_distance
   cooling_high_temp: !input cooling_high_temp
@@ -592,6 +592,8 @@ action:
   - variables:
       check_interval: !input check_interval_minutes
       debug_enabled: !input enable_debug_logging
+      proximity_sensor: "{{ proximity_sensor_input if proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
+      direction_sensor: "{{ direction_sensor_input if direction_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
       should_proceed: >
         {% if trigger.id in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
            'periodic_5min', 'periodic_10min', 'periodic_15min', 
