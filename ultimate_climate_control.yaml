@@ -650,10 +650,12 @@ blueprint:
           unit_of_measurement: minutes
     
     proximity_near_zone:
-      name: Pre-conditioning Distance
+      name: Home Proximity Distance
       description: >
-        Distance threshold to start pre-conditioning when approaching home.
-        Within this distance, AC will turn on before you arrive.
+        Distance threshold for home proximity zone. Controls different behaviors:
+        • Approaching home within this distance: Start pre-conditioning if temp needs adjustment
+        • Leaving home beyond this distance: Switch to away mode (off or eco)
+        • Staying within this distance: Maintain comfort temperature
       default: 5000
       selector:
         number:
