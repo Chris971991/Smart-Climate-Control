@@ -806,38 +806,10 @@ trigger:
     entity_id: !input temperature_sensor
     id: external_temp_change
   
-  # Time pattern triggers - one will match based on interval selected
+  # Single time pattern trigger based on selected interval
   - platform: time_pattern
     minutes: "/1"
-    id: periodic_1min
-  
-  - platform: time_pattern
-    minutes: "/2"
-    id: periodic_2min
-  
-  - platform: time_pattern
-    minutes: "/3"
-    id: periodic_3min
-  
-  - platform: time_pattern
-    minutes: "/5"
-    id: periodic_5min
-  
-  - platform: time_pattern
-    minutes: "/10"
-    id: periodic_10min
-  
-  - platform: time_pattern
-    minutes: "/15"
-    id: periodic_15min
-  
-  - platform: time_pattern
-    minutes: "/20"
-    id: periodic_20min
-  
-  - platform: time_pattern
-    minutes: "/30"
-    id: periodic_30min
+    id: periodic_check
   
   - platform: state
     entity_id: !input direction_sensor
@@ -892,15 +864,15 @@ action:
           50
         {% endif %}
       should_proceed: >
-        {% if trigger.id in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
-           'periodic_5min', 'periodic_10min', 'periodic_15min', 
-           'periodic_20min', 'periodic_30min'] %}
-          {{ trigger.id == 'periodic_' ~ check_interval ~ 'min' }}
+        {% if trigger.id == 'periodic_check' %}
+          {% set mins = now().minute %}
+          {% set interval = check_interval | int %}
+          {{ mins % interval == 0 }}
         {% else %}
           true
         {% endif %}
   
-  # Stop if periodic trigger doesn't match selected interval  
+  # Continue with automation if conditions are met
   - condition: template
     value_template: "{{ should_proceed }}"
   
