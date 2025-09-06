@@ -48,15 +48,35 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
    config/blueprints/automation/
    ```
 
-2. **Add Helper Entities**: Add configuration from `helpers_configuration.yaml` to your `configuration.yaml`
+2. **Create Helper Entities** (REQUIRED):
+   - Via UI: Settings → Devices & Services → Helpers → Create Helper
+   - Create Input Text: `input_text.climate_last_mode`
+   - Create Input DateTime: `input_datetime.climate_last_change` (with date AND time)
 
-3. **Restart Home Assistant**
+3. **Setup Proximity Sensors**: Add to your `configuration.yaml`:
+   ```yaml
+   proximity:
+     home:
+       zone: home
+       devices:
+         - person.your_name  # Replace with your person entities
+         - person.partner_name
+       tolerance: 50
+       unit_of_measurement: m
+   ```
+   This creates:
+   - `sensor.home_nearest_distance` - Distance from home in meters
+   - `sensor.home_nearest_direction_of_travel` - towards/away/stationary/arrived
 
-4. **Create Automation**:
+4. **Optional Energy Tracking**: Add configuration from `helpers_configuration.yaml`
+
+5. **Restart Home Assistant**
+
+6. **Create Automation**:
    - Go to Settings → Automations
    - Click "Create Automation"
-   - Choose "Ultimate Smart Climate Control"
-   - Configure all options
+   - Choose "Ultimate Smart Climate Control - v1.0"
+   - Configure all options to your preference
 
 ## Configuration Guide
 

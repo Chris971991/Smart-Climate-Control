@@ -1,34 +1,78 @@
 blueprint:
   name: Ultimate Smart Climate Control - v1.0
   description: >-
-    Version: 1.0.0
+    📌 Version: 1.0.0
     
-    Advanced climate control with proximity-based pre-conditioning, presence detection,
-    and power-efficient operation. Supports multiple A/C units with full customization
-    of temperatures, distances, and operating modes. Implements intelligent cycling
-    prevention and eco-mode for optimal energy efficiency.
     
-    REQUIRED HELPER ENTITIES:
-    You must create these helpers before using this blueprint (via UI or configuration.yaml):
+    🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
+    pre-conditioning, and presence detection. Control multiple A/C units with full 
+    customization of temperatures, distances, and operating modes.
     
-    1. Input Text Helper:
-       - Entity ID: input_text.climate_last_mode
-       - Name: Last Climate Mode
-       - Icon: mdi:air-conditioner
     
-    2. Input DateTime Helper:
-       - Entity ID: input_datetime.climate_last_change
-       - Name: Last Climate Change Time
-       - Has date: Yes
-       - Has time: Yes
-       - Icon: mdi:clock-outline
+    ⚡ KEY FEATURES:
     
-    To create via UI: Settings → Devices & Services → Helpers → Create Helper
+    • Eco Mode - Reduces energy use by 30-40% vs on/off cycling
     
-    Optional for energy tracking:
-    - input_number.climate_power_saving_score (0-100%, tracks efficiency)
-    - sensor.climate_runtime_today (history_stats sensor for daily runtime)
-    - sensor.climate_efficiency_rating (template sensor for efficiency score)
+    • Smart Pre-conditioning - Activates when approaching home
+    
+    • Multi-Zone Support - Control 1 or many A/C units
+    
+    • Gradual Adjustments - Prevents aggressive cycling
+    
+    • Runtime Protection - Extends equipment life
+    
+    
+    ⚠️ REQUIRED SETUP - Create these helpers BEFORE using:
+    
+    
+    1️⃣ Input Text Helper:
+    
+    • Entity ID: input_text.climate_last_mode
+    
+    • Name: Last Climate Mode
+    
+    • Icon: mdi:air-conditioner
+    
+    
+    2️⃣ Input DateTime Helper:
+    
+    • Entity ID: input_datetime.climate_last_change
+    
+    • Name: Last Climate Change Time
+    
+    • Has date: ✅ Yes
+    
+    • Has time: ✅ Yes
+    
+    • Icon: mdi:clock-outline
+    
+    
+    📍 Create via: Settings → Devices & Services → Helpers → Create Helper
+    
+    
+    3️⃣ PROXIMITY SENSORS - Add to configuration.yaml:
+    
+    proximity:
+      home:
+        zone: home
+        devices:
+          - person.your_name
+          - person.partner_name
+        tolerance: 50
+        unit_of_measurement: m
+    
+    This creates:
+    • sensor.home_nearest_distance (distance in meters)
+    • sensor.home_nearest_direction_of_travel (towards/away/stationary/arrived)
+    
+    
+    📊 Optional Energy Tracking:
+    
+    • input_number.climate_power_saving_score (efficiency %)
+    
+    • sensor.climate_runtime_today (daily runtime tracking)
+    
+    • sensor.climate_efficiency_rating (efficiency score)
   domain: automation
   source_url: https://github.com/yourusername/ultimate-climate-control
   input:
@@ -39,6 +83,28 @@ blueprint:
         entity:
           multiple: true
           domain: climate
+    
+    # Temperature Sensor Configuration
+    temperature_sensor:
+      name: Temperature Sensor (Optional)
+      description: >
+        External temperature sensor for more accurate readings. 
+        If not set, uses the A/C's internal sensor (less accurate).
+        Recommended: Use a sensor placed at seated height in the room center.
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    
+    use_average_temperature:
+      name: Use Average Temperature
+      description: >
+        When using multiple A/C units, average all their temperatures.
+        Turn OFF if using a single external sensor for all units.
+      default: true
+      selector:
+        boolean:
     
     # Presence & Proximity Configuration
     presence_persons:
@@ -377,6 +443,8 @@ variables:
   eco_enabled: !input enable_eco_mode
   gradual_enabled: !input enable_gradual_adjustment
   away_action: !input away_mode_action
+  temp_sensor: !input temperature_sensor
+  use_avg: !input use_average_temperature
   last_mode: "{{ states('input_text.climate_last_mode') | default('off') }}"
   last_change: "{{ states('input_datetime.climate_last_change') | default(now()) }}"
   runtime_min: !input min_runtime_minutes
@@ -387,6 +455,10 @@ trigger:
     entity_id: !input climate_entities
     attribute: current_temperature
     id: temp_change
+  
+  - platform: state
+    entity_id: !input temperature_sensor
+    id: external_temp_change
   
   - platform: time_pattern
     minutes: !input check_interval_minutes
@@ -425,11 +497,17 @@ condition: []
 action:
   - variables:
       current_temp: >
-        {% set temps = namespace(values=[]) %}
-        {% for entity in climate_list %}
-          {% set temps.values = temps.values + [state_attr(entity, 'current_temperature')] %}
-        {% endfor %}
-        {{ temps.values | average | round(1) }}
+        {% if temp_sensor %}
+          {{ states(temp_sensor) | float }}
+        {% elif use_avg %}
+          {% set temps = namespace(values=[]) %}
+          {% for entity in climate_list %}
+            {% set temps.values = temps.values + [state_attr(entity, 'current_temperature')] %}
+          {% endfor %}
+          {{ temps.values | average | round(1) }}
+        {% else %}
+          {{ state_attr(climate_list[0], 'current_temperature') | float }}
+        {% endif %}
       
       anyone_home: >
         {% set home = namespace(value=false) %}
