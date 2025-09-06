@@ -93,16 +93,16 @@ blueprint:
     📍 Create via: Settings → Devices & Services → Helpers → Create Helper
     
     
-    3️⃣ PROXIMITY SENSORS - Add to configuration.yaml:
+    3️⃣ PROXIMITY SENSORS - Set up via Integration:
     
-    proximity:
-      home:
-        zone: home
-        devices:
-          - person.your_name
-          - person.partner_name
-        tolerance: 50
-        unit_of_measurement: m
+    1. Go to Settings → Devices & Services → Integrations
+    2. Click "+ ADD INTEGRATION" 
+    3. Search for and select "Proximity"
+    4. Configure:
+       • Name: "Home"
+       • Zone: Select your "Home" zone
+       • Devices: Select your person entities
+       • Tolerance: 50m (prevents GPS jitter updates)
     
     This creates:
     • sensor.home_nearest_distance (distance in meters)
