@@ -873,11 +873,36 @@ action:
                   {{ cooling_target_temp }}
                 {% endif %}
           
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: !input fan_speed_max
+          # Set fan mode with compatibility check
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: !input fan_speed_max
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_max_fan in available_fans %}
+                        {{ desired_max_fan }}
+                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
+                        5
+                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif '5' in available_fans %}
+                        5
+                      {% elif 'high' in available_fans %}
+                        high
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
           
           - service: climate.set_swing_mode
             target:
