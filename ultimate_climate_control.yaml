@@ -1074,7 +1074,7 @@ action:
   
   # Update presence helper if room presence is detected
   - condition: template
-    value_template: "{{ room_presence_detected and presence_detected_helper }}"
+    value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
   - service: input_datetime.set_datetime
     target:
       entity_id: "{{ presence_detected_helper }}"
