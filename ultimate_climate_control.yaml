@@ -1,6 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control
+  name: Ultimate Smart Climate Control - v1.0
   description: >-
+    Version: 1.0.0
+    
     Advanced climate control with proximity-based pre-conditioning, presence detection,
     and power-efficient operation. Supports multiple A/C units with full customization
     of temperatures, distances, and operating modes. Implements intelligent cycling
@@ -28,6 +30,7 @@ blueprint:
     - sensor.climate_runtime_today (history_stats sensor for daily runtime)
     - sensor.climate_efficiency_rating (template sensor for efficiency score)
   domain: automation
+  source_url: https://github.com/yourusername/ultimate-climate-control
   input:
     climate_entities:
       name: Climate Entities
