@@ -195,21 +195,43 @@ Min Runtime: 15 minutes
 
 ## Troubleshooting
 
+### Enable Debug Logging
+1. **Turn on debug mode** in the blueprint settings
+2. **View logs**: Settings → System → Logs
+3. **Filter by**: `blueprints.climate_control`
+4. **Look for**: 🔍 CLIMATE DEBUG messages
+
+Debug logs show:
+- Trigger events and reasons
+- Current temperature and thresholds
+- Decision logic (which mode activated)
+- Why no action was taken
+- All condition evaluations
+
 ### A/C Cycling Too Frequently
 - Increase minimum runtime (15-20 min)
 - Enable gradual adjustment
 - Widen comfort zone
+- Check debug logs for rapid mode changes
 
 ### Not Cooling/Heating Fast Enough
 - Decrease gradual adjustment offset
 - Increase fan speeds
 - Narrow temperature thresholds
+- Check debug logs to see if conditions are being met
 
 ### High Energy Usage
 - Enable eco mode
 - Widen comfort zone
 - Check away mode settings
-- Review notification history for patterns
+- Review debug logs for cycling patterns
+
+### Automation Not Triggering
+1. Enable debug logging
+2. Check "Last triggered" in automations list
+3. Verify helper entities exist and are named correctly
+4. Ensure someone is "home" in the system
+5. Check temperature sensor is providing valid readings
 
 ## Advanced Features
 

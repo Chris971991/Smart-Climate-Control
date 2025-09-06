@@ -1,0 +1,95 @@
+# Debug logging snippets to add after each sequence in the blueprint
+
+# Add after "Away mode" sequence start (line 663):
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: Away mode activated
+                Action: {{ away_action }}
+                Nobody home detected
+                Time since last change: {{ time_since_change | round(1) }} min
+              level: warning
+              logger: blueprints.climate_control
+
+# Add after "High cooling mode" sequence start (line 716):
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: HIGH COOLING MODE
+                Temperature: {{ current_temp }}°C > {{ cooling_high_temp }}°C
+                Target: {{ cooling_target_temp }}°C
+                Fan: Maximum
+                Gradual: {{ gradual_enabled }}
+              level: warning
+              logger: blueprints.climate_control
+
+# Add after "Medium cooling mode" sequence start:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: MEDIUM COOLING MODE
+                Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
+                Target: {{ cooling_target_temp }}°C
+                Fan: Medium
+              level: warning
+              logger: blueprints.climate_control
+
+# Add after "Low heating mode" sequence start:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: HIGH HEATING MODE
+                Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
+                Target: {{ heating_target_temp }}°C
+                Fan: Maximum
+              level: warning
+              logger: blueprints.climate_control
+
+# Add after "Medium heating mode" sequence start:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: MEDIUM HEATING MODE
+                Temperature: {{ current_temp }}°C ({{ heating_low_temp }}-{{ heating_medium_temp }}°C range)
+                Target: {{ heating_target_temp }}°C
+                Fan: Medium
+              level: warning
+              logger: blueprints.climate_control
+
+# Add after "Comfort zone - Eco mode" sequence start:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: COMFORT ZONE
+                Temperature: {{ current_temp }}°C ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C range)
+                Action: {{ 'Eco mode' if eco_enabled else 'Turning off' }}
+                Time since change: {{ time_since_change | round(1) }} min
+              level: warning
+              logger: blueprints.climate_control
+
+# Add at the very end after mode: restart to catch when no conditions match:
+  # Debug: No conditions matched
+  - condition: template
+    value_template: "{{ debug_mode }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 CLIMATE DEBUG: No action taken
+        No conditions matched current state
+        Temperature: {{ current_temp }}°C
+        Anyone home: {{ anyone_home }}
+        Last mode: {{ last_mode }}
+      level: warning
+      logger: blueprints.climate_control

@@ -428,6 +428,16 @@ blueprint:
           multiple: true
     
     # Advanced Settings
+    enable_debug_logging:
+      name: Enable Debug Logging
+      description: >
+        Enable detailed warning-level logs for troubleshooting.
+        View logs in Settings → System → Logs.
+        WARNING: This will create many log entries!
+      default: false
+      selector:
+        boolean:
+    
     check_interval_minutes:
       name: Check Interval
       description: How often to check conditions (minutes)
@@ -474,6 +484,7 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
+  debug_mode: !input enable_debug_logging
   last_mode: "{{ states(helper_mode) | default('off') }}"
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
@@ -524,6 +535,19 @@ trigger:
 condition: []
 
 action:
+  # Debug: Log automation trigger
+  - condition: template
+    value_template: "{{ debug_mode }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 CLIMATE DEBUG: Automation triggered
+        Trigger: {{ trigger.id }}
+        Platform: {{ trigger.platform }}
+        Entity: {{ trigger.entity_id | default('N/A') }}
+      level: warning
+      logger: blueprints.climate_control
+  
   - variables:
       current_temp: >
         {% if temp_sensor %}
@@ -561,6 +585,24 @@ action:
       time_since_change: >
         {{ (now() - states[climate_list[0]].last_changed).total_seconds() / 60 }}
   
+  # Debug: Log current conditions
+  - condition: template
+    value_template: "{{ debug_mode }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 CLIMATE DEBUG: Current Conditions
+        Temperature: {{ current_temp }}°C
+        Anyone Home: {{ anyone_home }}
+        Approaching: {{ approaching_home }}
+        Last Mode: {{ last_mode }}
+        Time Since Change: {{ time_since_change | round(1) }} min
+        Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
+        Thresholds - Cool Med: {{ cooling_medium_temp }}°C, Cool High: {{ cooling_high_temp }}°C
+        Thresholds - Heat Med: {{ heating_medium_temp }}°C, Heat Low: {{ heating_low_temp }}°C
+      level: warning
+      logger: blueprints.climate_control
+  
   - choose:
       # Pre-conditioning when approaching
       - conditions:
@@ -571,6 +613,17 @@ action:
           - condition: template
             value_template: "{{ current_temp > cooling_medium_temp or current_temp < heating_medium_temp }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: Pre-conditioning activated
+                Reason: Approaching home
+                Distance: {{ states(proximity_sensor) }}m
+                Temperature: {{ current_temp }}°C needs adjustment
+              level: warning
+              logger: blueprints.climate_control
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -608,6 +661,18 @@ action:
           - condition: template
             value_template: "{{ time_since_change > offtime_min }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: Away mode activated
+                Action: {{ away_action }}
+                Nobody home detected
+                Time since last change: {{ time_since_change | round(1) }} min
+              level: warning
+              logger: blueprints.climate_control
+          
           - choose:
               - conditions:
                   - condition: template
@@ -661,6 +726,18 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: HIGH COOLING MODE
+                Temperature: {{ current_temp }}°C > {{ cooling_high_temp }}°C
+                Target: {{ cooling_target_temp }}°C
+                Fan: Maximum
+              level: warning
+              logger: blueprints.climate_control
+          
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -713,6 +790,18 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: MEDIUM COOLING MODE
+                Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
+                Target: {{ cooling_target_temp }}°C
+                Fan: Medium
+              level: warning
+              logger: blueprints.climate_control
+          
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -757,6 +846,18 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: HIGH HEATING MODE
+                Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
+                Target: {{ heating_target_temp }}°C
+                Fan: Maximum
+              level: warning
+              logger: blueprints.climate_control
+          
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -809,6 +910,18 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
+          - condition: template
+            value_template: "{{ debug_mode }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: MEDIUM HEATING MODE
+                Temperature: {{ current_temp }}°C ({{ heating_low_temp }}-{{ heating_medium_temp }}°C range)
+                Target: {{ heating_target_temp }}°C
+                Fan: Medium
+              level: warning
+              logger: blueprints.climate_control
+          
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -917,5 +1030,19 @@ action:
                 data:
                   title: "Climate Control"
                   message: "Turned off - Comfort zone ({{ current_temp }}°C)"
+
+  # Debug: No conditions matched
+  - condition: template
+    value_template: "{{ debug_mode }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 CLIMATE DEBUG: No action taken
+        No conditions matched current state
+        Temperature: {{ current_temp }}°C
+        Anyone home: {{ anyone_home }}
+        Last mode: {{ last_mode }}
+      level: warning
+      logger: blueprints.climate_control
 
 mode: restart
