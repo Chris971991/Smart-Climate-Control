@@ -943,7 +943,7 @@ action:
         {% endif %}
       
       time_since_change: >
-        {{ (now() - states[climate_list[0]].last_changed).total_seconds() / 60 }}
+        {{ (as_timestamp(now()) - as_timestamp(states[climate_list[0]].last_changed)) / 60 }}
       
       # Dynamic adaptation calculations
       time_in_current_mode: >
