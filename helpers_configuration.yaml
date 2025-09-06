@@ -1,15 +1,39 @@
 # Helper Entities Configuration
 # Add these to your configuration.yaml or create via UI
+# IMPORTANT: Create unique helpers for EACH room/automation
 
+# Example for Living Room
 input_text:
-  climate_last_mode:
-    name: Last Climate Mode
+  climate_last_mode_living_room:
+    name: Last Climate Mode - Living Room
+    initial: "off"
+    icon: mdi:air-conditioner
+  
+  climate_last_mode_bedroom:
+    name: Last Climate Mode - Bedroom
+    initial: "off"
+    icon: mdi:air-conditioner
+  
+  climate_last_mode_office:
+    name: Last Climate Mode - Office
     initial: "off"
     icon: mdi:air-conditioner
 
 input_datetime:
-  climate_last_change:
-    name: Last Climate Change Time
+  climate_last_change_living_room:
+    name: Last Climate Change - Living Room
+    has_date: true
+    has_time: true
+    icon: mdi:clock-outline
+  
+  climate_last_change_bedroom:
+    name: Last Climate Change - Bedroom
+    has_date: true
+    has_time: true
+    icon: mdi:clock-outline
+  
+  climate_last_change_office:
+    name: Last Climate Change - Office
     has_date: true
     has_time: true
     icon: mdi:clock-outline

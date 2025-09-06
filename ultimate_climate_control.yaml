@@ -22,23 +22,27 @@ blueprint:
     • Runtime Protection - Extends equipment life
     
     
-    ⚠️ REQUIRED SETUP - Create these helpers BEFORE using:
+    ⚠️ REQUIRED SETUP - Create unique helpers for EACH room/automation:
     
     
-    1️⃣ Input Text Helper:
+    1️⃣ Input Text Helper (unique per room):
     
-    • Entity ID: input_text.climate_last_mode
+    • Living Room: input_text.climate_last_mode_living_room
     
-    • Name: Last Climate Mode
+    • Bedroom: input_text.climate_last_mode_bedroom
+    
+    • Office: input_text.climate_last_mode_office
     
     • Icon: mdi:air-conditioner
     
     
-    2️⃣ Input DateTime Helper:
+    2️⃣ Input DateTime Helper (unique per room):
     
-    • Entity ID: input_datetime.climate_last_change
+    • Living Room: input_datetime.climate_last_change_living_room
     
-    • Name: Last Climate Change Time
+    • Bedroom: input_datetime.climate_last_change_bedroom  
+    
+    • Office: input_datetime.climate_last_change_office
     
     • Has date: ✅ Yes
     
@@ -76,6 +80,29 @@ blueprint:
   domain: automation
   source_url: https://github.com/yourusername/ultimate-climate-control
   input:
+    # Helper Entity Configuration
+    helper_last_mode:
+      name: Last Mode Helper Entity
+      description: >
+        Input Text helper to track last climate mode.
+        Create unique helper for each room/automation:
+        Examples: input_text.climate_last_mode_living_room,
+        input_text.climate_last_mode_bedroom
+      selector:
+        entity:
+          domain: input_text
+    
+    helper_last_change:
+      name: Last Change Helper Entity  
+      description: >
+        Input DateTime helper to track last change time.
+        Create unique helper for each room/automation:
+        Examples: input_datetime.climate_last_change_living_room,
+        input_datetime.climate_last_change_bedroom
+      selector:
+        entity:
+          domain: input_datetime
+    
     climate_entities:
       name: Climate Entities
       description: Select one or more A/C units to control
@@ -445,8 +472,10 @@ variables:
   away_action: !input away_mode_action
   temp_sensor: !input temperature_sensor
   use_avg: !input use_average_temperature
-  last_mode: "{{ states('input_text.climate_last_mode') | default('off') }}"
-  last_change: "{{ states('input_datetime.climate_last_change') | default(now()) }}"
+  helper_mode: !input helper_last_mode
+  helper_change: !input helper_last_change
+  last_mode: "{{ states(helper_mode) | default('off') }}"
+  last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
 
@@ -663,7 +692,7 @@ action:
           
           - service: input_text.set_value
             target:
-              entity_id: input_text.climate_last_mode
+              entity_id: !input helper_last_mode
             data:
               value: "cooling"
           
@@ -715,7 +744,7 @@ action:
           
           - service: input_text.set_value
             target:
-              entity_id: input_text.climate_last_mode
+              entity_id: !input helper_last_mode
             data:
               value: "cooling"
       
@@ -759,7 +788,7 @@ action:
           
           - service: input_text.set_value
             target:
-              entity_id: input_text.climate_last_mode
+              entity_id: !input helper_last_mode
             data:
               value: "heating"
           
@@ -811,7 +840,7 @@ action:
           
           - service: input_text.set_value
             target:
-              entity_id: input_text.climate_last_mode
+              entity_id: !input helper_last_mode
             data:
               value: "heating"
       
@@ -857,7 +886,7 @@ action:
                   
                   - service: input_text.set_value
                     target:
-                      entity_id: input_text.climate_last_mode
+                      entity_id: !input helper_last_mode
                     data:
                       value: "eco"
                   
@@ -877,7 +906,7 @@ action:
               
               - service: input_text.set_value
                 target:
-                  entity_id: input_text.climate_last_mode
+                  entity_id: !input helper_last_mode
                 data:
                   value: "off"
               

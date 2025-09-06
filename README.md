@@ -48,10 +48,15 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
    config/blueprints/automation/
    ```
 
-2. **Create Helper Entities** (REQUIRED):
+2. **Create Helper Entities** (REQUIRED - unique for each room):
    - Via UI: Settings → Devices & Services → Helpers → Create Helper
-   - Create Input Text: `input_text.climate_last_mode`
-   - Create Input DateTime: `input_datetime.climate_last_change` (with date AND time)
+   - For Living Room:
+     - Input Text: `input_text.climate_last_mode_living_room`
+     - Input DateTime: `input_datetime.climate_last_change_living_room` (with date AND time)
+   - For Bedroom:
+     - Input Text: `input_text.climate_last_mode_bedroom`
+     - Input DateTime: `input_datetime.climate_last_change_bedroom` (with date AND time)
+   - Name them uniquely for each room/zone you're controlling
 
 3. **Setup Proximity Sensors**: Add to your `configuration.yaml`:
    ```yaml
