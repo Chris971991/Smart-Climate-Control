@@ -51,6 +51,17 @@ blueprint:
     • Icon: mdi:clock-outline
     
     
+    🧠 DYNAMIC ADAPTATION HELPERS (for smart escalation):
+    
+    • input_number.climate_temp_history_[room] (temperature tracking)
+    
+    • input_text.climate_trend_direction_[room] (rising/falling/stable)
+    
+    • input_datetime.climate_mode_start_time_[room] (when current mode started)
+    
+    • input_number.climate_effectiveness_score_[room] (0-100, how well it's working)
+    
+    
     📍 Create via: Settings → Devices & Services → Helpers → Create Helper
     
     
@@ -102,6 +113,47 @@ blueprint:
       selector:
         entity:
           domain: input_datetime
+    
+    # Dynamic Adaptation Helper Entities
+    helper_temp_history:
+      name: Temperature History Helper (Optional)
+      description: >
+        Input Number helper to store previous temperature reading.
+        Required for dynamic adaptation. Example: input_number.climate_temp_history_living_room
+      default: []
+      selector:
+        entity:
+          domain: input_number
+    
+    helper_trend_direction:
+      name: Trend Direction Helper (Optional)
+      description: >
+        Input Text helper to track temperature trend (rising/falling/stable).
+        Required for dynamic adaptation. Example: input_text.climate_trend_direction_living_room
+      default: []
+      selector:
+        entity:
+          domain: input_text
+    
+    helper_mode_start_time:
+      name: Mode Start Time Helper (Optional)
+      description: >
+        Input DateTime helper to track when current mode started.
+        Required for dynamic adaptation. Example: input_datetime.climate_mode_start_time_living_room
+      default: []
+      selector:
+        entity:
+          domain: input_datetime
+    
+    helper_effectiveness_score:
+      name: Effectiveness Score Helper (Optional)
+      description: >
+        Input Number helper to track how well current mode is working (0-100%).
+        Required for dynamic adaptation. Example: input_number.climate_effectiveness_score_living_room
+      default: []
+      selector:
+        entity:
+          domain: input_number
     
     climate_entities:
       name: Climate Entities
@@ -481,6 +533,52 @@ blueprint:
             - "off"
             - "eco"
             - "maintain"
+    
+    # Dynamic Adaptation Settings
+    enable_dynamic_adaptation:
+      name: Enable Dynamic Adaptation
+      description: >
+        Automatically escalate/de-escalate cooling/heating power based on effectiveness.
+        System learns and adjusts when current mode isn't reaching target temperature.
+      default: true
+      selector:
+        boolean:
+    
+    effectiveness_check_minutes:
+      name: Effectiveness Check Interval
+      description: Minutes to wait before checking if current mode is working
+      default: 10
+      selector:
+        number:
+          min: 5
+          max: 30
+          unit_of_measurement: minutes
+    
+    escalation_temp_tolerance:
+      name: Temperature Stall Tolerance
+      description: >
+        Degrees of acceptable temperature drift before escalating power.
+        Lower = more aggressive, Higher = more patient
+      default: 1.0
+      selector:
+        number:
+          min: 0.5
+          max: 3.0
+          step: 0.5
+          unit_of_measurement: "°C"
+    
+    deescalation_approach_threshold:
+      name: De-escalation Approach Threshold
+      description: >
+        Degrees from target when system can de-escalate power.
+        When within this range and trending correctly, reduce power.
+      default: 2.0
+      selector:
+        number:
+          min: 1.0
+          max: 4.0
+          step: 0.5
+          unit_of_measurement: "°C"
 
 variables:
   climate_list: !input climate_entities
@@ -509,6 +607,15 @@ variables:
   enable_away_mode: !input enable_away_mode
   enable_notifications: !input enable_notifications
   eco_mode_setpoint_offset: !input eco_mode_setpoint_offset
+  # Dynamic adaptation settings
+  dynamic_enabled: !input enable_dynamic_adaptation
+  effectiveness_check_mins: !input effectiveness_check_minutes
+  temp_tolerance: !input escalation_temp_tolerance
+  deescalation_threshold: !input deescalation_approach_threshold
+  helper_temp_history: !input helper_temp_history
+  helper_trend: !input helper_trend_direction
+  helper_mode_time: !input helper_mode_start_time
+  helper_effectiveness: !input helper_effectiveness_score
   last_mode: "{{ states(helper_mode) | default('off') }}"
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
@@ -594,6 +701,31 @@ action:
       debug_enabled: !input enable_debug_logging
       proximity_sensor: "{{ proximity_sensor_input if proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
       direction_sensor: "{{ direction_sensor_input if direction_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
+      # Dynamic adaptation variables
+      previous_temp: >
+        {% if helper_temp_history %}
+          {{ states(helper_temp_history) | float(0) }}
+        {% else %}
+          0
+        {% endif %}
+      current_trend: >
+        {% if helper_trend %}
+          {{ states(helper_trend) | default('stable') }}
+        {% else %}
+          stable
+        {% endif %}
+      mode_start_time: >
+        {% if helper_mode_time %}
+          {{ states(helper_mode_time) | default(now()) | as_datetime }}
+        {% else %}
+          {{ now() }}
+        {% endif %}
+      current_effectiveness: >
+        {% if helper_effectiveness %}
+          {{ states(helper_effectiveness) | float(50) }}
+        {% else %}
+          50
+        {% endif %}
       should_proceed: >
         {% if trigger.id in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
            'periodic_5min', 'periodic_10min', 'periodic_15min', 
@@ -661,6 +793,69 @@ action:
       
       time_since_change: >
         {{ (now() - states[climate_list[0]].last_changed).total_seconds() / 60 }}
+      
+      # Dynamic adaptation calculations
+      time_in_current_mode: >
+        {% if helper_mode_time %}
+          {{ ((now() - mode_start_time).total_seconds() / 60) | round(1) }}
+        {% else %}
+          0
+        {% endif %}
+      
+      temp_change_rate: >
+        {% if previous_temp > 0 and current_temp != previous_temp %}
+          {{ ((current_temp - previous_temp) / check_interval) | round(2) }}
+        {% else %}
+          0
+        {% endif %}
+      
+      calculated_trend: >
+        {% if temp_change_rate > 0.2 %}
+          rising
+        {% elif temp_change_rate < -0.2 %}
+          falling  
+        {% else %}
+          stable
+        {% endif %}
+      
+      distance_from_target: >
+        {% if current_temp > comfort_max_temp %}
+          {{ (current_temp - cooling_target_temp) | abs }}
+        {% elif current_temp < comfort_min_temp %}
+          {{ (current_temp - heating_target_temp) | abs }}
+        {% else %}
+          0
+        {% endif %}
+      
+      should_escalate: >
+        {% if not dynamic_enabled %}
+          false
+        {% elif time_in_current_mode < effectiveness_check_mins %}
+          false
+        {% elif last_mode in ['cooling', 'heating'] and calculated_trend == 'rising' and current_temp > comfort_max_temp %}
+          true
+        {% elif last_mode in ['cooling', 'heating'] and calculated_trend == 'falling' and current_temp < comfort_min_temp %}
+          true
+        {% elif distance_from_target > temp_tolerance and calculated_trend == 'stable' %}
+          true
+        {% else %}
+          false
+        {% endif %}
+      
+      should_deescalate: >
+        {% if not dynamic_enabled %}
+          false
+        {% elif distance_from_target <= deescalation_threshold and calculated_trend != 'stable' %}
+          {% if current_temp > comfort_max_temp and calculated_trend == 'falling' %}
+            true
+          {% elif current_temp < comfort_min_temp and calculated_trend == 'rising' %}
+            true
+          {% else %}
+            false
+          {% endif %}
+        {% else %}
+          false
+        {% endif %}
   
   # Debug: Log current conditions
   - condition: template
@@ -668,8 +863,8 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 CLIMATE DEBUG: Current Conditions
-        Temperature: {{ current_temp }}°C
+        🔍 CLIMATE DEBUG: Current Conditions & Dynamic Analysis
+        Temperature: {{ current_temp }}°C (Previous: {{ previous_temp }}°C)
         Anyone Home: {{ anyone_home }}
         Approaching: {{ approaching_home }}
         Last Mode: {{ last_mode }}
@@ -677,10 +872,228 @@ action:
         Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
         Thresholds - Cool Med: {{ cooling_medium_temp }}°C, Cool High: {{ cooling_high_temp }}°C
         Thresholds - Heat Med: {{ heating_medium_temp }}°C, Heat Low: {{ heating_low_temp }}°C
+        
+        🧠 DYNAMIC ANALYSIS:
+        Trend: {{ calculated_trend }} ({{ temp_change_rate }}°C/min)
+        Time in Mode: {{ time_in_current_mode }} min
+        Distance from Target: {{ distance_from_target }}°C
+        Should Escalate: {{ should_escalate }}
+        Should De-escalate: {{ should_deescalate }}
+        Effectiveness: {{ current_effectiveness }}%
       level: warning
       logger: blueprints.climate_control
   
+  # Update temperature history and trend tracking
+  - condition: template
+    value_template: "{{ dynamic_enabled and helper_temp_history }}"
+  - service: input_number.set_value
+    target:
+      entity_id: "{{ helper_temp_history }}"
+    data:
+      value: "{{ current_temp }}"
+  
+  - condition: template
+    value_template: "{{ dynamic_enabled and helper_trend }}"  
+  - service: input_text.set_value
+    target:
+      entity_id: "{{ helper_trend }}"
+    data:
+      value: "{{ calculated_trend }}"
+
   - choose:
+      # Dynamic Escalation - Override normal logic if escalation needed
+      - conditions:
+          - condition: template
+            value_template: "{{ should_escalate }}"
+          - condition: template
+            value_template: "{{ anyone_home }}"
+        sequence:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔥 CLIMATE DEBUG: DYNAMIC ESCALATION ACTIVATED
+                Reason: {{ 'Temperature rising when cooling' if calculated_trend == 'rising' and current_temp > comfort_max_temp else 
+                          'Temperature falling when heating' if calculated_trend == 'falling' and current_temp < comfort_min_temp else
+                          'Temperature stalled for ' ~ time_in_current_mode ~ ' minutes' }}
+                Escalating to maximum power mode
+              level: warning
+              logger: blueprints.climate_control
+          
+          # Force maximum cooling/heating mode
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: >
+                      {% if 'auto' in available_modes %}
+                        auto
+                      {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                        cool
+                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                        heat
+                      {% elif 'heat_cool' in available_modes %}
+                        heat_cool
+                      {% else %}
+                        {{ available_modes[0] if available_modes else 'off' }}
+                      {% endif %}
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if current_temp > comfort_max_temp %}
+                  {{ cooling_target_temp }}
+                {% else %}
+                  {{ heating_target_temp }}
+                {% endif %}
+          
+          # Set maximum fan speed
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: !input fan_speed_max
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_max_fan in available_fans %}
+                        {{ desired_max_fan }}
+                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
+                        5
+                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif '5' in available_fans %}
+                        5
+                      {% elif 'high' in available_fans %}
+                        high
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cooling_escalated
+                {% else %}
+                  heating_escalated  
+                {% endif %}
+          
+          # Record mode start time
+          - condition: template
+            value_template: "{{ helper_mode_time }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
+
+      # Dynamic De-escalation - Reduce power when approaching target effectively  
+      - conditions:
+          - condition: template
+            value_template: "{{ should_deescalate }}"
+          - condition: template
+            value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ last_mode in ['cooling_escalated', 'heating_escalated'] }}"
+        sequence:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                📉 CLIMATE DEBUG: DYNAMIC DE-ESCALATION
+                Reason: Approaching target effectively
+                Distance: {{ distance_from_target }}°C, Trend: {{ calculated_trend }}
+                Reducing to medium power mode
+              level: warning
+              logger: blueprints.climate_control
+          
+          # Switch to medium mode (similar to normal medium cooling/heating)
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: >
+                      {% if 'auto' in available_modes %}
+                        auto
+                      {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                        cool
+                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                        heat
+                      {% elif 'heat_cool' in available_modes %}
+                        heat_cool
+                      {% else %}
+                        {{ available_modes[0] if available_modes else 'off' }}
+                      {% endif %}
+          
+          # Set medium fan speed
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_medium_fan: !input fan_speed_medium
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_medium_fan in available_fans %}
+                        {{ desired_medium_fan }}
+                      {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
+                        3
+                      {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
+                        Level 3
+                      {% elif 'Level 3' in available_fans %}
+                        Level 3
+                      {% elif '3' in available_fans %}
+                        3
+                      {% elif 'medium' in available_fans %}
+                        medium
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cooling_deescalated
+                {% else %}
+                  heating_deescalated
+                {% endif %}
+
       # Pre-conditioning when approaching
       - conditions:
           - condition: template

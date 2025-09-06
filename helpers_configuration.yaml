@@ -37,6 +37,54 @@ input_datetime:
     has_date: true
     has_time: true
     icon: mdi:clock-outline
+  
+  # Dynamic Adaptation Mode Start Times
+  climate_mode_start_time_living_room:
+    name: Climate Mode Start - Living Room
+    has_date: true
+    has_time: true
+    icon: mdi:timer-outline
+  
+  climate_mode_start_time_bedroom:
+    name: Climate Mode Start - Bedroom  
+    has_date: true
+    has_time: true
+    icon: mdi:timer-outline
+  
+  climate_mode_start_time_office:
+    name: Climate Mode Start - Office
+    has_date: true
+    has_time: true
+    icon: mdi:timer-outline
+
+input_text:
+  # Dynamic Adaptation Trend Tracking
+  climate_trend_direction_living_room:
+    name: Temperature Trend - Living Room
+    initial: "stable"
+    options:
+      - "rising"
+      - "falling"  
+      - "stable"
+    icon: mdi:trending-up
+  
+  climate_trend_direction_bedroom:
+    name: Temperature Trend - Bedroom
+    initial: "stable"
+    options:
+      - "rising"
+      - "falling"
+      - "stable"
+    icon: mdi:trending-up
+  
+  climate_trend_direction_office:
+    name: Temperature Trend - Office
+    initial: "stable"
+    options:
+      - "rising"
+      - "falling"
+      - "stable"
+    icon: mdi:trending-up
 
 input_number:
   climate_power_saving_score:
@@ -46,6 +94,56 @@ input_number:
     step: 1
     unit_of_measurement: "%"
     icon: mdi:leaf
+  
+  # Dynamic Adaptation Temperature History
+  climate_temp_history_living_room:
+    name: Previous Temperature - Living Room
+    min: -10
+    max: 50
+    step: 0.1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer-lines
+  
+  climate_temp_history_bedroom:
+    name: Previous Temperature - Bedroom
+    min: -10
+    max: 50
+    step: 0.1
+    unit_of_measurement: "°C"  
+    icon: mdi:thermometer-lines
+  
+  climate_temp_history_office:
+    name: Previous Temperature - Office
+    min: -10
+    max: 50
+    step: 0.1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer-lines
+  
+  # Dynamic Adaptation Effectiveness Scores
+  climate_effectiveness_score_living_room:
+    name: Climate Effectiveness - Living Room
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:gauge
+  
+  climate_effectiveness_score_bedroom:
+    name: Climate Effectiveness - Bedroom
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:gauge
+  
+  climate_effectiveness_score_office:
+    name: Climate Effectiveness - Office
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:gauge
 
 # Optional: Track energy usage
 sensor:
