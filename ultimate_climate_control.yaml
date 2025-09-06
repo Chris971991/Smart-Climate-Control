@@ -493,7 +493,6 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
-  debug_mode: !input enable_debug_logging
   last_mode: "{{ states(helper_mode) | default('off') }}"
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
@@ -573,6 +572,11 @@ trigger:
 condition: []
 
 action:
+  # Store inputs as variables first
+  - variables:
+      check_interval: !input check_interval_minutes
+      debug_enabled: !input enable_debug_logging
+  
   # Only proceed if trigger matches selected interval or is not a periodic trigger
   - condition: or
     conditions:
@@ -583,11 +587,11 @@ action:
              'periodic_20min', 'periodic_30min'] }}
       - condition: template
         value_template: >
-          {{ trigger.id == 'periodic_' ~ check_interval_minutes ~ 'min' }}
+          {{ trigger.id == 'periodic_' ~ check_interval ~ 'min' }}
   
   # Debug: Log automation trigger
   - condition: template
-    value_template: "{{ debug_mode }}"
+    value_template: "{{ debug_enabled }}"
   - service: system_log.write
     data:
       message: >
@@ -595,7 +599,7 @@ action:
         Trigger: {{ trigger.id }}
         Platform: {{ trigger.platform }}
         Entity: {{ trigger.entity_id | default('N/A') }}
-        Selected Interval: {{ check_interval_minutes }} minutes
+        Selected Interval: {{ check_interval }} minutes
       level: warning
       logger: blueprints.climate_control
   
@@ -638,7 +642,7 @@ action:
   
   # Debug: Log current conditions
   - condition: template
-    value_template: "{{ debug_mode }}"
+    value_template: "{{ debug_enabled }}"
   - service: system_log.write
     data:
       message: >
@@ -665,7 +669,7 @@ action:
             value_template: "{{ current_temp > cooling_medium_temp or current_temp < heating_medium_temp }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -713,7 +717,7 @@ action:
             value_template: "{{ time_since_change > offtime_min }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -778,7 +782,7 @@ action:
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -842,7 +846,7 @@ action:
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -898,7 +902,7 @@ action:
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -962,7 +966,7 @@ action:
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
           - condition: template
-            value_template: "{{ debug_mode }}"
+            value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
@@ -1084,7 +1088,7 @@ action:
 
   # Debug: No conditions matched
   - condition: template
-    value_template: "{{ debug_mode }}"
+    value_template: "{{ debug_enabled }}"
   - service: system_log.write
     data:
       message: >
