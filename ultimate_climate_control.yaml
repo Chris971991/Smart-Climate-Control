@@ -948,7 +948,7 @@ action:
       # Dynamic adaptation calculations
       time_in_current_mode: >
         {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
-          {{ ((now() - (states(helper_mode_time) | as_datetime)).total_seconds() / 60) | round(1) }}
+          {{ ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) | round(1) }}
         {% else %}
           0
         {% endif %}
@@ -1021,7 +1021,7 @@ action:
         {% if room_presence_detected %}
           0
         {% elif presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-          {{ ((now() - (states(presence_detected_helper) | as_datetime)).total_seconds() / 60) | round(0) }}
+          {{ ((as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60) | round(0) }}
         {% else %}
           999
         {% endif %}
