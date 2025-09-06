@@ -69,9 +69,8 @@
     weather integration, and all smart features active. System automatically 
     adjusts temperature based on presence, time of day, and external conditions.
     
-    MANUAL MODE: Basic operation with only proximity safety overrides active. 
-    Temperature control is manual but system still prevents unsafe operation 
-    when people are too close to vents or equipment.
+    MANUAL MODE: Full manual control with no automation. 
+    You control temperature, fan speed, and on/off manually.
     
     SMART MODE: Aggressive presence detection and advanced occupancy sensing. 
     Uses motion sensors, door sensors, phone presence, and predictive algorithms 
