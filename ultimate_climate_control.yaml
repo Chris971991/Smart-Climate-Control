@@ -576,18 +576,18 @@ action:
   - variables:
       check_interval: !input check_interval_minutes
       debug_enabled: !input enable_debug_logging
-  
-  # Only proceed if trigger matches selected interval or is not a periodic trigger
-  - condition: or
-    conditions:
-      - condition: template
-        value_template: >
-          {{ trigger.id not in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
-             'periodic_5min', 'periodic_10min', 'periodic_15min', 
-             'periodic_20min', 'periodic_30min'] }}
-      - condition: template
-        value_template: >
+      should_proceed: >
+        {% if trigger.id in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
+           'periodic_5min', 'periodic_10min', 'periodic_15min', 
+           'periodic_20min', 'periodic_30min'] %}
           {{ trigger.id == 'periodic_' ~ check_interval ~ 'min' }}
+        {% else %}
+          true
+        {% endif %}
+  
+  # Stop if periodic trigger doesn't match selected interval  
+  - condition: template
+    value_template: "{{ should_proceed }}"
   
   # Debug: Log automation trigger
   - condition: template
