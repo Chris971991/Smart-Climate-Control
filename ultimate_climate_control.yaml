@@ -150,11 +150,11 @@ blueprint:
         entity:
           domain: input_datetime
 
-    # Temperature Settings
+    # Temperature Settings - Simple Mode
     temperature_settings:
       name: "Temperature Settings"
       icon: mdi:thermometer
-      collapsed: true
+      collapsed: false
       input:
         temperature_sensor:
           name: Temperature Sensor (Optional)
@@ -177,9 +177,58 @@ blueprint:
           selector:
             boolean:
         
+        # SIMPLE CONTROLS (Always visible)
+        target_temperature:
+          name: 🎯 Target Temperature
+          description: Your ideal room temperature
+          default: 23
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: slider
+        
+        comfort_zone_width:
+          name: 📏 Comfort Zone Range
+          description: >
+            How much temperature variation is acceptable (±°C).
+            Example: Target 23°C with ±1°C gives comfort zone of 22-24°C
+          default: 1
+          selector:
+            number:
+              min: 0.5
+              max: 3
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: slider
+        
+        temperature_aggressiveness:
+          name: ⚡ Response Aggressiveness
+          description: >
+            How aggressively the system responds to temperature changes.
+            1 = Gentle (slow, efficient) | 5 = Aggressive (fast, less efficient)
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 5
+              step: 1
+              mode: slider
+        
+        # ADVANCED OVERRIDES (Hidden by default)
+        enable_advanced_temp:
+          name: 🔧 Enable Advanced Temperature Controls
+          description: Manually override individual temperature thresholds
+          default: false
+          selector:
+            boolean:
+        
+        # These are only shown when advanced mode is enabled
         comfort_min_temp:
-          name: Comfort Zone Minimum
-          description: Lower bound of comfort zone (eco mode activates)
+          name: Comfort Zone Minimum (Advanced)
+          description: Override auto-calculated minimum
           default: 21
           selector:
             number:
@@ -189,8 +238,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         comfort_max_temp:
-          name: Comfort Zone Maximum
-          description: Upper bound of comfort zone (eco mode activates)
+          name: Comfort Zone Maximum (Advanced)
+          description: Override auto-calculated maximum
           default: 23
           selector:
             number:
@@ -200,8 +249,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         cooling_target_temp:
-          name: Cooling Target Temperature
-          description: Target temperature when cooling
+          name: Cooling Target (Advanced)
+          description: Override cooling target
           default: 22
           selector:
             number:
@@ -211,8 +260,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         heating_target_temp:
-          name: Heating Target Temperature
-          description: Target temperature when heating
+          name: Heating Target (Advanced)
+          description: Override heating target
           default: 23
           selector:
             number:
@@ -222,8 +271,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         precool_target_temp:
-          name: Pre-cooling Target Temperature
-          description: Target temperature for pre-conditioning
+          name: Pre-cooling Target (Advanced)
+          description: Override pre-conditioning target
           default: 22
           selector:
             number:
@@ -233,8 +282,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         cooling_high_temp:
-          name: High Cooling Temperature
-          description: Temperature above which maximum cooling is applied
+          name: High Cooling Threshold (Advanced)
+          description: Override maximum cooling trigger
           default: 26
           selector:
             number:
@@ -244,8 +293,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         cooling_medium_temp:
-          name: Medium Cooling Temperature
-          description: Temperature above which medium cooling is applied
+          name: Medium Cooling Threshold (Advanced)
+          description: Override medium cooling trigger
           default: 24
           selector:
             number:
@@ -255,8 +304,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         heating_low_temp:
-          name: Low Heating Temperature
-          description: Temperature below which maximum heating is applied
+          name: Low Heating Threshold (Advanced)
+          description: Override maximum heating trigger
           default: 18
           selector:
             number:
@@ -266,8 +315,8 @@ blueprint:
               unit_of_measurement: "°C"
         
         heating_medium_temp:
-          name: Medium Heating Temperature
-          description: Temperature below which medium heating is applied
+          name: Medium Heating Threshold (Advanced)
+          description: Override medium heating trigger
           default: 20
           selector:
             number:
@@ -753,14 +802,35 @@ variables:
   helper_change: !input helper_last_change
   proximity_sensor_input: !input proximity_sensor
   direction_sensor_input: !input direction_sensor
-  cooling_high_temp: !input cooling_high_temp
-  cooling_medium_temp: !input cooling_medium_temp
-  heating_low_temp: !input heating_low_temp
-  heating_medium_temp: !input heating_medium_temp
-  comfort_min_temp: !input comfort_min_temp
-  comfort_max_temp: !input comfort_max_temp
-  cooling_target_temp: !input cooling_target_temp
-  heating_target_temp: !input heating_target_temp
+  
+  # Simple temperature inputs
+  target_temp: !input target_temperature
+  comfort_width: !input comfort_zone_width
+  aggressiveness: !input temperature_aggressiveness
+  advanced_enabled: !input enable_advanced_temp
+  
+  # Store advanced inputs if enabled
+  comfort_min_input: !input comfort_min_temp
+  comfort_max_input: !input comfort_max_temp
+  cooling_target_input: !input cooling_target_temp
+  heating_target_input: !input heating_target_temp
+  cooling_medium_input: !input cooling_medium_temp
+  cooling_high_input: !input cooling_high_temp
+  heating_medium_input: !input heating_medium_temp
+  heating_low_input: !input heating_low_temp
+  
+  # Calculate or use advanced overrides
+  comfort_min_temp: "{{ comfort_min_input if advanced_enabled else (target_temp - comfort_width) | float }}"
+  comfort_max_temp: "{{ comfort_max_input if advanced_enabled else (target_temp + comfort_width) | float }}"
+  cooling_target_temp: "{{ cooling_target_input if advanced_enabled else target_temp | float }}"
+  heating_target_temp: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
+  
+  # Auto-calculate thresholds based on aggressiveness
+  cooling_medium_temp: "{{ cooling_medium_input if advanced_enabled else (comfort_max_temp + (1 * aggressiveness/3)) | round(1) }}"
+  cooling_high_temp: "{{ cooling_high_input if advanced_enabled else (comfort_max_temp + (2 * aggressiveness/3)) | round(1) }}"
+  heating_medium_temp: "{{ heating_medium_input if advanced_enabled else (comfort_min_temp - (1 * aggressiveness/3)) | round(1) }}"
+  heating_low_temp: "{{ heating_low_input if advanced_enabled else (comfort_min_temp - (2 * aggressiveness/3)) | round(1) }}"
+  
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
   enable_notifications: !input enable_notifications
@@ -1377,7 +1447,7 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: !input precool_target_temp
+              temperature: "{{ target_temp }}"
           
           - service: climate.set_fan_mode
             target:
@@ -2004,8 +2074,7 @@ action:
                     target:
                       entity_id: !input climate_entities
                     data:
-                      temperature: >
-                        {{ 21.0 }}
+                      temperature: "{{ target_temp }}"
                   
                   # Set eco fan mode with compatibility check
                   - repeat:
