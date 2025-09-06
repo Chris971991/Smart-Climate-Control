@@ -440,13 +440,22 @@ blueprint:
     
     check_interval_minutes:
       name: Check Interval
-      description: How often to check conditions (minutes)
-      default: 5
+      description: >
+        How often to check conditions (minutes).
+        Options: 1, 2, 3, 5, 10, 15, 20, 30
+        Note: Uses /N pattern (e.g., /5 = every 5 minutes)
+      default: "5"
       selector:
-        number:
-          min: 1
-          max: 30
-          unit_of_measurement: minutes
+        select:
+          options:
+            - "1"
+            - "2" 
+            - "3"
+            - "5"
+            - "10"
+            - "15"
+            - "20"
+            - "30"
     
     enable_pre_conditioning:
       name: Enable Pre-conditioning
@@ -500,9 +509,38 @@ trigger:
     entity_id: !input temperature_sensor
     id: external_temp_change
   
+  # Time pattern triggers - one will match based on interval selected
   - platform: time_pattern
-    minutes: "*"
-    id: periodic_check
+    minutes: "/1"
+    id: periodic_1min
+  
+  - platform: time_pattern
+    minutes: "/2"
+    id: periodic_2min
+  
+  - platform: time_pattern
+    minutes: "/3"
+    id: periodic_3min
+  
+  - platform: time_pattern
+    minutes: "/5"
+    id: periodic_5min
+  
+  - platform: time_pattern
+    minutes: "/10"
+    id: periodic_10min
+  
+  - platform: time_pattern
+    minutes: "/15"
+    id: periodic_15min
+  
+  - platform: time_pattern
+    minutes: "/20"
+    id: periodic_20min
+  
+  - platform: time_pattern
+    minutes: "/30"
+    id: periodic_30min
   
   - platform: numeric_state
     entity_id: !input proximity_sensor
@@ -535,16 +573,17 @@ trigger:
 condition: []
 
 action:
-  # Rate limit time_pattern trigger to respect check interval
+  # Only proceed if trigger matches selected interval or is not a periodic trigger
   - condition: or
     conditions:
       - condition: template
-        value_template: "{{ trigger.id != 'periodic_check' }}"
+        value_template: >
+          {{ trigger.id not in ['periodic_1min', 'periodic_2min', 'periodic_3min', 
+             'periodic_5min', 'periodic_10min', 'periodic_15min', 
+             'periodic_20min', 'periodic_30min'] }}
       - condition: template
         value_template: >
-          {% set last_run = states.automation[this.entity_id].attributes.last_triggered | default(now() - timedelta(minutes=60)) %}
-          {% set minutes_passed = ((now() - last_run).total_seconds() / 60) | int %}
-          {{ minutes_passed >= check_interval_minutes }}
+          {{ trigger.id == 'periodic_' ~ check_interval_minutes ~ 'min' }}
   
   # Debug: Log automation trigger
   - condition: template
@@ -556,6 +595,7 @@ action:
         Trigger: {{ trigger.id }}
         Platform: {{ trigger.platform }}
         Entity: {{ trigger.entity_id | default('N/A') }}
+        Selected Interval: {{ check_interval_minutes }} minutes
       level: warning
       logger: blueprints.climate_control
   
