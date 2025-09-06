@@ -724,7 +724,26 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              fan_mode: !input fan_speed_medium
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_medium_fan = fan_speed_medium %}
+                {% if desired_medium_fan in available_fans %}
+                  {{ desired_medium_fan }}
+                {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
+                  3
+                {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
+                  Level 3
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
+                {% elif '3' in available_fans %}
+                  3
+                {% elif 'medium' in available_fans %}
+                  medium
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% else %}
+                  {{ available_fans[-1] if available_fans else 'auto' }}
+                {% endif %}
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -805,11 +824,44 @@ action:
                           {{ heating_target_temp - eco_mode_setpoint_offset }}
                         {% endif %}
                   
-                  - service: climate.set_fan_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      fan_mode: !input fan_speed_eco
+                  # Set eco fan mode with compatibility check
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: !input fan_speed_eco
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                              {% elif desired_eco_fan == 'Level 2' and '2' in available_fans %}
+                                2
+                              {% elif desired_eco_fan == '2' and 'Level 2' in available_fans %}
+                                Level 2
+                              {% elif desired_eco_fan == 'Level 1' and '1' in available_fans %}
+                                1
+                              {% elif desired_eco_fan == '1' and 'Level 1' in available_fans %}
+                                Level 1
+                              {% elif 'Level 2' in available_fans %}
+                                Level 2
+                              {% elif '2' in available_fans %}
+                                2
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
+                              {% elif '1' in available_fans %}
+                                1
+                              {% elif 'low' in available_fans %}
+                                low
+                              {% elif 'Auto' in available_fans %}
+                                Auto
+                              {% else %}
+                                {{ available_fans[0] if available_fans else 'auto' }}
+                              {% endif %}
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -1004,17 +1056,77 @@ action:
                   {{ cooling_target_temp }}
                 {% endif %}
           
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: !input fan_speed_medium
+          # Set fan mode with compatibility check for medium speed
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_medium_fan: !input fan_speed_medium
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_medium_fan in available_fans %}
+                        {{ desired_medium_fan }}
+                      {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
+                        3
+                      {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
+                        Level 3
+                      {% elif 'Level 3' in available_fans %}
+                        Level 3
+                      {% elif '3' in available_fans %}
+                        3
+                      {% elif 'medium' in available_fans %}
+                        medium
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
           
-          - service: climate.set_swing_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              swing_mode: !input swing_mode_active
+          # Set swing mode with compatibility check
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                    desired_swing: !input swing_mode_active
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: >
+                      {% if desired_swing in available_swings %}
+                        {{ desired_swing }}
+                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        3D
+                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        Both
+                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        vertical
+                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        Horizontal
+                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        horizontal
+                      {% elif 'both' in available_swings %}
+                        both
+                      {% elif 'Both' in available_swings %}
+                        Both
+                      {% elif '3D' in available_swings %}
+                        3D
+                      {% elif 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif 'vertical' in available_swings %}
+                        vertical
+                      {% else %}
+                        {{ available_swings[0] if available_swings else 'off' }}
+                      {% endif %}
           
           - service: input_text.set_value
             target:
@@ -1067,11 +1179,36 @@ action:
                   {{ heating_target_temp }}
                 {% endif %}
           
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: !input fan_speed_max
+          # Set max fan mode with compatibility check
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: !input fan_speed_max
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_max_fan in available_fans %}
+                        {{ desired_max_fan }}
+                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
+                        5
+                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif '5' in available_fans %}
+                        5
+                      {% elif 'high' in available_fans %}
+                        high
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
           
           - service: climate.set_swing_mode
             target:
@@ -1142,7 +1279,26 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              fan_mode: !input fan_speed_medium
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_medium_fan = fan_speed_medium %}
+                {% if desired_medium_fan in available_fans %}
+                  {{ desired_medium_fan }}
+                {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
+                  3
+                {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
+                  Level 3
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
+                {% elif '3' in available_fans %}
+                  3
+                {% elif 'medium' in available_fans %}
+                  medium
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% else %}
+                  {{ available_fans[-1] if available_fans else 'auto' }}
+                {% endif %}
           
           - service: climate.set_swing_mode
             target:
@@ -1202,11 +1358,44 @@ action:
                       temperature: >
                         {{ ((comfort_min_temp + comfort_max_temp) / 2) | round(1) }}
                   
-                  - service: climate.set_fan_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      fan_mode: !input fan_speed_eco
+                  # Set eco fan mode with compatibility check
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: !input fan_speed_eco
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                              {% elif desired_eco_fan == 'Level 2' and '2' in available_fans %}
+                                2
+                              {% elif desired_eco_fan == '2' and 'Level 2' in available_fans %}
+                                Level 2
+                              {% elif desired_eco_fan == 'Level 1' and '1' in available_fans %}
+                                1
+                              {% elif desired_eco_fan == '1' and 'Level 1' in available_fans %}
+                                Level 1
+                              {% elif 'Level 2' in available_fans %}
+                                Level 2
+                              {% elif '2' in available_fans %}
+                                2
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
+                              {% elif '1' in available_fans %}
+                                1
+                              {% elif 'low' in available_fans %}
+                                low
+                              {% elif 'Auto' in available_fans %}
+                                Auto
+                              {% else %}
+                                {{ available_fans[0] if available_fans else 'auto' }}
+                              {% endif %}
                   
                   - service: climate.set_swing_mode
                     target:
