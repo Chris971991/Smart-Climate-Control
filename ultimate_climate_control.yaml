@@ -666,7 +666,8 @@ blueprint:
       name: Room Presence Sensors (Optional)
       description: >
         BLE, PIR or other sensors for room-specific presence.
-        These override GPS-based presence when someone is detected.
+        For BLE area sensors, use the sensor that reports room names (e.g., sensor.phone_ble_area).
+        For PIR sensors, use binary sensors that report on/off.
       default: []
       selector:
         entity:
@@ -674,6 +675,15 @@ blueprint:
           domain: 
             - binary_sensor
             - sensor
+    
+    room_name_for_ble:
+      name: Room Name for BLE Detection (Optional)
+      description: >
+        If using BLE area sensors, specify the exact room name that indicates presence.
+        Example: "Office" for sensor.phone_ble_area when it reports "Office"
+      default: ""
+      selector:
+        text:
     
     smart_mode_behavior:
       name: Smart Mode Behavior
@@ -767,6 +777,7 @@ variables:
   near_zone_distance: !input proximity_near_zone
   medium_zone_distance: !input proximity_medium_zone
   room_sensors: !input room_presence_sensors
+  room_ble_name: !input room_name_for_ble
   smart_behavior: !input smart_mode_behavior
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
@@ -1005,7 +1016,12 @@ action:
       room_presence_detected: >
         {% set presence = namespace(value=false) %}
         {% for sensor in room_sensors %}
+          {% set sensor_state = states(sensor) | lower %}
           {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
+            {% set presence.value = true %}
+          {% elif room_ble_name and sensor_state == room_ble_name | lower %}
+            {% set presence.value = true %}
+          {% elif sensor_state in ['home', 'present'] %}
             {% set presence.value = true %}
           {% endif %}
         {% endfor %}
