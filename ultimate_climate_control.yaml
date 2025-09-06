@@ -650,29 +650,16 @@ blueprint:
           unit_of_measurement: minutes
     
     proximity_near_zone:
-      name: Near Zone Distance
+      name: Pre-conditioning Distance
       description: >
-        Distance threshold for "nearby" (e.g., local shops).
-        Within this distance, maintain comfort temperature.
+        Distance threshold to start pre-conditioning when approaching home.
+        Within this distance, AC will turn on before you arrive.
       default: 5000
       selector:
         number:
           min: 1000
           max: 10000
           step: 500
-          unit_of_measurement: m
-    
-    proximity_medium_zone:
-      name: Medium Zone Distance
-      description: >
-        Distance threshold for "medium" distance.
-        Between near and medium zone, switch to eco mode.
-      default: 15000
-      selector:
-        number:
-          min: 5000
-          max: 30000
-          step: 1000
           unit_of_measurement: m
     
     room_presence_sensors:
@@ -788,7 +775,6 @@ variables:
   proximity_override_helper: !input helper_proximity_override
   presence_timeout: !input presence_timeout_minutes
   near_zone_distance: !input proximity_near_zone
-  medium_zone_distance: !input proximity_medium_zone
   room_sensors: !input room_presence_sensors
   room_ble_name: !input room_name_for_ble
   smart_behavior: !input smart_mode_behavior
@@ -1069,8 +1055,6 @@ action:
       proximity_zone: >
         {% if current_distance < near_zone_distance %}
           near
-        {% elif current_distance < medium_zone_distance %}
-          medium
         {% else %}
           far
         {% endif %}
@@ -1083,8 +1067,6 @@ action:
         {% elif minutes_since_presence < presence_timeout %}
           true
         {% elif proximity_zone == 'near' %}
-          true
-        {% elif proximity_zone == 'medium' and smart_behavior != 'off' %}
           true
         {% elif anyone_home and control_mode == 'Auto' %}
           true
