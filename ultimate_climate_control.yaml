@@ -650,8 +650,12 @@ action:
         {{ home.value }}
       
       approaching_home: >
-        {{ is_state(direction_sensor, 'towards') and 
-           states(proximity_sensor) | float(10000) < approaching_distance }}
+        {% if direction_sensor and proximity_sensor %}
+          {{ is_state(direction_sensor, 'towards') and 
+             states(proximity_sensor) | float(10000) < approaching_distance }}
+        {% else %}
+          false
+        {% endif %}
       
       time_since_change: >
         {{ (now() - states[climate_list[0]].last_changed).total_seconds() / 60 }}
@@ -691,7 +695,7 @@ action:
               message: >
                 🔍 CLIMATE DEBUG: Pre-conditioning activated
                 Reason: Approaching home
-                Distance: {{ states(proximity_sensor) }}m
+                {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
                 Temperature: {{ current_temp }}°C needs adjustment
               level: warning
               logger: blueprints.climate_control
