@@ -1831,7 +1831,7 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: {{ heating_target_temp }}
+              temperature: "{{ heating_target_temp }}"
           
           # Set max fan mode with compatibility check
           - repeat:
@@ -1922,7 +1922,7 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: {{ heating_target_temp }}
+              temperature: "{{ heating_target_temp }}"
           
           - service: climate.set_fan_mode
             target:
@@ -2050,7 +2050,7 @@ action:
                     target:
                       entity_id: !input climate_entities
                     data:
-                      swing_mode: "off"
+                      swing_mode: "Off"
                   
                   - service: input_text.set_value
                     target:
