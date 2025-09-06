@@ -770,11 +770,29 @@ action:
                   - condition: template
                     value_template: "{{ away_action == 'eco' }}"
                 sequence:
-                  - service: climate.set_hvac_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      hvac_mode: auto
+                  # Set HVAC mode with auto preference and fallback for away eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: >
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                cool
+                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                heat
+                              {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% else %}
+                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% endif %}
                   
                   - service: climate.set_temperature
                     target:
@@ -1093,11 +1111,29 @@ action:
                     value_template: "{{ eco_enabled }}"
                 sequence:
                   # Eco mode - maintain with reduced fan and wider setpoint
-                  - service: climate.set_hvac_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      hvac_mode: auto
+                  # Set HVAC mode with auto preference and fallback for eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: >
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                cool
+                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                heat
+                              {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% else %}
+                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% endif %}
                   
                   - service: climate.set_temperature
                     target:
