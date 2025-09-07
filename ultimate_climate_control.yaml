@@ -11,6 +11,11 @@ blueprint:
     💡 POWER SAVING MODE: Configured to turn OFF in comfort zone (saves 40-60% energy)
     with wider temperature tolerance (±2°C) and extended cycling protection.
     
+    🔄 UNIVERSAL COMPATIBILITY: Auto-detects and adapts to different A/C models:
+    • HVAC modes: auto ↔ heat_cool, supports all Daikin variants
+    • Fan speeds: Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence  
+    • Swing modes: Both ↔ both, Vertical ↔ vertical, 3D ↔ both
+    
     
     🧠 CONTROL MODES EXPLAINED:
     
@@ -528,13 +533,20 @@ blueprint:
       input:
         fan_speed_max:
           name: Maximum Fan Speed
-          description: Fan speed for maximum cooling/heating
-          default: "5"
+          description: Fan speed for maximum cooling/heating (auto-detects Level 5 vs 5)
+          default: "Level 5"
           selector:
             select:
               options:
                 - "Auto"
+                - "auto"
+                - "Quiet"
                 - "Silence"
+                - "Level 1"
+                - "Level 2"
+                - "Level 3"
+                - "Level 4"
+                - "Level 5"
                 - "1"
                 - "2"
                 - "3"
@@ -546,13 +558,20 @@ blueprint:
         
         fan_speed_medium:
           name: Medium Fan Speed
-          description: Fan speed for medium cooling/heating
-          default: "4"
+          description: Fan speed for medium cooling/heating (auto-detects Level 3 vs 3)
+          default: "Level 3"
           selector:
             select:
               options:
                 - "Auto"
+                - "auto"
+                - "Quiet"
                 - "Silence"
+                - "Level 1"
+                - "Level 2"
+                - "Level 3"
+                - "Level 4"
+                - "Level 5"
                 - "1"
                 - "2"
                 - "3"
@@ -564,13 +583,20 @@ blueprint:
         
         fan_speed_eco:
           name: Eco Fan Speed
-          description: Fan speed for eco mode (comfort zone)
-          default: "2"
+          description: Fan speed for eco mode (comfort zone) (auto-detects Level 1 vs 1)
+          default: "Level 1"
           selector:
             select:
               options:
                 - "Auto"
+                - "auto"
+                - "Quiet"
                 - "Silence"
+                - "Level 1"
+                - "Level 2"
+                - "Level 3"
+                - "Level 4"
+                - "Level 5"
                 - "1"
                 - "2"
                 - "3"
@@ -1304,12 +1330,16 @@ action:
                 {% set desired_medium_fan = fan_speed_medium %}
                 {% if desired_medium_fan in available_fans %}
                   {{ desired_medium_fan }}
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
                 {% elif '3' in available_fans %}
                   3
                 {% elif 'medium' in available_fans %}
                   medium
                 {% elif 'Auto' in available_fans %}
                   Auto
+                {% elif 'auto' in available_fans %}
+                  auto
                 {% else %}
                   {{ available_fans[-1] if available_fans else 'Auto' }}
                 {% endif %}
@@ -1370,7 +1400,9 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             hvac_mode: >
-                              {% if 'heat_cool' in available_modes %}
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif 'heat_cool' in available_modes %}
                                 heat_cool
                               {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
@@ -1405,10 +1437,16 @@ action:
                             fan_mode: >
                               {% if 'Auto' in available_fans %}
                                 Auto
+                              {% elif 'auto' in available_fans %}
+                                auto
                               {% elif 'low' in available_fans %}
                                 low
+                              {% elif 'Quiet' in available_fans %}
+                                Quiet
                               {% elif 'Silence' in available_fans %}
                                 Silence
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
                               {% elif '1' in available_fans %}
                                 1
                               {% else %}
@@ -1458,6 +1496,8 @@ action:
                     hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
+                      {% elif 'auto' in available_modes %}
+                        auto
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
                       {% else %}
@@ -1490,12 +1530,16 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
                         Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
                       {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
@@ -1588,7 +1632,9 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: >
-                      {% if 'heat_cool' in available_modes %}
+                      {% if 'auto' in available_modes %}
+                        auto
+                      {% elif 'heat_cool' in available_modes %}
                         heat_cool
                       {% elif 'cool' in available_modes %}
                         cool
@@ -1621,8 +1667,12 @@ action:
                     fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
                       {% elif 'medium' in available_fans %}
                         medium
+                      {% elif 'Level 3' in available_fans %}
+                        Level 3
                       {% elif '3' in available_fans %}
                         3
                       {% else %}
@@ -1731,12 +1781,16 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
                         Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
                       {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
@@ -1829,7 +1883,9 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: >
-                      {% if 'heat_cool' in available_modes %}
+                      {% if 'auto' in available_modes %}
+                        auto
+                      {% elif 'heat_cool' in available_modes %}
                         heat_cool
                       {% elif 'heat' in available_modes %}
                         heat
@@ -1857,8 +1913,12 @@ action:
                     fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
                       {% elif 'medium' in available_fans %}
                         medium
+                      {% elif 'Level 3' in available_fans %}
+                        Level 3
                       {% elif '3' in available_fans %}
                         3
                       {% else %}
@@ -1941,7 +2001,9 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             hvac_mode: >
-                              {% if 'heat_cool' in available_modes %}
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif 'heat_cool' in available_modes %}
                                 heat_cool
                               {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
@@ -1967,10 +2029,16 @@ action:
                             fan_mode: >
                               {% if 'Auto' in available_fans %}
                                 Auto
+                              {% elif 'auto' in available_fans %}
+                                auto
                               {% elif 'low' in available_fans %}
                                 low
+                              {% elif 'Quiet' in available_fans %}
+                                Quiet
                               {% elif 'Silence' in available_fans %}
                                 Silence
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
                               {% elif '1' in available_fans %}
                                 1
                               {% else %}
@@ -2090,6 +2158,8 @@ action:
                         cool
                       {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                         heat
+                      {% elif 'auto' in available_modes %}
+                        auto
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
                       {% else %}
@@ -2124,12 +2194,16 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
                         Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
                       {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
