@@ -16,6 +16,11 @@ blueprint:
     • Fan speeds: Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence  
     • Swing modes: Both ↔ both, Vertical ↔ vertical, 3D ↔ both
     
+    🏠 SMART MODE PRESENCE: Room-specific climate control based on occupancy:
+    • Room occupied: Normal temperature control
+    • Room empty (timeout): Configurable eco/off/maintain behavior  
+    • Away from house: Global away mode (separate setting)
+    
     
     🧠 CONTROL MODES EXPLAINED:
     
@@ -515,10 +520,13 @@ blueprint:
             text:
         
         smart_mode_behavior:
-          name: Smart Mode Behavior
+          name: Smart Mode Room Absence Behavior
           description: >
-            What to do when briefly away in Smart mode.
-            Eco: Switch to eco mode | Maintain: Keep current temp | Off: Turn off
+            What to do when room presence sensors detect absence (after timeout):
+            • ECO: Reduce to eco mode (saves power, maintains some comfort)
+            • MAINTAIN: Keep current temperature (comfort over efficiency)  
+            • OFF: Turn off completely (maximum power savings)
+            Only applies when still home but room is empty.
           default: "eco"
           selector:
             select:
@@ -1356,7 +1364,107 @@ action:
                 Pre-conditioning started - approaching home.
                 Current: {{ current_temp }}°C
       
-      # Away mode (Smart Mode Compatible)
+      # Smart Mode room absence (room empty but still home)
+      - conditions:
+          - condition: template
+            value_template: "{{ control_mode == 'Smart' }}"
+          - condition: template
+            value_template: "{{ not room_presence_detected }}"
+          - condition: template
+            value_template: "{{ minutes_since_presence >= presence_timeout }}"
+          - condition: template
+            value_template: "{{ proximity_zone == 'home' or anyone_home }}"
+          - condition: template
+            value_template: "{{ time_since_change > offtime_min }}"
+        sequence:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: Smart Mode room absence activated
+                Action: {{ smart_behavior }}
+                Room empty for {{ minutes_since_presence | round(1) }} min
+                Still home (proximity/presence detected)
+                Time since last change: {{ time_since_change | round(1) }} min
+              level: warning
+              logger: blueprints.climate_control
+          
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ smart_behavior == 'off' }}"
+                sequence:
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
+              
+              - conditions:
+                  - condition: template
+                    value_template: "{{ smart_behavior == 'eco' }}"
+                sequence:
+                  # Set HVAC mode with auto preference and fallback for room eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: >
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                cool
+                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                heat
+                              {% else %}
+                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% endif %}
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: >
+                        {% if current_temp > comfort_max_temp %}
+                          {{ comfort_max_temp + eco_offset }}
+                        {% elif current_temp < comfort_min_temp %}
+                          {{ comfort_min_temp - eco_offset }}
+                        {% else %}
+                          {{ target_temp }}
+                        {% endif %}
+              
+              - conditions:
+                  - condition: template
+                    value_template: "{{ smart_behavior == 'maintain' }}"
+                sequence:
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ target_temp }}"
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "smart_{{ smart_behavior }}"
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "Climate Control"
+              message: "Smart Mode: {{ smart_behavior }} (room empty {{ minutes_since_presence | round(0) }}min, {{ current_temp }}°C)"
+
+      # Away mode (Global - nobody home)
       - conditions:
           - condition: template
             value_template: "{{ enable_away_mode }}"
