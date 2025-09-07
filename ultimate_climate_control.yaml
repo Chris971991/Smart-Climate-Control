@@ -1579,25 +1579,23 @@ action:
               title: "Climate Control"
               message: "Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode | round(0) }}min, {{ current_temp }}°C)"
 
-      # Manual Mode - Clear automation states (give user full control)
+      # Manual Mode - Immediately clear automation states when detected
       - conditions:
           - condition: template
             value_template: "{{ control_mode == 'Manual' }}"
           - condition: template
             value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'smart_off', 'smart_eco', 'smart_maintain'] }}"
-          - condition: template
-            value_template: "{{ time_since_change > 0.5 }}" # Wait 30 seconds after mode change
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
-                🎮 Manual Mode: Clearing Automation State
-                🔄 Switching from "{{ last_mode }}" to manual control
-                💡 User now has full control of AC - no automation interference
+                🎮 Manual Mode: IMMEDIATE Control Restored
+                🔄 Clearing "{{ last_mode }}" state instantly
+                💡 You now have full manual control - no automation interference
                 
-                📋 Technical: Manual mode detected, clearing automation-imposed state
+                📋 Technical: Manual mode = instant automation disable
               level: warning
               logger: blueprints.climate_control
 
@@ -1606,13 +1604,6 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "manual"
-          
-          - condition: template
-            value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
-          - service: "{{ notification_service }}"
-            data:
-              title: "Climate Control"
-              message: "Manual Mode: Automation cleared - you have full AC control"
 
       # Smart Mode room absence (room empty but still home)
       - conditions:
