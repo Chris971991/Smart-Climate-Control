@@ -1142,12 +1142,12 @@ action:
         {% if helper_temp_history %}
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% if temp_diff <= stability_tolerance %}
-            {# Temperature is stable, calculate time since last significant change #}
-            {% set change_helper_val = states(helper_change) if helper_change else 'unknown' %}
-            {% if change_helper_val not in ['unknown', 'unavailable', '', None] %}
-              {% set change_timestamp = as_timestamp(change_helper_val) %}
-              {% if change_timestamp %}
-                {{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) | abs }}
+            {# Temperature is stable, calculate time since last significant temp change #}
+            {% set temp_history_val = states(helper_temp_history) if helper_temp_history else 'unknown' %}
+            {% if temp_history_val not in ['unknown', 'unavailable', '', None] %}
+              {% set temp_timestamp = as_timestamp(temp_history_val) %}
+              {% if temp_timestamp %}
+                {{ ((as_timestamp(now()) - temp_timestamp) / 60) | round(1) | abs }}
               {% else %}
                 0
               {% endif %}
