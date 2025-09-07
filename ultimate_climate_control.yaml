@@ -25,6 +25,7 @@ blueprint:
     • Time-Based Scheduling - Different temperatures for different times (optional)
     • Window Detection - Auto-off when windows open (optional)
     • Weather Compensation - Adjust based on outdoor temperature (optional)
+    • Adaptive Control Mode - Auto-switch modes based on room occupancy (optional)
     • Hysteresis Logic - Prevents rapid on/off cycling
     • Fixed stability timer and check interval bugs
     
@@ -1183,6 +1184,58 @@ blueprint:
             text:
               multiple: true
 
+    # Adaptive Control Mode Settings
+    adaptive_control:
+      name: "Adaptive Control Mode Settings"
+      icon: mdi:auto-mode
+      collapsed: true
+      input:
+        enable_adaptive_control:
+          name: Enable Adaptive Control Mode
+          description: >
+            Automatically switch control modes based on room occupancy:
+            • Room occupied → Switch to Auto/Smart mode after delay
+            • Room vacant → Switch to Manual mode + turn AC off after delay
+          default: false
+          selector:
+            boolean:
+        
+        adaptive_occupied_delay:
+          name: Occupied Delay (minutes)
+          description: Time to wait after detecting presence before switching to Auto/Smart mode
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: minutes
+              mode: slider
+        
+        adaptive_vacant_delay:
+          name: Vacant Delay (minutes)
+          description: Time to wait after room becomes vacant before switching to Manual mode and turning AC off
+          default: 15
+          selector:
+            number:
+              min: 5
+              max: 120
+              step: 5
+              unit_of_measurement: minutes
+              mode: slider
+        
+        adaptive_target_mode:
+          name: Target Mode When Occupied
+          description: Which mode to switch to when room is occupied
+          default: "auto"
+          selector:
+            select:
+              options:
+                - label: "Auto Mode"
+                  value: "auto"
+                - label: "Smart Mode"
+                  value: "smart"
+
 variables:
   climate_list: !input climate_entities
   persons: !input presence_persons
@@ -1284,6 +1337,11 @@ variables:
   helper_temp_stable_since: !input helper_temp_stable_since
   helper_last_transition: !input helper_last_transition
   hysteresis_tolerance: !input hysteresis_tolerance
+  # Adaptive Control Mode variables
+  adaptive_enabled: !input enable_adaptive_control
+  adaptive_occupied_delay: !input adaptive_occupied_delay
+  adaptive_vacant_delay: !input adaptive_vacant_delay
+  adaptive_target_mode: !input adaptive_target_mode
 
 trigger:
   - platform: state
@@ -2057,12 +2115,121 @@ action:
               title: "Climate Control"
               message: "Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode | round(0) }}min, {{ current_temp }}°C)"
 
+      # Adaptive Control Mode - Auto-switch modes based on room occupancy
+      - conditions:
+          - condition: template
+            value_template: "{{ adaptive_enabled }}"
+          - condition: or
+            conditions:
+              # Switch to Auto/Smart when room occupied for configured time
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ control_mode == 'Manual' }}"
+                  - condition: template
+                    value_template: "{{ room_occupied }}"
+                  - condition: template
+                    value_template: >
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                        {% set presence_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                        {{ (presence_time / 60) >= adaptive_occupied_delay }}
+                      {% else %}
+                        false
+                      {% endif %}
+              # Switch to Manual + AC off when room vacant for configured time
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ control_mode in ['Auto', 'Smart'] }}"
+                  - condition: template
+                    value_template: "{{ not room_occupied }}"
+                  - condition: template
+                    value_template: >
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                        {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                        {{ (vacant_time / 60) >= adaptive_vacant_delay }}
+                      {% else %}
+                        false
+                      {% endif %}
+        sequence:
+          # Handle occupied room - switch to Auto/Smart mode
+          - choose:
+            - conditions:
+                - condition: template
+                  value_template: "{{ control_mode == 'Manual' and room_occupied }}"
+              sequence:
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔄 Adaptive Control: Room occupied for {{ adaptive_occupied_delay }}+ minutes, switching to {{ adaptive_target_mode | title }} mode
+                    level: info
+                    logger: blueprints.climate_control
+                
+                - service: input_select.select_option
+                  target:
+                    entity_id: "{{ control_mode_helper }}"
+                  data:
+                    option: "{{ adaptive_target_mode | title }}"
+                
+                - condition: template
+                  value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
+                - service: "{{ notification_service }}"
+                  data:
+                    title: "Adaptive Climate Control"
+                    message: "Room occupied - switched to {{ adaptive_target_mode | title }} mode"
+            
+            # Handle vacant room - switch to Manual mode and turn AC off
+            - conditions:
+                - condition: template
+                  value_template: "{{ control_mode in ['Auto', 'Smart'] and not room_occupied }}"
+              sequence:
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔄 Adaptive Control: Room vacant for {{ adaptive_vacant_delay }}+ minutes, switching to Manual mode and turning AC off
+                    level: info
+                    logger: blueprints.climate_control
+                
+                - service: input_select.select_option
+                  target:
+                    entity_id: "{{ control_mode_helper }}"
+                  data:
+                    option: "Manual"
+                
+                # Turn off all climate entities
+                - repeat:
+                    for_each: "{{ climate_list }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ repeat.item }}"
+                
+                # Update last mode helper to prevent conflicts
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_mode }}"
+                  data:
+                    value: "adaptive_off"
+                
+                - condition: template
+                  value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
+                - service: "{{ notification_service }}"
+                  data:
+                    title: "Adaptive Climate Control"
+                    message: "Room vacant - switched to Manual mode and turned AC off"
+
       # Manual Mode - Immediately clear automation states when detected
       - conditions:
           - condition: template
             value_template: "{{ control_mode == 'Manual' }}"
           - condition: template
-            value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'smart_off', 'smart_eco', 'smart_maintain', 'eco', 'cooling', 'heating'] }}"
+            value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'smart_off', 'smart_eco', 'smart_maintain', 'adaptive_off', 'eco', 'cooling', 'heating'] }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
