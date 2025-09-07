@@ -3502,21 +3502,17 @@ action:
                 {% endif %}
 
   # Adaptive Control Status Debug Log  
-  - if:
-      - condition: template
-        value_template: "{{ debug_enabled }}"
-    then:
-      - service: system_log.write
-        data:
-          message: >
-            🔍 Adaptive Control: Status Check
-            • Adaptive Enabled: {{ adaptive_enabled }}
-            • Debug Enabled: {{ debug_enabled }}
-            • Control Mode: {{ control_mode }}
-            • Room Presence: {{ room_presence_detected }}
-            • Will Execute: {{ adaptive_enabled }}
-          level: debug
-          logger: blueprints.climate_control
+  - service: system_log.write
+    data:
+      message: >
+        🔍 Adaptive Control: Status Check
+        • Adaptive Enabled: {{ adaptive_enabled }}
+        • Debug Enabled: {{ debug_enabled }}
+        • Control Mode: {{ control_mode }}
+        • Room Presence: {{ room_presence_detected }}
+        • Will Execute: {{ adaptive_enabled }}
+      level: warning
+      logger: blueprints.climate_control
 
   # Debug: No conditions matched
   - if:
