@@ -1,7 +1,7 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.0
+  name: Ultimate Smart Climate Control - v2.1
   description: >-
-    📌 Version: 2.0.0
+    📌 Version: 2.1.0
     
     
     🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
@@ -20,6 +20,13 @@ blueprint:
     • Room occupied: Normal temperature control
     • Room empty (timeout): Configurable eco/off/maintain behavior  
     • Away from house: Global away mode (separate setting)
+    
+    ✨ NEW IN v2.1:
+    • Time-Based Scheduling - Different temperatures for different times (optional)
+    • Window Detection - Auto-off when windows open (optional)
+    • Weather Compensation - Adjust based on outdoor temperature (optional)
+    • Hysteresis Logic - Prevents rapid on/off cycling
+    • Fixed stability timer and check interval bugs
     
     
     🧠 CONTROL MODES EXPLAINED:
@@ -103,6 +110,13 @@ blueprint:
     • input_datetime.climate_mode_start_time_[room] (when current mode started)
     
     • input_number.climate_effectiveness_score_[room] (0-100, how well it's working)
+    
+    
+    🔧 STABILITY & HYSTERESIS HELPERS (for v2.1 features):
+    
+    • input_datetime.temp_stable_since_[room] (tracks when temp became stable)
+    
+    • input_text.climate_last_transition_[room] (for hysteresis tracking)
     
     
     📍 Create via: Settings → Devices & Services → Helpers → Create Helper
@@ -588,6 +602,232 @@ blueprint:
                 - "off"
                 - "eco"
 
+    # Scheduling Settings (Optional)
+    scheduling_settings:
+      name: "Time-Based Scheduling"
+      icon: mdi:calendar-clock
+      collapsed: true
+      input:
+        enable_scheduling:
+          name: Enable Time-Based Scheduling
+          description: >
+            Different temperatures for different times of day.
+            When enabled, target temperature will automatically adjust based on time.
+          default: false
+          selector:
+            boolean:
+        
+        morning_temp:
+          name: Morning Temperature (6am-9am)
+          description: Temperature target for morning hours
+          default: 22
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        day_temp:
+          name: Day Temperature (9am-6pm)
+          description: Temperature target for daytime hours
+          default: 23
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        evening_temp:
+          name: Evening Temperature (6pm-10pm)
+          description: Temperature target for evening hours
+          default: 23
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        night_temp:
+          name: Night Temperature (10pm-6am)
+          description: Temperature target for sleeping hours
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        enable_weekend_schedule:
+          name: Different Weekend Schedule
+          description: Use different temperature schedule on weekends
+          default: false
+          selector:
+            boolean:
+        
+        weekend_morning_temp:
+          name: Weekend Morning Temperature
+          description: Weekend morning temperature (6am-10am)
+          default: 23
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        weekend_day_temp:
+          name: Weekend Day Temperature
+          description: Weekend daytime temperature (10am-10pm)
+          default: 23
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        weekend_night_temp:
+          name: Weekend Night Temperature
+          description: Weekend night temperature (10pm-6am)
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+
+    # Window Detection Settings (Optional)
+    window_detection_settings:
+      name: "Window Detection"
+      icon: mdi:window-open
+      collapsed: true
+      input:
+        enable_window_detection:
+          name: Enable Window Detection
+          description: >
+            Automatically turn off AC when windows or doors are opened.
+            Prevents cooling/heating the outdoors and saves energy.
+          default: false
+          selector:
+            boolean:
+        
+        window_sensors:
+          name: Window/Door Sensors
+          description: >
+            Select sensors that should turn off AC when opened.
+            Works with door, window, and opening binary sensors.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: binary_sensor
+        
+        window_open_delay:
+          name: Window Open Delay
+          description: >
+            Minutes to wait after window opens before turning off AC.
+            Prevents false triggers from brief openings.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 1
+              unit_of_measurement: "minutes"
+        
+        window_close_delay:
+          name: Window Close Delay
+          description: >
+            Minutes to wait after window closes before resuming AC.
+            Ensures window is properly closed before restarting.
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 1
+              unit_of_measurement: "minutes"
+
+    # Weather Compensation Settings (Optional)
+    weather_compensation_settings:
+      name: "Weather Compensation"
+      icon: mdi:weather-partly-cloudy
+      collapsed: true
+      input:
+        enable_weather_compensation:
+          name: Enable Weather Compensation
+          description: >
+            Adjust indoor target temperature based on outdoor conditions.
+            Helps maintain comfort while saving energy.
+          default: false
+          selector:
+            boolean:
+        
+        weather_entity:
+          name: Weather Entity
+          description: >
+            Weather integration for outdoor temperature.
+            Usually weather.home or weather.forecast_home.
+          default: weather.home
+          selector:
+            entity:
+              domain: weather
+        
+        outdoor_temp_sensor:
+          name: Outdoor Temperature Sensor (Optional)
+          description: >
+            External temperature sensor for more accurate readings.
+            If not set, uses weather entity temperature.
+          default: []
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        
+        compensation_factor:
+          name: Compensation Factor
+          description: >
+            How much outdoor temperature affects indoor target (0-1).
+            0 = No effect, 0.2 = Mild adjustment, 1 = Full adjustment.
+            Example: 0.2 factor with 30°C outside adds ~1°C to cooling target.
+          default: 0.2
+          selector:
+            number:
+              min: 0
+              max: 1
+              step: 0.1
+        
+        max_compensation:
+          name: Maximum Compensation
+          description: >
+            Maximum degrees to adjust target temperature.
+            Limits the compensation to prevent extreme adjustments.
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 5
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        compensation_base_temp:
+          name: Compensation Base Temperature
+          description: >
+            Outdoor temperature considered "neutral" (no compensation).
+            Compensation increases/decreases from this baseline.
+          default: 25
+          selector:
+            number:
+              min: 20
+              max: 30
+              step: 1
+              unit_of_measurement: "°C"
+
     # Fan & Swing Settings
     fan_settings:
       name: "Fan & Swing Settings"
@@ -857,6 +1097,40 @@ blueprint:
             entity:
               domain: input_number
         
+        helper_temp_stable_since:
+          name: Temperature Stable Since Helper (Optional)
+          description: >
+            Input DateTime helper to track when temperature became stable.
+            Required for proper stability detection. Example: input_datetime.temp_stable_since_living_room
+          default: []
+          selector:
+            entity:
+              domain: input_datetime
+        
+        helper_last_transition:
+          name: Last Transition Helper (Optional)
+          description: >
+            Input Text helper to track last temperature zone transition.
+            Used for hysteresis to prevent rapid switching. Example: input_text.climate_last_transition_living_room
+          default: []
+          selector:
+            entity:
+              domain: input_text
+        
+        hysteresis_tolerance:
+          name: Hysteresis Tolerance
+          description: >
+            Temperature tolerance for preventing rapid switching (±°C).
+            System won't change modes unless temperature exceeds threshold by this amount.
+            Prevents oscillation at temperature boundaries.
+          default: 0.3
+          selector:
+            number:
+              min: 0.1
+              max: 1.0
+              step: 0.1
+              unit_of_measurement: "°C"
+        
         enable_debug_logging:
           name: Enable Debug Logging
           description: >
@@ -939,17 +1213,17 @@ variables:
   heating_medium_input: !input heating_medium_temp
   heating_low_input: !input heating_low_temp
   
-  # Calculate or use advanced overrides
-  comfort_min_temp: "{{ comfort_min_input if advanced_enabled else (target_temp - comfort_width) | float }}"
-  comfort_max_temp: "{{ comfort_max_input if advanced_enabled else (target_temp + comfort_width) | float }}"
-  cooling_target_temp: "{{ cooling_target_input if advanced_enabled else target_temp | float }}"
-  heating_target_temp: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
+  # Calculate comfort zones based on base target (before weather adjustment)
+  base_comfort_min: "{{ comfort_min_input if advanced_enabled else (target_temp - comfort_width) | float }}"
+  base_comfort_max: "{{ comfort_max_input if advanced_enabled else (target_temp + comfort_width) | float }}"
+  base_cooling_target: "{{ cooling_target_input if advanced_enabled else target_temp | float }}"
+  base_heating_target: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
   
-  # Auto-calculate thresholds based on aggressiveness (smooth graduated response)
-  cooling_medium_temp: "{{ cooling_medium_input if advanced_enabled else comfort_max_temp | round(1) }}"
-  cooling_high_temp: "{{ cooling_high_input if advanced_enabled else (comfort_max_temp + aggressiveness/2) | round(1) }}"
-  heating_medium_temp: "{{ heating_medium_input if advanced_enabled else comfort_min_temp | round(1) }}"
-  heating_low_temp: "{{ heating_low_input if advanced_enabled else (comfort_min_temp - aggressiveness/2) | round(1) }}"
+  # Auto-calculate base thresholds based on aggressiveness (smooth graduated response)
+  base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else base_comfort_max | round(1) }}"
+  base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + aggressiveness/2) | round(1) }}"
+  base_heating_medium: "{{ heating_medium_input if advanced_enabled else base_comfort_min | round(1) }}"
+  base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
@@ -984,6 +1258,32 @@ variables:
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
+  # New v2.1 features - Scheduling
+  enable_scheduling: !input enable_scheduling
+  morning_temp: !input morning_temp
+  day_temp: !input day_temp
+  evening_temp: !input evening_temp
+  night_temp: !input night_temp
+  enable_weekend_schedule: !input enable_weekend_schedule
+  weekend_morning_temp: !input weekend_morning_temp
+  weekend_day_temp: !input weekend_day_temp
+  weekend_night_temp: !input weekend_night_temp
+  # New v2.1 features - Window Detection
+  enable_window_detection: !input enable_window_detection
+  window_sensors: !input window_sensors
+  window_open_delay: !input window_open_delay
+  window_close_delay: !input window_close_delay
+  # New v2.1 features - Weather Compensation
+  enable_weather_compensation: !input enable_weather_compensation
+  weather_entity: !input weather_entity
+  outdoor_temp_sensor: !input outdoor_temp_sensor
+  compensation_factor: !input compensation_factor
+  max_compensation: !input max_compensation
+  compensation_base_temp: !input compensation_base_temp
+  # New v2.1 helpers - Stability and Hysteresis
+  helper_temp_stable_since: !input helper_temp_stable_since
+  helper_last_transition: !input helper_last_transition
+  hysteresis_tolerance: !input hysteresis_tolerance
 
 trigger:
   - platform: state
@@ -1096,6 +1396,96 @@ action:
           {{ state_attr(climate_list[0], 'current_temperature') | float(25) }}
         {% endif %}
       
+      # Calculate base target temperature with scheduling
+      scheduled_target_temp: >
+        {% if enable_scheduling %}
+          {% set hour = now().hour %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% if is_weekend and enable_weekend_schedule %}
+            {% if 6 <= hour < 10 %}
+              {{ weekend_morning_temp }}
+            {% elif 10 <= hour < 22 %}
+              {{ weekend_day_temp }}
+            {% else %}
+              {{ weekend_night_temp }}
+            {% endif %}
+          {% else %}
+            {% if 6 <= hour < 9 %}
+              {{ morning_temp }}
+            {% elif 9 <= hour < 18 %}
+              {{ day_temp }}
+            {% elif 18 <= hour < 22 %}
+              {{ evening_temp }}
+            {% else %}
+              {{ night_temp }}
+            {% endif %}
+          {% endif %}
+        {% else %}
+          {{ target_temp }}
+        {% endif %}
+      
+      # Apply weather compensation to target temperature
+      weather_adjusted_target: >
+        {% if enable_weather_compensation %}
+          {% if outdoor_temp_sensor %}
+            {% set outdoor = states(outdoor_temp_sensor) | float(25) %}
+          {% else %}
+            {% set outdoor = state_attr(weather_entity, 'temperature') | float(25) %}
+          {% endif %}
+          {% set compensation = ((outdoor - compensation_base_temp) * compensation_factor) | round(1) %}
+          {% set compensation = [[-max_compensation, compensation] | max, max_compensation] | min %}
+          {{ (scheduled_target_temp + compensation) | round(1) }}
+        {% else %}
+          {{ scheduled_target_temp }}
+        {% endif %}
+      
+      # Calculate weather-adjusted comfort zones and thresholds
+      comfort_min_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_comfort_min + adjustment) | round(1) }}
+      
+      comfort_max_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_comfort_max + adjustment) | round(1) }}
+      
+      cooling_target_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_cooling_target + adjustment) | round(1) }}
+      
+      heating_target_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_heating_target + adjustment) | round(1) }}
+      
+      cooling_medium_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_cooling_medium + adjustment) | round(1) }}
+      
+      cooling_high_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_cooling_high + adjustment) | round(1) }}
+      
+      heating_medium_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_heating_medium + adjustment) | round(1) }}
+      
+      heating_low_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_heating_low + adjustment) | round(1) }}
+      
+      # Check window sensors
+      window_open: >
+        {% if enable_window_detection %}
+          {% set open = namespace(value=false) %}
+          {% for sensor in window_sensors %}
+            {% if is_state(sensor, 'on') %}
+              {% set open.value = true %}
+            {% endif %}
+          {% endfor %}
+          {{ open.value }}
+        {% else %}
+          false
+        {% endif %}
+      
       anyone_home: >
         {% set home = namespace(value=false) %}
         {% for person in persons %}
@@ -1139,13 +1529,21 @@ action:
       
       # Calculate actual temperature stability time (when temp last changed significantly)
       temp_stability_time: >
-        {% if helper_temp_history %}
+        {% if helper_temp_history and helper_temp_stable_since %}
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% if temp_diff <= stability_tolerance %}
-            {# Temperature is stable, use a simple calculation based on check interval #}
-            {# Since we don't have a dedicated temp change tracker, estimate based on current stability #}
-            {% set stability_minutes = stability_duration | float %}
-            {{ stability_minutes }}
+            {% set stable_since = states(helper_temp_stable_since) %}
+            {% if stable_since not in ['unknown', 'unavailable', '', None] %}
+              {% set stable_timestamp = as_timestamp(stable_since) %}
+              {% if stable_timestamp %}
+                {{ ((as_timestamp(now()) - stable_timestamp) / 60) | round(1) }}
+              {% else %}
+                0
+              {% endif %}
+            {% else %}
+              {# Stable since not set, assume just became stable #}
+              0
+            {% endif %}
           {% else %}
             {# Temperature changed significantly, stability time is 0 #}
             0
@@ -1203,6 +1601,32 @@ action:
           {{ (current_temp - heating_target_temp) | abs }}
         {% else %}
           0
+        {% endif %}
+      
+      # Hysteresis logic - prevent rapid switching at temperature boundaries
+      last_transition: >
+        {% if helper_last_transition %}
+          {{ states(helper_last_transition) | default('none') }}
+        {% else %}
+          none
+        {% endif %}
+      
+      cooling_with_hysteresis: >
+        {% if last_transition == 'heating' %}
+          {# Coming from heating - need extra margin to switch to cooling #}
+          {{ current_temp > (comfort_max_temp + hysteresis_tolerance) }}
+        {% else %}
+          {# Standard cooling threshold #}
+          {{ current_temp > comfort_max_temp }}
+        {% endif %}
+      
+      heating_with_hysteresis: >
+        {% if last_transition == 'cooling' %}
+          {# Coming from cooling - need extra margin to switch to heating #}
+          {{ current_temp < (comfort_min_temp - hysteresis_tolerance) }}
+        {% else %}
+          {# Standard heating threshold #}
+          {{ current_temp < comfort_min_temp }}
         {% endif %}
       
       should_escalate: >
@@ -1326,6 +1750,41 @@ action:
     data:
       datetime: "{{ now() }}"
   
+  # Update temperature stability tracking - record when temp became stable
+  - condition: template
+    value_template: "{{ helper_temp_stable_since not in [none, '', 'unavailable', 'unknown'] and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set temp_diff = (current_temp - previous_temp) | abs %}
+              {% set was_stable = states(helper_temp_stable_since) not in ['unknown', 'unavailable', '', None] %}
+              {{ temp_diff <= stability_tolerance and not was_stable }}
+        sequence:
+          # Temperature just became stable - record the time
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_temp_stable_since }}"
+            data:
+              datetime: "{{ now() }}"
+      
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set temp_diff = (current_temp - previous_temp) | abs %}
+              {{ temp_diff > stability_tolerance }}
+        sequence:
+          # Temperature is no longer stable - clear the timestamp
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_temp_stable_since }}"
+            data:
+              datetime: "1970-01-01 00:00:00"
+  
+  # Exit immediately if windows are open (unless disabled)
+  - condition: template
+    value_template: "{{ not window_open or not enable_window_detection }}"
+  
   - variables:
       should_deescalate: >
         {% if not dynamic_enabled %}
@@ -1423,16 +1882,16 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: "{{ target_temp }}"
+              temperature: "{{ weather_adjusted_target }}"
 
           - service: system_log.write
             data:
               message: >
                 🌡️ TEMP SET: Pre-conditioning
-                Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
-                Actual value: {{ target_temp | round(1) }}°C
+                Set AC to: {{ weather_adjusted_target | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ weather_adjusted_target | round(1) }}°C
                 Reason: Pre-conditioning target temperature (approaching home)
-                Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+                Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
               logger: blueprints.climate_control
           
@@ -1869,12 +2328,17 @@ action:
               title: "Climate Away Mode"
               message: "{{ away_action | title }} mode activated - nobody home"
       
-      # High cooling mode
+      # High cooling mode (with hysteresis)
       - conditions:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp >= cooling_high_temp }}"
+            value_template: >
+              {% if last_transition == 'heating' %}
+                {{ current_temp >= (cooling_high_temp + hysteresis_tolerance) }}
+              {% else %}
+                {{ current_temp >= cooling_high_temp }}
+              {% endif %}
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
@@ -1918,21 +2382,30 @@ action:
             data:
               temperature: >
                 {% if gradual_enabled %}
-                  {{ [cooling_target_temp, current_temp - 2] | min }}
+                  {{ [weather_adjusted_target, current_temp - 2] | min }}
                 {% else %}
-                  {{ cooling_target_temp }}
+                  {{ weather_adjusted_target }}
                 {% endif %}
 
           - service: system_log.write
             data:
               message: >
                 🌡️ TEMP SET: High Cooling
-                Set AC to: {{ ([cooling_target_temp, current_temp - 2] | min if gradual_enabled else cooling_target_temp) | round(0) }}°C (rounded for AC compatibility)
-                Actual value: {{ ([cooling_target_temp, current_temp - 2] | min if gradual_enabled else cooling_target_temp) | round(1) }}°C
-                Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
-                Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
+                Set AC to: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(1) }}°C
+                Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
+                Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
               logger: blueprints.climate_control
+          
+          # Update hysteresis tracking - we're now cooling
+          - condition: template
+            value_template: "{{ helper_last_transition not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_last_transition }}"
+            data:
+              value: "cooling"
           
           # Set fan mode with compatibility check
           - repeat:
