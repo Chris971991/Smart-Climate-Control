@@ -1330,6 +1330,17 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: Pre-conditioning
+                Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ target_temp | round(1) }}°C
+                Reason: Pre-conditioning target temperature (approaching home)
+                Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           - service: climate.set_fan_mode
             target:
@@ -1439,6 +1450,17 @@ action:
                         {% else %}
                           {{ target_temp }}
                         {% endif %}
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌡️ TEMP SET: Smart Room Eco Mode
+                        Set AC to: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
+                        Reason: {{ 'Eco cooling (comfort max +' + eco_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
+                        Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
+                      level: warning
+                      logger: blueprints.climate_control
               
               - conditions:
                   - condition: template
@@ -1449,6 +1471,17 @@ action:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ target_temp }}"
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌡️ TEMP SET: Smart Room Maintain
+                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ target_temp | round(1) }}°C
+                        Reason: Smart mode maintain current temperature (room empty but still home)
+                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+                      level: warning
+                      logger: blueprints.climate_control
           
           - service: input_text.set_value
             target:
@@ -1532,6 +1565,17 @@ action:
                         {% else %}
                           {{ heating_target_temp - eco_mode_setpoint_offset }}
                         {% endif %}
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌡️ TEMP SET: Away Eco Mode
+                        Set AC to: {{ ((cooling_target_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (heating_target_temp - eco_mode_setpoint_offset)) | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ ((cooling_target_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (heating_target_temp - eco_mode_setpoint_offset)) | round(1) }}°C
+                        Reason: {{ 'Eco cooling (target +' + eco_mode_setpoint_offset|string + '°C offset)' if current_temp > comfort_max_temp else 'Eco heating (target -' + eco_mode_setpoint_offset|string + '°C offset)' }}
+                        Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
+                      level: warning
+                      logger: blueprints.climate_control
                   
                   # Set auto fan mode for efficient away eco mode
                   - repeat:
@@ -1624,6 +1668,17 @@ action:
                 {% else %}
                   {{ cooling_target_temp }}
                 {% endif %}
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: High Cooling
+                Set AC to: {{ ([cooling_target_temp, current_temp - 2] | min if gradual_enabled else cooling_target_temp) | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ ([cooling_target_temp, current_temp - 2] | min if gradual_enabled else cooling_target_temp) | round(1) }}°C
+                Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
+                Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           # Set fan mode with compatibility check
           - repeat:
@@ -1762,6 +1817,17 @@ action:
                 {% else %}
                   {{ cooling_target_temp }}
                 {% endif %}
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: Medium Cooling
+                Set AC to: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(1) }}°C
+                Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
+                Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           # Set auto/medium fan mode for efficient cooling
           - repeat:
@@ -1875,6 +1941,17 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: High Heating
+                Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ heating_target_temp | round(1) }}°C
+                Reason: Direct target temperature (no gradual adjustment for heating)
+                Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           # Set max fan mode with compatibility check
           - repeat:
@@ -2008,6 +2085,17 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: Medium Heating
+                Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ heating_target_temp | round(1) }}°C
+                Reason: Direct target temperature (no gradual adjustment for heating)
+                Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           # Set auto/medium fan mode for efficient heating
           - repeat:
@@ -2124,6 +2212,17 @@ action:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ target_temp }}"
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌡️ TEMP SET: Comfort Zone Maintenance
+                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ target_temp | round(1) }}°C
+                        Reason: Maintaining target temperature within comfort zone
+                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+                      level: warning
+                      logger: blueprints.climate_control
                   
                   # Set auto fan mode for maximum efficiency in comfort zone
                   - repeat:
@@ -2288,6 +2387,17 @@ action:
                 {% else %}
                   {{ target_temp }}
                 {% endif %}
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ TEMP SET: Emergency Escalation
+                Set AC to: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
+                Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
+                Current: {{ current_temp | round(1) }}°C → Target: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
+              level: warning
+              logger: blueprints.climate_control
           
           # Set maximum fan speed for escalation
           - repeat:
