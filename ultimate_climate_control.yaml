@@ -3510,13 +3510,11 @@ action:
         • Control Mode: {{ control_mode }}
         • Room Presence: {{ room_presence_detected }}
         • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
+        • Required Delay: {{ adaptive_occupied_delay }} min
         {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
         {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
         • Time Present: {{ presence_time | round(1) }} min
-        • Required Delay: {{ adaptive_occupied_delay }} min
-        • Ready to Switch: {{ 'YES' if presence_time >= adaptive_occupied_delay else 'NO (need ' + ((adaptive_occupied_delay - presence_time) | round(1) | string) + ' more min)' }}
-        {% else %}
-        • Time Present: Unknown (no valid timestamp)
+        • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
         {% endif %}
       level: warning
       logger: blueprints.climate_control
