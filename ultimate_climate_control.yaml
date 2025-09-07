@@ -1573,7 +1573,7 @@ action:
               value: "stability_{{ stability_behavior }}"
           
           - condition: template
-            value_template: "{{ notification_service not in [none, ''] }}"
+            value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
           - service: "{{ notification_service }}"
             data:
               title: "Climate Control"
