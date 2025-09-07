@@ -1620,7 +1620,7 @@ action:
             data:
               temperature: >
                 {% if gradual_enabled %}
-                  {{ [cooling_target_temp, current_temp - 2] | max }}
+                  {{ [cooling_target_temp, current_temp - 2] | min }}
                 {% else %}
                   {{ cooling_target_temp }}
                 {% endif %}
@@ -1758,7 +1758,7 @@ action:
             data:
               temperature: >
                 {% if gradual_enabled %}
-                  {{ [cooling_target_temp, current_temp - 1] | max }}
+                  {{ [cooling_target_temp, current_temp - 1] | min }}
                 {% else %}
                   {{ cooling_target_temp }}
                 {% endif %}
