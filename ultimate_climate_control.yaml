@@ -1372,6 +1372,8 @@ action:
           - condition: template
             value_template: "{{ enable_pre_conditioning }}"
           - condition: template
+            value_template: "{{ should_activate }}"
+          - condition: template
             value_template: "{{ approaching_home }}"
           - condition: template
             value_template: "{{ current_temp > cooling_medium_temp or current_temp < heating_medium_temp }}"
