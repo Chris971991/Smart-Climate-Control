@@ -179,7 +179,7 @@ blueprint:
         
         # SIMPLE CONTROLS (Always visible)
         target_temperature:
-          name: Target Temperature
+          name: 🎯 Target Temperature
           description: >
             Your ideal room temperature - changes ALL zones proportionally.
             This is where the system will maintain temperature in auto mode.
@@ -193,7 +193,7 @@ blueprint:
               mode: slider
         
         comfort_zone_width:
-          name: Comfort Zone Range
+          name: 📏 Comfort Zone Range
           description: >
             Temperature variation tolerance around target (±°C):
             
@@ -213,7 +213,7 @@ blueprint:
               mode: slider
         
         temperature_aggressiveness:
-          name: Response Aggressiveness
+          name: ⚡ Response Aggressiveness
           description: >
             How quickly system responds beyond comfort zone:
             
