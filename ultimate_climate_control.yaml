@@ -1586,7 +1586,7 @@ action:
           - condition: template
             value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'smart_off', 'smart_eco', 'smart_maintain'] }}"
           - condition: template
-            value_template: "{{ time_since_change > 30 }}" # Wait 30 seconds after mode change
+            value_template: "{{ time_since_change > 0.5 }}" # Wait 30 seconds after mode change
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
