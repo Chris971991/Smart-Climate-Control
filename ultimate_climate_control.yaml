@@ -1,7 +1,7 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.1
+  name: Ultimate Smart Climate Control - v2.2
   description: >-
-    📌 Version: 2.1.0
+    📌 Version: 2.2.0
     
     
     🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
@@ -25,9 +25,11 @@ blueprint:
     • Time-Based Scheduling - Different temperatures for different times (optional)
     • Window Detection - Auto-off when windows open (optional)
     • Weather Compensation - Adjust based on outdoor temperature (optional)
-    • Adaptive Control Mode - Auto-switch modes based on room occupancy (optional)
     • Hysteresis Logic - Prevents rapid on/off cycling
     • Fixed stability timer and check interval bugs
+    
+    ✨ NEW IN v2.2:
+    • Adaptive Control Mode - Auto-switch modes based on room occupancy (optional)
     
     
     🧠 CONTROL MODES EXPLAINED:
@@ -113,7 +115,7 @@ blueprint:
     • input_number.climate_effectiveness_score_[room] (0-100, how well it's working)
     
     
-    🔧 STABILITY & HYSTERESIS HELPERS (for v2.1 features):
+    🔧 STABILITY & HYSTERESIS HELPERS (for v2.1+ features):
     
     • input_datetime.temp_stable_since_[room] (tracks when temp became stable)
     
@@ -1196,6 +1198,11 @@ blueprint:
             Automatically switch control modes based on room occupancy:
             • Room occupied → Switch to Auto/Smart mode after delay
             • Room vacant → Switch to Manual mode + turn AC off after delay
+            
+            ⚠️ REQUIRES: Room presence sensors configured in Smart Mode Settings:
+            • PIR/motion sensors, or BLE tracking devices, or occupancy sensors
+            • Last Presence Helper Entity (input_datetime) to track presence timing
+            • Smart Mode must be properly configured for this feature to work
           default: false
           selector:
             boolean:
@@ -1311,7 +1318,7 @@ variables:
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
-  # New v2.1 features - Scheduling
+  # New v2.1+ features - Scheduling
   enable_scheduling: !input enable_scheduling
   morning_temp: !input morning_temp
   day_temp: !input day_temp
@@ -1321,19 +1328,19 @@ variables:
   weekend_morning_temp: !input weekend_morning_temp
   weekend_day_temp: !input weekend_day_temp
   weekend_night_temp: !input weekend_night_temp
-  # New v2.1 features - Window Detection
+  # New v2.1+ features - Window Detection
   enable_window_detection: !input enable_window_detection
   window_sensors: !input window_sensors
   window_open_delay: !input window_open_delay
   window_close_delay: !input window_close_delay
-  # New v2.1 features - Weather Compensation
+  # New v2.1+ features - Weather Compensation
   enable_weather_compensation: !input enable_weather_compensation
   weather_entity: !input weather_entity
   outdoor_temp_sensor: !input outdoor_temp_sensor
   compensation_factor: !input compensation_factor
   max_compensation: !input max_compensation
   compensation_base_temp: !input compensation_base_temp
-  # New v2.1 helpers - Stability and Hysteresis
+  # New v2.1+ helpers - Stability and Hysteresis
   helper_temp_stable_since: !input helper_temp_stable_since
   helper_last_transition: !input helper_last_transition
   hysteresis_tolerance: !input hysteresis_tolerance
@@ -2127,7 +2134,7 @@ action:
                   - condition: template
                     value_template: "{{ control_mode == 'Manual' }}"
                   - condition: template
-                    value_template: "{{ room_occupied }}"
+                    value_template: "{{ room_presence_detected }}"
                   - condition: template
                     value_template: >
                       {% set last_presence = states(presence_detected_helper) %}
@@ -2143,7 +2150,7 @@ action:
                   - condition: template
                     value_template: "{{ control_mode in ['Auto', 'Smart'] }}"
                   - condition: template
-                    value_template: "{{ not room_occupied }}"
+                    value_template: "{{ not room_presence_detected }}"
                   - condition: template
                     value_template: >
                       {% set last_presence = states(presence_detected_helper) %}
@@ -2158,7 +2165,7 @@ action:
           - choose:
             - conditions:
                 - condition: template
-                  value_template: "{{ control_mode == 'Manual' and room_occupied }}"
+                  value_template: "{{ control_mode == 'Manual' and room_presence_detected }}"
               sequence:
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -2185,7 +2192,7 @@ action:
             # Handle vacant room - switch to Manual mode and turn AC off
             - conditions:
                 - condition: template
-                  value_template: "{{ control_mode in ['Auto', 'Smart'] and not room_occupied }}"
+                  value_template: "{{ control_mode in ['Auto', 'Smart'] and not room_presence_detected }}"
               sequence:
                 - condition: template
                   value_template: "{{ debug_enabled }}"
