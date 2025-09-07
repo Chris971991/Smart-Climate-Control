@@ -557,7 +557,7 @@ blueprint:
           selector:
             number:
               min: 0.1
-              max: 1.0
+              max: 5.0
               step: 0.1
               unit_of_measurement: "°C"
 
@@ -1075,11 +1075,10 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 CLIMATE DEBUG: Automation triggered
-        Trigger: {{ trigger.id }}
-        Platform: {{ trigger.platform }}
-        Entity: {{ trigger.entity_id | default('N/A') }}
-        Selected Interval: {{ check_interval }} minutes
+        🏠 Climate System Activated
+        {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
+        
+        📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
       level: warning
       logger: blueprints.climate_control
   
@@ -1332,24 +1331,20 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 CLIMATE DEBUG: Current Conditions & Dynamic Analysis
-        Temperature: {{ current_temp }}°C (Previous: {{ previous_temp }}°C)
-        Anyone Home: {{ anyone_home }}
-        Approaching: {{ approaching_home }}
-        Last Mode: {{ last_mode }}
-        Time Since Change: {{ time_since_change | round(1) }} min
-        Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
-        Thresholds - Cool Med: {{ cooling_medium_temp }}°C, Cool High: {{ cooling_high_temp }}°C
-        Thresholds - Heat Med: {{ heating_medium_temp }}°C, Heat Low: {{ heating_low_temp }}°C
+        📊 Climate System Status
         
-        🧠 DYNAMIC ANALYSIS:
-        Trend: {{ calculated_trend }} ({{ temp_change_rate }}°C/min)
-        Time in Mode: {{ time_in_current_mode }} min
-        Distance from Target: {{ distance_from_target }}°C
-        Should Escalate: {{ should_escalate }}
-        Should De-escalate: {{ should_deescalate }}
-        {% if temp_stability_enabled %}🌡️ STABILITY: {{ 'DETECTED' if temp_stability_detected else 'Not detected' }} (±{{ stability_tolerance }}°C, {{ stability_duration }}min req){% endif %}
-        Effectiveness: {{ current_effectiveness }}%
+        🌡️ Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
+        🏠 People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
+        ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
+        
+        {% if temp_stability_enabled and temp_stability_detected %}🎯 Status: Temperature stable for {{ time_in_current_mode | round(0) }} min - ready for auto-off{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
+        
+        📋 Technical Details:
+        • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
+        • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
+        • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
+        {% if temp_stability_enabled %}• Stability: {{ 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
+        • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
       level: warning
       logger: blueprints.climate_control
   
@@ -1472,11 +1467,11 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: Temperature Stability Auto-Off activated
-                Action: {{ stability_behavior }}
-                Temperature stable at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} min
-                Tolerance: ±{{ stability_tolerance }}°C, Duration: {{ stability_duration }}min
-                Time since last change: {{ time_since_change | round(1) }} min
+                🎯 Smart Feature: Temperature Stability Detected
+                🌡️ Temperature has been steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
+                💡 AC job appears complete - switching to {{ stability_behavior|upper }} mode to save energy
+                
+                📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
               level: warning
               logger: blueprints.climate_control
           
@@ -1601,11 +1596,11 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: Smart Mode room absence activated
-                Action: {{ smart_behavior }}
-                Room empty for {{ minutes_since_presence | round(1) }} min
-                Still home (proximity/presence detected)
-                Time since last change: {{ time_since_change | round(1) }} min
+                🚪 Smart Mode: Room Empty
+                💡 Nobody detected in room for {{ minutes_since_presence | round(0) }} minutes
+                🏠 You're still home, so switching to {{ smart_behavior|upper }} mode to save energy
+                
+                📋 Technical: {{ time_since_change | round(1) }}min since last change
               level: warning
               logger: blueprints.climate_control
           
@@ -2653,11 +2648,10 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 CLIMATE DEBUG: No action taken
-        No conditions matched current state
-        Temperature: {{ current_temp }}°C
-        Anyone home: {{ anyone_home }}
-        Last mode: {{ last_mode }}
+        ✅ Climate System: All Good
+        {% if current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}🎯 Temperature {{ current_temp }}°C is perfect - no changes needed{% else %}⏸️ No action required right now{% endif %}
+        
+        📋 Technical: {{ current_temp }}°C, {{ 'someone home' if anyone_home else 'nobody home' }}, {{ last_mode }} mode
       level: warning
       logger: blueprints.climate_control
 
