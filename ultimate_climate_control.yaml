@@ -984,7 +984,7 @@ action:
   - variables:
       current_temp: >
         {% if temp_sensor %}
-          {{ states(temp_sensor) | float }}
+          {{ states(temp_sensor) | float(25) }}
         {% elif use_avg %}
           {% set temps = namespace(values=[]) %}
           {% for entity in climate_list %}
@@ -992,7 +992,7 @@ action:
           {% endfor %}
           {{ temps.values | average | round(1) }}
         {% else %}
-          {{ state_attr(climate_list[0], 'current_temperature') | float }}
+          {{ state_attr(climate_list[0], 'current_temperature') | float(25) }}
         {% endif %}
       
       anyone_home: >
