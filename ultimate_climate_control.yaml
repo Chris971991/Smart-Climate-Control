@@ -1143,7 +1143,7 @@ action:
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% if temp_diff <= stability_tolerance %}
             {# Temperature is stable, calculate time since last significant change #}
-            {% set last_change_val = states(helper_last_change) if helper_last_change else 'unknown' %}
+            {% set last_change_val = states(helper_change) if helper_change else 'unknown' %}
             {% if last_change_val not in ['unknown', 'unavailable', '', None] %}
               {% set change_timestamp = as_timestamp(last_change_val) %}
               {% if change_timestamp %}
