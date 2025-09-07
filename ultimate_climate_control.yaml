@@ -1808,14 +1808,25 @@ action:
           {{ anyone_home or approaching_home }}
         {% endif %}
   
-  # Update presence helper if room presence is detected
-  - condition: template
-    value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
-  - service: input_datetime.set_datetime
-    target:
-      entity_id: "{{ presence_detected_helper }}"
-    data:
-      datetime: "{{ now() }}"
+  # Update presence helper only when room presence FIRST becomes detected (not continuously)
+  - if:
+      - condition: template
+        value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: >
+          {% set last_presence = states(presence_detected_helper) %}
+          {% if last_presence not in ['unknown', 'unavailable', ''] %}
+            {% set time_since_update = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
+            {{ time_since_update > 2 }}
+          {% else %}
+            true
+          {% endif %}
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
+          datetime: "{{ now() }}"
   
   # Update temperature stability tracking - record when temp became stable
   - condition: template
