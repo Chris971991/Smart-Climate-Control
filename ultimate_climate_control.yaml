@@ -526,16 +526,17 @@ blueprint:
         fan_speed_max:
           name: Maximum Fan Speed
           description: Fan speed for maximum cooling/heating
-          default: "Level 5"
+          default: "5"
           selector:
             select:
               options:
-                - "auto"
-                - "Level 1"
-                - "Level 2"
-                - "Level 3"
-                - "Level 4"
-                - "Level 5"
+                - "Auto"
+                - "Silence"
+                - "1"
+                - "2"
+                - "3"
+                - "4"
+                - "5"
                 - "high"
                 - "medium"
                 - "low"
@@ -543,16 +544,17 @@ blueprint:
         fan_speed_medium:
           name: Medium Fan Speed
           description: Fan speed for medium cooling/heating
-          default: "Level 4"
+          default: "4"
           selector:
             select:
               options:
-                - "auto"
-                - "Level 1"
-                - "Level 2"
-                - "Level 3"
-                - "Level 4"
-                - "Level 5"
+                - "Auto"
+                - "Silence"
+                - "1"
+                - "2"
+                - "3"
+                - "4"
+                - "5"
                 - "high"
                 - "medium"
                 - "low"
@@ -560,16 +562,17 @@ blueprint:
         fan_speed_eco:
           name: Eco Fan Speed
           description: Fan speed for eco mode (comfort zone)
-          default: "Level 2"
+          default: "2"
           selector:
             select:
               options:
-                - "auto"
-                - "Level 1"
-                - "Level 2"
-                - "Level 3"
-                - "Level 4"
-                - "Level 5"
+                - "Auto"
+                - "Silence"
+                - "1"
+                - "2"
+                - "3"
+                - "4"
+                - "5"
                 - "high"
                 - "medium"
                 - "low"
@@ -1026,7 +1029,12 @@ action:
       time_in_current_mode: >
         {% set mode_time_val = states(helper_mode_time) if helper_mode_time else 'unknown' %}
         {% if mode_time_val not in ['unknown', 'unavailable', '', None] %}
-          {{ ((as_timestamp(now()) - as_timestamp(mode_time_val)) / 60) | round(1) | abs }}
+          {% set mode_timestamp = as_timestamp(mode_time_val) %}
+          {% if mode_timestamp %}
+            {{ ((as_timestamp(now()) - mode_timestamp) / 60) | round(1) | abs }}
+          {% else %}
+            0
+          {% endif %}
         {% else %}
           0
         {% endif %}
@@ -1111,7 +1119,12 @@ action:
         {% else %}
           {% set presence_time_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
           {% if presence_time_val not in ['unknown', 'unavailable', '', None] %}
-            {{ ((as_timestamp(now()) - as_timestamp(presence_time_val)) / 60) | round(0) | abs }}
+            {% set presence_timestamp = as_timestamp(presence_time_val) %}
+            {% if presence_timestamp %}
+              {{ ((as_timestamp(now()) - presence_timestamp) / 60) | round(0) | abs }}
+            {% else %}
+              999
+            {% endif %}
           {% else %}
             999
           {% endif %}
@@ -1285,12 +1298,6 @@ action:
                 {% set desired_medium_fan = fan_speed_medium %}
                 {% if desired_medium_fan in available_fans %}
                   {{ desired_medium_fan }}
-                {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
-                  3
-                {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
-                  Level 3
-                {% elif 'Level 3' in available_fans %}
-                  Level 3
                 {% elif '3' in available_fans %}
                   3
                 {% elif 'medium' in available_fans %}
@@ -1298,7 +1305,7 @@ action:
                 {% elif 'Auto' in available_fans %}
                   Auto
                 {% else %}
-                  {{ available_fans[-1] if available_fans else 'auto' }}
+                  {{ available_fans[-1] if available_fans else 'Auto' }}
                 {% endif %}
           
           - condition: template
@@ -1357,14 +1364,12 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             hvac_mode: >
-                              {% if 'auto' in available_modes %}
-                                auto
+                              {% if 'heat_cool' in available_modes %}
+                                heat_cool
                               {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
                               {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                                 heat
-                              {% elif 'heat_cool' in available_modes %}
-                                heat_cool
                               {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
@@ -1392,18 +1397,16 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: >
-                              {% if 'auto' in available_fans %}
-                                auto
-                              {% elif 'Auto' in available_fans %}
+                              {% if 'Auto' in available_fans %}
                                 Auto
                               {% elif 'low' in available_fans %}
                                 low
-                              {% elif 'Level 1' in available_fans %}
-                                Level 1
+                              {% elif 'Silence' in available_fans %}
+                                Silence
                               {% elif '1' in available_fans %}
                                 1
                               {% else %}
-                                {{ available_fans[0] if available_fans else 'auto' }}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
           
           - condition: template
@@ -1447,9 +1450,7 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                      {% elif 'cool' in available_modes %}
+                      {% if 'cool' in available_modes %}
                         cool
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
@@ -1483,12 +1484,6 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
-                        5
-                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
-                        Level 5
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
@@ -1496,7 +1491,7 @@ action:
                       {% elif 'Auto' in available_fans %}
                         Auto
                       {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
           # Set swing mode with compatibility check
@@ -1587,9 +1582,7 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                      {% elif 'heat_cool' in available_modes %}
+                      {% if 'heat_cool' in available_modes %}
                         heat_cool
                       {% elif 'cool' in available_modes %}
                         cool
@@ -1620,18 +1613,14 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: >
-                      {% if 'auto' in available_fans %}
-                        auto
-                      {% elif 'Auto' in available_fans %}
+                      {% if 'Auto' in available_fans %}
                         Auto
                       {% elif 'medium' in available_fans %}
                         medium
-                      {% elif 'Level 3' in available_fans %}
-                        Level 3
                       {% elif '3' in available_fans %}
                         3
                       {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
           # Set swing mode with compatibility check
@@ -1736,12 +1725,6 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
-                        5
-                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
-                        Level 5
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
@@ -1749,7 +1732,7 @@ action:
                       {% elif 'Auto' in available_fans %}
                         Auto
                       {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
           # Set swing mode with compatibility check
@@ -1840,9 +1823,7 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                      {% elif 'heat_cool' in available_modes %}
+                      {% if 'heat_cool' in available_modes %}
                         heat_cool
                       {% elif 'heat' in available_modes %}
                         heat
@@ -1868,18 +1849,14 @@ action:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: >
-                      {% if 'auto' in available_fans %}
-                        auto
-                      {% elif 'Auto' in available_fans %}
+                      {% if 'Auto' in available_fans %}
                         Auto
                       {% elif 'medium' in available_fans %}
                         medium
-                      {% elif 'Level 3' in available_fans %}
-                        Level 3
                       {% elif '3' in available_fans %}
                         3
                       {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
           # Set swing mode with compatibility check
@@ -1956,9 +1933,7 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             hvac_mode: >
-                              {% if 'auto' in available_modes %}
-                                auto
-                              {% elif 'heat_cool' in available_modes %}
+                              {% if 'heat_cool' in available_modes %}
                                 heat_cool
                               {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
@@ -1982,18 +1957,16 @@ action:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: >
-                              {% if 'auto' in available_fans %}
-                                auto
-                              {% elif 'Auto' in available_fans %}
+                              {% if 'Auto' in available_fans %}
                                 Auto
                               {% elif 'low' in available_fans %}
                                 low
-                              {% elif 'Level 1' in available_fans %}
-                                Level 1
+                              {% elif 'Silence' in available_fans %}
+                                Silence
                               {% elif '1' in available_fans %}
                                 1
                               {% else %}
-                                {{ available_fans[0] if available_fans else 'auto' }}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
                   
                   # Set swing mode with compatibility check for eco mode
@@ -2107,8 +2080,6 @@ action:
                         cool
                       {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                         heat
-                      {% elif 'auto' in available_modes %}
-                        auto
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
                       {% else %}
@@ -2143,8 +2114,6 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
                       {% elif 'high' in available_fans %}
@@ -2152,7 +2121,7 @@ action:
                       {% elif 'Auto' in available_fans %}
                         Auto
                       {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
           - service: input_text.set_value
