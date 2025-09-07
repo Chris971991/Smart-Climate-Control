@@ -1164,7 +1164,7 @@ action:
           {% set time_threshold = stability_duration | float %}
           {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' %}
             {% if time_in_current_mode >= time_threshold %}
-              {% if last_mode in ['cooling', 'heating', 'auto', 'heat_cool'] %}
+              {% if last_mode in ['cooling', 'heating', 'auto', 'heat_cool', 'eco', 'cool', 'heat', 'dry', 'fan_only'] %}
                 true
               {% else %}
                 false
@@ -1459,7 +1459,7 @@ action:
           - condition: template
             value_template: "{{ temp_stability_detected }}"
           - condition: template
-            value_template: "{{ last_mode in ['cooling', 'heating', 'auto', 'heat_cool'] }}"
+            value_template: "{{ last_mode in ['cooling', 'heating', 'auto', 'heat_cool', 'eco', 'cool', 'heat', 'dry', 'fan_only'] }}"
           - condition: template
             value_template: "{{ time_since_change > offtime_min }}"
         sequence:
