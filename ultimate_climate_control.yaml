@@ -2143,6 +2143,12 @@ action:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
         sequence:
+          # TEST: Check if this block is reached
+          - service: system_log.write
+            data:
+              message: "🔄 TEST: Adaptive Control block reached! adaptive_enabled={{ adaptive_enabled }}"
+              level: warning
+              logger: blueprints.climate_control
           # Debug logging for Adaptive Control evaluation
           - condition: template
             value_template: "{{ debug_enabled }}"
