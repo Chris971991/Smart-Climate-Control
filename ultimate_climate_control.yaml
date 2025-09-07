@@ -1435,17 +1435,19 @@ action:
     value_template: "{{ should_proceed }}"
   
   # Debug: Log automation trigger
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🏠 Climate System Activated
-        {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
-        
-        📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
-      level: warning
-      logger: blueprints.climate_control
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🏠 Climate System Activated
+            {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
+            
+            📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
+          level: warning
+          logger: blueprints.climate_control
   
   - variables:
       current_temp: >
@@ -1867,28 +1869,30 @@ action:
         {% endif %}
   
   # Debug: Log current conditions
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        📊 Climate System Status
-        
-        🌡️ Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
-        🏠 People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
-        ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
-        🎛️ Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
-        
-        {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}🎯 Status: Temperature stable for {{ temp_stability_time | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}💤 Status: AC off due to temperature stability{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
-        
-        📋 Technical Details:
-        • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
-        • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
-        • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
-        {% if temp_stability_enabled %}• Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
-        • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
-      level: warning
-      logger: blueprints.climate_control
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            📊 Climate System Status
+            
+            🌡️ Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
+            🏠 People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
+            ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
+            🎛️ Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
+            
+            {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}🎯 Status: Temperature stable for {{ temp_stability_time | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}💤 Status: AC off due to temperature stability{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
+            
+            📋 Technical Details:
+            • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
+            • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
+            • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
+            {% if temp_stability_enabled %}• Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
+            • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
+          level: warning
+          logger: blueprints.climate_control
   
   # Update temperature history and trend tracking
   - condition: template
@@ -3498,31 +3502,35 @@ action:
                 {% endif %}
 
   # Adaptive Control Status Debug Log  
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 Adaptive Control: Status Check
-        • Adaptive Enabled: {{ adaptive_enabled }}
-        • Debug Enabled: {{ debug_enabled }}
-        • Control Mode: {{ control_mode }}
-        • Room Presence: {{ room_presence_detected }}
-        • Will Execute: {{ adaptive_enabled }}
-      level: debug
-      logger: blueprints.climate_control
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 Adaptive Control: Status Check
+            • Adaptive Enabled: {{ adaptive_enabled }}
+            • Debug Enabled: {{ debug_enabled }}
+            • Control Mode: {{ control_mode }}
+            • Room Presence: {{ room_presence_detected }}
+            • Will Execute: {{ adaptive_enabled }}
+          level: debug
+          logger: blueprints.climate_control
 
   # Debug: No conditions matched
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        ✅ Climate System: All Good
-        {% if current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}🎯 Temperature {{ current_temp }}°C is perfect - no changes needed{% else %}⏸️ No action required right now{% endif %}
-        
-        📋 Technical: {{ current_temp }}°C, {{ 'someone home' if anyone_home else 'nobody home' }}, {{ last_mode }} mode
-      level: warning
-      logger: blueprints.climate_control
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            ✅ Climate System: All Good
+            {% if current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}🎯 Temperature {{ current_temp }}°C is perfect - no changes needed{% else %}⏸️ No action required right now{% endif %}
+            
+            📋 Technical: {{ current_temp }}°C, {{ 'someone home' if anyone_home else 'nobody home' }}, {{ last_mode }} mode
+          level: warning
+          logger: blueprints.climate_control
 
 mode: restart
