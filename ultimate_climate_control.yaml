@@ -1237,201 +1237,6 @@ action:
       value: "{{ calculated_trend }}"
 
   - choose:
-      # Dynamic Escalation - Override normal logic if escalation needed
-      - conditions:
-          - condition: template
-            value_template: "{{ should_escalate }}"
-          - condition: template
-            value_template: "{{ should_activate }}"
-        sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🔥 CLIMATE DEBUG: DYNAMIC ESCALATION ACTIVATED
-                Reason: {{ 'Temperature rising when cooling' if calculated_trend == 'rising' and current_temp > comfort_max_temp else 
-                          'Temperature falling when heating' if calculated_trend == 'falling' and current_temp < comfort_min_temp else
-                          'Temperature stalled for ' ~ time_in_current_mode ~ ' minutes' }}
-                Escalating to maximum power mode
-              level: warning
-              logger: blueprints.climate_control
-          
-          # Force maximum cooling/heating mode
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                      {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
-                        cool
-                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
-                        heat
-                      {% elif 'heat_cool' in available_modes %}
-                        heat_cool
-                      {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
-                      {% endif %}
-          
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: >
-                {% if current_temp > comfort_max_temp %}
-                  {{ cooling_target_temp }}
-                {% elif current_temp < comfort_min_temp %}
-                  {{ heating_target_temp }}
-                {% else %}
-                  {{ ((comfort_min_temp + comfort_max_temp) / 2) | round(1) }}
-                {% endif %}
-          
-          # Set maximum fan speed
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                    desired_max_fan: !input fan_speed_max
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
-                      {% if desired_max_fan in available_fans %}
-                        {{ desired_max_fan }}
-                      {% elif desired_max_fan == 'Level 5' and '5' in available_fans %}
-                        5
-                      {% elif desired_max_fan == '5' and 'Level 5' in available_fans %}
-                        Level 5
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
-                      {% elif '5' in available_fans %}
-                        5
-                      {% elif 'high' in available_fans %}
-                        high
-                      {% elif 'Auto' in available_fans %}
-                        Auto
-                      {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
-                      {% endif %}
-          
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: >
-                {% if current_temp > comfort_max_temp %}
-                  cooling_escalated
-                {% else %}
-                  heating_escalated  
-                {% endif %}
-          
-          # Record mode start time
-          - condition: template
-            value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ helper_mode_time }}"
-            data:
-              datetime: "{{ now() }}"
-
-      # Dynamic De-escalation - Reduce power when approaching target effectively  
-      - conditions:
-          - condition: template
-            value_template: "{{ should_deescalate }}"
-          - condition: template
-            value_template: "{{ should_activate }}"
-          - condition: template
-            value_template: "{{ last_mode in ['cooling_escalated', 'heating_escalated'] }}"
-        sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                📉 CLIMATE DEBUG: DYNAMIC DE-ESCALATION
-                Reason: Approaching target effectively
-                Distance: {{ distance_from_target }}°C, Trend: {{ calculated_trend }}
-                Reducing to medium power mode
-              level: warning
-              logger: blueprints.climate_control
-          
-          # Switch to medium mode (similar to normal medium cooling/heating)
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                      {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
-                        cool
-                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
-                        heat
-                      {% elif 'heat_cool' in available_modes %}
-                        heat_cool
-                      {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
-                      {% endif %}
-          
-          # Set medium fan speed
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                    desired_medium_fan: !input fan_speed_medium
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
-                      {% if desired_medium_fan in available_fans %}
-                        {{ desired_medium_fan }}
-                      {% elif desired_medium_fan == 'Level 3' and '3' in available_fans %}
-                        3
-                      {% elif desired_medium_fan == '3' and 'Level 3' in available_fans %}
-                        Level 3
-                      {% elif 'Level 3' in available_fans %}
-                        Level 3
-                      {% elif '3' in available_fans %}
-                        3
-                      {% elif 'medium' in available_fans %}
-                        medium
-                      {% elif 'Auto' in available_fans %}
-                        Auto
-                      {% else %}
-                        {{ available_fans[-1] if available_fans else 'auto' }}
-                      {% endif %}
-          
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: >
-                {% if current_temp > comfort_max_temp %}
-                  cooling_deescalated
-                {% else %}
-                  heating_deescalated
-                {% endif %}
-
       # Pre-conditioning when approaching
       - conditions:
           - condition: template
@@ -2265,6 +2070,101 @@ action:
                 data:
                   title: "Climate Control"
                   message: "Turned off - Comfort zone ({{ current_temp }}°C)"
+
+      # FALLBACK: Dynamic Escalation - Only if no normal modes triggered
+      - conditions:
+          - condition: template
+            value_template: "{{ should_escalate }}"
+          - condition: template
+            value_template: "{{ should_activate }}"
+        sequence:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔥 CLIMATE DEBUG: DYNAMIC ESCALATION ACTIVATED (FALLBACK)
+                Reason: {{ 'Temperature rising when cooling' if calculated_trend == 'rising' and current_temp > comfort_max_temp else 
+                          'Temperature falling when heating' if calculated_trend == 'falling' and current_temp < comfort_min_temp else
+                          'Temperature stalled for ' ~ time_in_current_mode ~ ' minutes' }}
+                No normal modes triggered, escalating to maximum power
+              level: warning
+              logger: blueprints.climate_control
+          
+          # Force maximum cooling/heating mode
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: >
+                      {% if current_temp > comfort_max_temp and 'cool' in available_modes %}
+                        cool
+                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                        heat
+                      {% elif 'auto' in available_modes %}
+                        auto
+                      {% elif 'heat_cool' in available_modes %}
+                        heat_cool
+                      {% else %}
+                        {{ available_modes[0] if available_modes else 'off' }}
+                      {% endif %}
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: >
+                {% if current_temp > comfort_max_temp %}
+                  {{ cooling_target_temp }}
+                {% elif current_temp < comfort_min_temp %}
+                  {{ heating_target_temp }}
+                {% else %}
+                  {{ target_temp }}
+                {% endif %}
+          
+          # Set maximum fan speed for escalation
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: !input fan_speed_max
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_max_fan in available_fans %}
+                        {{ desired_max_fan }}
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif '5' in available_fans %}
+                        5
+                      {% elif 'high' in available_fans %}
+                        high
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'auto' }}
+                      {% endif %}
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cooling_escalated
+                {% else %}
+                  heating_escalated  
+                {% endif %}
 
   # Debug: No conditions matched
   - condition: template
