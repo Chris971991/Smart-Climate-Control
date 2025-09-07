@@ -1338,13 +1338,13 @@ action:
         ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
         🎛️ Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
         
-        {% if temp_stability_enabled and temp_stability_detected %}🎯 Status: Temperature stable for {{ time_in_current_mode | round(0) }} min - ready for auto-off{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
+        {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}🎯 Status: Temperature stable for {{ time_in_current_mode | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}💤 Status: AC off due to temperature stability{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
         
         📋 Technical Details:
         • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
         • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
         • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
-        {% if temp_stability_enabled %}• Stability: {{ 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
+        {% if temp_stability_enabled %}• Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
         • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
       level: warning
       logger: blueprints.climate_control
