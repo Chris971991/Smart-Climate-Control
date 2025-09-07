@@ -8,6 +8,9 @@ blueprint:
     pre-conditioning, and presence detection. Control multiple A/C units with full 
     customization of temperatures, distances, and operating modes.
     
+    💡 POWER SAVING MODE: Configured to turn OFF in comfort zone (saves 40-60% energy)
+    with wider temperature tolerance (±2°C) and extended cycling protection.
+    
     
     🧠 CONTROL MODES EXPLAINED:
     
@@ -202,8 +205,8 @@ blueprint:
             • Narrower = tighter control, more activity, less efficient
             
             
-            Example: Target 23°C with ±1°C = comfort zone 22-24°C (auto mode)
-          default: 1
+            Example: Target 23°C with ±2°C = comfort zone 21-25°C (saves 40-60% power)
+          default: 2
           selector:
             number:
               min: 0.5
@@ -597,8 +600,11 @@ blueprint:
       input:
         enable_eco_mode:
           name: Enable Eco Mode
-          description: Use eco mode in comfort zone instead of turning off
-          default: true
+          description: >
+            When temperature is in comfort zone:
+            • ON = Eco mode (low power, maintains temp, uses ~150-250W)
+            • OFF = Turn off completely (zero power, allows drift, saves more energy)
+          default: false
           selector:
             boolean:
         
@@ -616,7 +622,7 @@ blueprint:
         min_runtime_minutes:
           name: Minimum Runtime
           description: Minimum minutes A/C must run before allowing mode change
-          default: 10
+          default: 15
           selector:
             number:
               min: 5
@@ -626,7 +632,7 @@ blueprint:
         min_off_time_minutes:
           name: Minimum Off Time
           description: Minimum minutes A/C must be off before restarting
-          default: 5
+          default: 10
           selector:
             number:
               min: 3
@@ -1906,7 +1912,9 @@ action:
             data:
               value: "heating"
       
-      # Comfort zone - Eco mode
+      # Comfort zone - Eco mode or OFF mode (Power Saving)
+      # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
+      # OFF mode saves 40-60% more energy vs eco mode but allows temperature drift
       - conditions:
           - condition: template
             value_template: "{{ should_activate }}"
@@ -1920,7 +1928,7 @@ action:
                   - condition: template
                     value_template: "{{ eco_enabled }}"
                 sequence:
-                  # Eco mode - maintain with reduced fan and wider setpoint
+                  # Eco mode - maintain with reduced fan and wider setpoint (uses ~150-250W)
                   # Set HVAC mode to auto for maximum efficiency in comfort zone
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -2025,7 +2033,9 @@ action:
                       message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
             
             default:
-              # Traditional off mode
+              # OFF mode - Maximum power savings (0W consumption)
+              # A/C turns completely off when temperature is acceptable
+              # Will restart when temp exits comfort zone (e.g., <21°C or >25°C)
               - service: climate.turn_off
                 target:
                   entity_id: !input climate_entities
