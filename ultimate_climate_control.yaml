@@ -1137,6 +1137,31 @@ action:
           0
         {% endif %}
       
+      # Calculate actual temperature stability time (when temp last changed significantly)
+      temp_stability_time: >
+        {% if helper_temp_history %}
+          {% set temp_diff = (current_temp - previous_temp) | abs %}
+          {% if temp_diff <= stability_tolerance %}
+            {# Temperature is stable, calculate time since last significant change #}
+            {% set last_change_val = states(helper_last_change) if helper_last_change else 'unknown' %}
+            {% if last_change_val not in ['unknown', 'unavailable', '', None] %}
+              {% set change_timestamp = as_timestamp(last_change_val) %}
+              {% if change_timestamp %}
+                {{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) | abs }}
+              {% else %}
+                0
+              {% endif %}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            {# Temperature changed significantly, stability time is 0 #}
+            0
+          {% endif %}
+        {% else %}
+          0
+        {% endif %}
+      
       temp_change_rate: >
         {% if previous_temp > 0 and current_temp != previous_temp %}
           {% set interval_num = check_interval | int(1) %}
@@ -1163,7 +1188,7 @@ action:
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% set time_threshold = stability_duration | float %}
           {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' %}
-            {% if time_in_current_mode >= time_threshold %}
+            {% if temp_stability_time >= time_threshold %}
               {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] %}
                 true
               {% else %}
@@ -1338,7 +1363,7 @@ action:
         ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
         🎛️ Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
         
-        {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}🎯 Status: Temperature stable for {{ time_in_current_mode | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}💤 Status: AC off due to temperature stability{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
+        {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}🎯 Status: Temperature stable for {{ temp_stability_time | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}💤 Status: AC off due to temperature stability{% elif current_temp < comfort_min_temp %}🥶 Status: Too cold - needs heating{% elif current_temp > comfort_max_temp %}🥵 Status: Too hot - needs cooling{% else %}✅ Status: Perfect temperature{% endif %}
         
         📋 Technical Details:
         • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
