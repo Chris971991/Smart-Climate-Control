@@ -1,7 +1,7 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.2
+  name: Ultimate Smart Climate Control - v2.2.1
   description: >-
-    📌 Version: 2.2.0
+    📌 Version: 2.2.1
     
     
     🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
@@ -2126,6 +2126,29 @@ action:
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
+        sequence:
+          # Debug logging for Adaptive Control evaluation
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 Adaptive Control: Evaluating conditions...
+                • Enabled: {{ adaptive_enabled }}
+                • Current Mode: {{ control_mode }}
+                • Room Presence: {{ room_presence_detected }}
+                • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
+                • Occupied Delay: {{ adaptive_occupied_delay }} min
+                • Vacant Delay: {{ adaptive_vacant_delay }} min
+                • Target Mode: {{ adaptive_target_mode | title }}
+                {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+                {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
+                • Time Since Last Presence: {{ presence_time | round(1) }} min
+                {% endif %}
+              level: debug
+              logger: blueprints.climate_control
+          
+          # Main condition evaluation and action logic
           - condition: or
             conditions:
               # Switch to Auto/Smart when room occupied for configured time
@@ -2160,7 +2183,9 @@ action:
                       {% else %}
                         false
                       {% endif %}
-        sequence:
+        
+          
+          # Execute actions when conditions are met
           # Handle occupied room - switch to Auto/Smart mode
           - choose:
             - conditions:
@@ -2172,7 +2197,17 @@ action:
                 - service: system_log.write
                   data:
                     message: >
-                      🔄 Adaptive Control: Room occupied for {{ adaptive_occupied_delay }}+ minutes, switching to {{ adaptive_target_mode | title }} mode
+                      ✅ Adaptive Control: OCCUPIED → SWITCHING TO {{ adaptive_target_mode | title }} MODE
+                      • Current Mode: {{ control_mode }} → {{ adaptive_target_mode | title }}
+                      • Room Presence: {{ room_presence_detected }}
+                      • Required Delay: {{ adaptive_occupied_delay }} min
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                      {% set presence_time = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
+                      • Actual Presence Time: {{ presence_time | round(1) }} min ({{ presence_time | round(1) - adaptive_occupied_delay | round(1) }}min over threshold)
+                      • Last Presence Detected: {{ as_timestamp(last_presence) | timestamp_custom('%H:%M:%S') }}
+                      {% endif %}
+                      • Action: Switching control mode helper to {{ adaptive_target_mode | title }}
                     level: info
                     logger: blueprints.climate_control
                 
@@ -2181,6 +2216,15 @@ action:
                     entity_id: "{{ control_mode_helper }}"
                   data:
                     option: "{{ adaptive_target_mode | title }}"
+                
+                # Debug completion log
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: "✅ Adaptive Control: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
+                    level: debug
+                    logger: blueprints.climate_control
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -2199,7 +2243,17 @@ action:
                 - service: system_log.write
                   data:
                     message: >
-                      🔄 Adaptive Control: Room vacant for {{ adaptive_vacant_delay }}+ minutes, switching to Manual mode and turning AC off
+                      🔴 Adaptive Control: VACANT → SWITCHING TO MANUAL & TURNING AC OFF
+                      • Current Mode: {{ control_mode }} → Manual
+                      • Room Presence: {{ room_presence_detected }}
+                      • Required Delay: {{ adaptive_vacant_delay }} min
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                      {% set vacant_time = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
+                      • Actual Vacant Time: {{ vacant_time | round(1) }} min ({{ vacant_time | round(1) - adaptive_vacant_delay | round(1) }}min over threshold)
+                      • Last Presence Detected: {{ as_timestamp(last_presence) | timestamp_custom('%H:%M:%S') }}
+                      {% endif %}
+                      • Actions: 1) Switch to Manual mode 2) Turn off {{ climate_list | length }} climate entities
                     level: info
                     logger: blueprints.climate_control
                 
@@ -2213,6 +2267,14 @@ action:
                 - repeat:
                     for_each: "{{ climate_list }}"
                     sequence:
+                      - condition: template
+                        value_template: "{{ debug_enabled }}"
+                      - service: system_log.write
+                        data:
+                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ loop.index }}/{{ climate_list | length }})"
+                          level: debug
+                          logger: blueprints.climate_control
+                      
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
@@ -2224,12 +2286,82 @@ action:
                   data:
                     value: "adaptive_off"
                 
+                # Debug completion log
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: "✅ Adaptive Control: VACANT actions completed - mode set to Manual, all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
+                    level: debug
+                    logger: blueprints.climate_control
+                
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
                 - service: "{{ notification_service }}"
                   data:
                     title: "Adaptive Climate Control"
                     message: "Room vacant - switched to Manual mode and turned AC off"
+
+      # Adaptive Control Debug - Log when enabled but conditions not met
+      - conditions:
+          - condition: template
+            value_template: "{{ adaptive_enabled and debug_enabled }}"
+          - condition: not
+            conditions:
+              - condition: or
+                conditions:
+                  # Check if occupied conditions would be met
+                  - condition: and
+                    conditions:
+                      - condition: template
+                        value_template: "{{ control_mode == 'Manual' }}"
+                      - condition: template
+                        value_template: "{{ room_presence_detected }}"
+                      - condition: template
+                        value_template: >
+                          {% set last_presence = states(presence_detected_helper) %}
+                          {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                            {% set presence_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                            {{ (presence_time / 60) >= adaptive_occupied_delay }}
+                          {% else %}
+                            false
+                          {% endif %}
+                  # Check if vacant conditions would be met
+                  - condition: and
+                    conditions:
+                      - condition: template
+                        value_template: "{{ control_mode in ['Auto', 'Smart'] }}"
+                      - condition: template
+                        value_template: "{{ not room_presence_detected }}"
+                      - condition: template
+                        value_template: >
+                          {% set last_presence = states(presence_detected_helper) %}
+                          {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                            {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                            {{ (vacant_time / 60) >= adaptive_vacant_delay }}
+                          {% else %}
+                            false
+                          {% endif %}
+        sequence:
+          - service: system_log.write
+            data:
+              message: >
+                ⏳ Adaptive Control: Conditions not met
+                {% set last_presence = states(presence_detected_helper) %}
+                {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                {% set time_diff = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
+                {% if control_mode == 'Manual' and room_presence_detected %}
+                • OCCUPIED scenario: Need {{ adaptive_occupied_delay }}min, have {{ time_diff | round(1) }}min ({{ (adaptive_occupied_delay - time_diff) | round(1) }}min remaining)
+                {% elif control_mode in ['Auto', 'Smart'] and not room_presence_detected %}
+                • VACANT scenario: Need {{ adaptive_vacant_delay }}min, have {{ time_diff | round(1) }}min ({{ (adaptive_vacant_delay - time_diff) | round(1) }}min remaining)
+                {% else %}
+                • Mode: {{ control_mode }}, Presence: {{ room_presence_detected }}, Time: {{ time_diff | round(1) }}min - No matching scenario
+                {% endif %}
+                {% else %}
+                • No valid presence timestamp available from helper: {{ presence_detected_helper }}
+                {% endif %}
+              level: debug
+              logger: blueprints.climate_control
 
       # Manual Mode - Immediately clear automation states when detected
       - conditions:
