@@ -227,19 +227,21 @@ blueprint:
             
             • 1 = Gentle (extreme modes at ±3°C from comfort, slow, very efficient)
             
+            • 2 = Smooth (medium at comfort edge, high at +1°C, max at +2°C)
+            
             • 3 = Balanced (extreme modes at ±2°C from comfort, good balance)
             
             • 5 = Aggressive (extreme modes at ±1°C from comfort, fast, less efficient)
             
             
-            Example (Target 23°C, Zone ±1°C, Aggressiveness 3):
+            Example (Target 23°C, Zone ±2°C, Aggressiveness 2):
             
-            • Comfort: 22-24°C (auto mode, efficient)
+            • Comfort: 21-25°C (OFF mode for power savings)
             
-            • Medium: 21°C & 25°C (auto mode, approaching)
+            • Medium: 25°C & 21°C (gentle response at comfort edge)
             
-            • Extreme: 20°C & 26°C (forced heat/cool, maximum power)
-          default: 3
+            • High: 26°C & 20°C (strong response at ±1°C from edge)
+          default: 2
           selector:
             number:
               min: 1
@@ -882,11 +884,11 @@ variables:
   cooling_target_temp: "{{ cooling_target_input if advanced_enabled else target_temp | float }}"
   heating_target_temp: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
   
-  # Auto-calculate thresholds based on aggressiveness
-  cooling_medium_temp: "{{ cooling_medium_input if advanced_enabled else (comfort_max_temp + (1 * aggressiveness/3)) | round(1) }}"
-  cooling_high_temp: "{{ cooling_high_input if advanced_enabled else (comfort_max_temp + (2 * aggressiveness/3)) | round(1) }}"
-  heating_medium_temp: "{{ heating_medium_input if advanced_enabled else (comfort_min_temp - (1 * aggressiveness/3)) | round(1) }}"
-  heating_low_temp: "{{ heating_low_input if advanced_enabled else (comfort_min_temp - (2 * aggressiveness/3)) | round(1) }}"
+  # Auto-calculate thresholds based on aggressiveness (smooth graduated response)
+  cooling_medium_temp: "{{ cooling_medium_input if advanced_enabled else comfort_max_temp | round(1) }}"
+  cooling_high_temp: "{{ cooling_high_input if advanced_enabled else (comfort_max_temp + aggressiveness/2) | round(1) }}"
+  heating_medium_temp: "{{ heating_medium_input if advanced_enabled else comfort_min_temp | round(1) }}"
+  heating_low_temp: "{{ heating_low_input if advanced_enabled else (comfort_min_temp - aggressiveness/2) | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
