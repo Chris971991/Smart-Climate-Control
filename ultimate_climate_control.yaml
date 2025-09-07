@@ -196,8 +196,12 @@ blueprint:
           name: 📏 Comfort Zone Range
           description: >
             Temperature variation tolerance around target (±°C):
+            
             • Wider = more tolerance, less switching, more efficient
+            
             • Narrower = tighter control, more activity, less efficient
+            
+            
             Example: Target 23°C with ±1°C = comfort zone 22-24°C (auto mode)
           default: 1
           selector:
@@ -212,13 +216,20 @@ blueprint:
           name: ⚡ Response Aggressiveness
           description: >
             How quickly system responds beyond comfort zone:
+            
             • 1 = Gentle (extreme modes at ±3°C from comfort, slow, very efficient)
-            • 3 = Balanced (extreme modes at ±2°C from comfort, good balance)  
+            
+            • 3 = Balanced (extreme modes at ±2°C from comfort, good balance)
+            
             • 5 = Aggressive (extreme modes at ±1°C from comfort, fast, less efficient)
             
+            
             Example (Target 23°C, Zone ±1°C, Aggressiveness 3):
+            
             • Comfort: 22-24°C (auto mode, efficient)
+            
             • Medium: 21°C & 25°C (auto mode, approaching)
+            
             • Extreme: 20°C & 26°C (forced heat/cool, maximum power)
           default: 3
           selector:
