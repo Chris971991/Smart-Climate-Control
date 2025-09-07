@@ -2039,6 +2039,14 @@ action:
                 Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
                 Target: {{ cooling_target_temp }}°C
                 Fan: Auto/Medium (efficient)
+                
+                MANUAL MODE DEBUG:
+                Control Mode: {{ control_mode }}
+                Should Activate: {{ should_activate }}
+                Extreme Temp Detected: {{ extreme_temp_detected }}
+                Room Presence: {{ room_presence_detected }}
+                Approaching Home: {{ approaching_home }}
+                Extreme High Threshold: {{ extreme_high }}°C
               level: warning
               logger: blueprints.climate_control
           
