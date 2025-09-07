@@ -1614,7 +1614,7 @@ action:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp > cooling_high_temp }}"
+            value_template: "{{ current_temp >= cooling_high_temp }}"
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
@@ -1754,7 +1754,7 @@ action:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp > cooling_medium_temp and current_temp <= cooling_high_temp }}"
+            value_template: "{{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}"
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
@@ -1881,7 +1881,7 @@ action:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp < heating_low_temp }}"
+            value_template: "{{ current_temp <= heating_low_temp }}"
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
@@ -2007,7 +2007,7 @@ action:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp < heating_medium_temp and current_temp >= heating_low_temp }}"
+            value_template: "{{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}"
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
