@@ -1290,7 +1290,7 @@ action:
         {% endif %}
       
       should_activate: >
-        {% if control_mode == 'Manual' and extreme_temp_detected %}
+        {% if control_mode == 'Manual' and extreme_temp_detected and (room_presence_detected or approaching_home) %}
           true
         {% elif control_mode == 'Manual' %}
           false
