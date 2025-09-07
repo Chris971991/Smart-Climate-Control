@@ -2122,20 +2122,6 @@ action:
               title: "Climate Control"
               message: "Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode | round(0) }}min, {{ current_temp }}°C)"
 
-      # Adaptive Control Status Debug Log
-      - conditions:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-        sequence:
-          - service: system_log.write
-            data:
-              message: >
-                🔍 Adaptive Control: Status Check
-                • Adaptive Enabled: {{ adaptive_enabled }}
-                • Debug Enabled: {{ debug_enabled }}
-                • Will Execute: {{ adaptive_enabled }}
-              level: debug
-              logger: blueprints.climate_control
       
       # Adaptive Control Mode - Auto-switch modes based on room occupancy
       - conditions:
@@ -3510,6 +3496,21 @@ action:
                 {% else %}
                   heating_escalated  
                 {% endif %}
+
+  # Adaptive Control Status Debug Log  
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 Adaptive Control: Status Check
+        • Adaptive Enabled: {{ adaptive_enabled }}
+        • Debug Enabled: {{ debug_enabled }}
+        • Control Mode: {{ control_mode }}
+        • Room Presence: {{ room_presence_detected }}
+        • Will Execute: {{ adaptive_enabled }}
+      level: debug
+      logger: blueprints.climate_control
 
   # Debug: No conditions matched
   - condition: template
