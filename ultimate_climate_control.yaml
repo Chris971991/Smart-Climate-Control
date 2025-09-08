@@ -2761,9 +2761,9 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: >
-                {% if current_temp > comfort_max_temp %}
+                {% if current_temp >= cooling_medium_temp %}
                   cooling
-                {% elif current_temp < comfort_min_temp %}
+                {% elif current_temp <= heating_medium_temp %}
                   heating
                 {% else %}
                   off
@@ -2791,12 +2791,12 @@ action:
                     data:
                       datetime: "{{ now() }}"
           
-          # Now activate cooling/heating as needed since we're outside comfort zone
+          # Now activate cooling/heating as needed since we're outside comfort zone or at trigger point
           - choose:
               # Need cooling
               - conditions:
                   - condition: template
-                    value_template: "{{ current_temp > comfort_max_temp }}"
+                    value_template: "{{ current_temp >= cooling_medium_temp }}"
                 sequence:
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -2905,7 +2905,7 @@ action:
               # Need heating
               - conditions:
                   - condition: template
-                    value_template: "{{ current_temp < comfort_min_temp }}"
+                    value_template: "{{ current_temp <= heating_medium_temp }}"
                 sequence:
                   - repeat:
                       for_each: "{{ climate_list }}"
