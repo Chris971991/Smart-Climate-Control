@@ -3611,7 +3611,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 Adaptive Control: Evaluating conditions...
+                🔍 {{ room_name | upper }} Adaptive Control: Evaluating conditions...
                 • Enabled: {{ adaptive_enabled }}
                 • Current Mode: {{ control_mode }}
                 • Room Presence: {{ room_presence_detected }}
