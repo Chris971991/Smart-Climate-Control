@@ -2515,7 +2515,8 @@ action:
                   off
                 {% endif %}
           
-          # Clear the stability timestamp to reset the feature (remove condition check)
+          # Clear the stability timestamp to reset the feature
+          # Don't use 1970 as it causes calculation issues - use current time instead
           - choose:
               - conditions:
                   - condition: template
@@ -2525,7 +2526,7 @@ action:
                     target:
                       entity_id: "{{ helper_temp_stable_since }}"
                     data:
-                      datetime: "1970-01-01 00:00:00"
+                      datetime: "{{ now() }}"
           
           # Now activate cooling/heating as needed since we're outside comfort zone
           - choose:
