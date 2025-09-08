@@ -3027,7 +3027,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: Pre-conditioning activated
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: Pre-conditioning activated
                 Reason: Approaching home
                 {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
                 Temperature: {{ current_temp }}°C needs adjustment
@@ -3055,7 +3055,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: Pre-conditioning
+                🌡️ {{ room_name | upper }} TEMP SET: Pre-conditioning
                 Set AC to: {{ weather_adjusted_target | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ weather_adjusted_target | round(1) }}°C
                 Reason: Pre-conditioning target temperature (approaching home)
@@ -3257,7 +3257,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: Comfort Zone Action Triggered
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: Comfort Zone Action Triggered
                 Control Mode: {{ control_mode }}
                 Should Activate: {{ should_activate }}
                 Extreme Temp Detected: {{ extreme_temp_detected }}
@@ -3307,7 +3307,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Comfort Zone Maintenance
+                        🌡️ {{ room_name | upper }} TEMP SET: Comfort Zone Maintenance
                         Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
                         Actual value: {{ target_temp | round(1) }}°C
                         Reason: Maintaining target temperature within comfort zone
@@ -3478,7 +3478,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Temperature Stability Auto-Off
+                        🌡️ {{ room_name | upper }} TEMP SET: Temperature Stability Auto-Off
                         Set AC to: OFF
                         Actual value: OFF
                         Reason: Temperature equilibrium reached - AC job complete
@@ -3548,7 +3548,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Temperature Stability Eco Mode
+                        🌡️ {{ room_name | upper }} TEMP SET: Temperature Stability Eco Mode
                         Set AC to: {{ ((comfort_max_temp + 1) if current_temp > comfort_max_temp else (comfort_min_temp - 1) if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
                         Actual value: {{ ((comfort_max_temp + 1) if current_temp > comfort_max_temp else (comfort_min_temp - 1) if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
                         Reason: Temperature stability eco mode (gentle maintenance after equilibrium)
@@ -3973,7 +3973,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Smart Room Eco Mode
+                        🌡️ {{ room_name | upper }} TEMP SET: Smart Room Eco Mode
                         Set AC to: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
                         Actual value: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
                         Reason: {{ 'Eco cooling (comfort max +' + eco_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
@@ -3994,7 +3994,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Smart Room Maintain
+                        🌡️ {{ room_name | upper }} TEMP SET: Smart Room Maintain
                         Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
                         Actual value: {{ target_temp | round(1) }}°C
                         Reason: Smart mode maintain current temperature (room empty but still home)
@@ -4039,7 +4039,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: Away mode activated
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: Away mode activated
                 Action: {{ away_action }}
                 Nobody home detected
                 Time since last change: {{ time_since_change | round(1) }} min
@@ -4101,7 +4101,7 @@ action:
                   - service: system_log.write
                     data:
                       message: >
-                        🌡️ TEMP SET: Away Eco Mode
+                        🌡️ {{ room_name | upper }} TEMP SET: Away Eco Mode
                         Set AC to: {{ ((cooling_target_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (heating_target_temp - eco_mode_setpoint_offset)) | round(0) }}°C (rounded for AC compatibility)
                         Actual value: {{ ((cooling_target_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (heating_target_temp - eco_mode_setpoint_offset)) | round(1) }}°C
                         Reason: {{ 'Eco cooling (target +' + eco_mode_setpoint_offset|string + '°C offset)' if current_temp > comfort_max_temp else 'Eco heating (target -' + eco_mode_setpoint_offset|string + '°C offset)' }}
@@ -4178,7 +4178,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: HIGH COOLING MODE
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH COOLING MODE
                 Temperature: {{ current_temp }}°C > {{ cooling_high_temp }}°C
                 Target: {{ cooling_target_temp }}°C
                 Fan: Maximum
@@ -4227,7 +4227,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: High Cooling
+                🌡️ {{ room_name | upper }} TEMP SET: High Cooling
                 Set AC to: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(1) }}°C
                 Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
@@ -4351,7 +4351,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: MEDIUM COOLING MODE
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: MEDIUM COOLING MODE
                 Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
                 Target: {{ cooling_target_temp }}°C
                 Fan: Auto/Medium (efficient)
@@ -4402,7 +4402,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: Medium Cooling
+                🌡️ {{ room_name | upper }} TEMP SET: Medium Cooling
                 Set AC to: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(1) }}°C
                 Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
@@ -4506,7 +4506,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: HIGH HEATING MODE
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH HEATING MODE
                 Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
                 Target: {{ heating_target_temp }}°C
                 Fan: Maximum
@@ -4535,7 +4535,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: High Heating
+                🌡️ {{ room_name | upper }} TEMP SET: High Heating
                 Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ heating_target_temp | round(1) }}°C
                 Reason: Direct target temperature (no gradual adjustment for heating)
@@ -4650,7 +4650,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 CLIMATE DEBUG: MEDIUM HEATING MODE
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: MEDIUM HEATING MODE
                 Temperature: {{ current_temp }}°C ({{ heating_low_temp }}-{{ heating_medium_temp }}°C range)
                 Target: {{ heating_target_temp }}°C
                 Fan: Auto/Medium (efficient)
@@ -4688,7 +4688,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: Medium Heating
+                🌡️ {{ room_name | upper }} TEMP SET: Medium Heating
                 Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ heating_target_temp | round(1) }}°C
                 Reason: Direct target temperature (no gradual adjustment for heating)
@@ -4842,7 +4842,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ TEMP SET: Emergency Escalation
+                🌡️ {{ room_name | upper }} TEMP SET: Emergency Escalation
                 Set AC to: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
                 Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
