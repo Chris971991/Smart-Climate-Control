@@ -653,13 +653,13 @@ blueprint:
         helper_presence_detected:
           name: Last Presence Helper Entity
           description: |
-            Input DateTime helper to track when presence was last detected.
+            **Input DateTime helper** to track when presence was last detected.
 
-            • Used for presence timeout calculations
-            • Updated automatically by the system
-            • Required for Smart Mode functionality
+            • **Used for** presence timeout calculations
+            • **Updated automatically** by the system
+            • **Required** for Smart Mode functionality
 
-            Example: input_datetime.presence_last_detected_living_room
+            **Example:** `input_datetime.presence_last_detected_living_room`
           selector:
             entity:
               domain: input_datetime
@@ -667,13 +667,13 @@ blueprint:
         helper_proximity_override:
           name: Proximity Override Helper Entity
           description: |
-            Input Boolean helper for emergency temperature override.
+            **Input Boolean helper** for emergency temperature override.
 
-            • Bypasses all automation when enabled
-            • Allows manual control during emergencies
-            • Auto-resets after specified duration
+            • **Bypasses all automation** when enabled
+            • **Allows manual control** during emergencies
+            • **Auto-resets** after specified duration
 
-            Example: input_boolean.climate_proximity_override_living_room
+            **Example:** `input_boolean.climate_proximity_override_living_room`
           selector:
             entity:
               domain: input_boolean
@@ -681,13 +681,13 @@ blueprint:
         presence_timeout_minutes:
           name: Presence Timeout
           description: |
-            Minutes to wait after leaving room before taking action.
+            **Minutes to wait** after leaving room before taking action.
 
-            • Prevents shutdown during brief departures
-            • Common scenarios: bathroom breaks, quick errands
-            • Recommended: 15-30 minutes for comfort balance
+            • **Prevents shutdown** during brief departures
+            • **Common scenarios:** bathroom breaks, quick errands
+            • **Recommended:** 15-30 minutes for comfort balance
 
-            Lower values save more energy but may cause comfort issues.
+            **Trade-off:** Lower values save more energy but may cause comfort issues.
           default: 15
           selector:
             number:
@@ -699,16 +699,16 @@ blueprint:
         room_presence_sensors:
           name: Room Presence Sensors (Optional)
           description: |
-            BLE, PIR or other sensors for room-specific presence detection.
+            **BLE, PIR or other sensors** for room-specific presence detection.
 
-            Supported sensor types:
+            **Supported sensor types:**
 
-            • BLE area sensors: Reports room names (e.g., "Office", "Living Room")
-            • PIR sensors: Binary sensors reporting on/off
-            • mmWave sensors: Human presence detection
-            • Smart device sensors: Phone/device presence
+            • **BLE area sensors:** Reports room names (e.g., "Office", "Living Room")
+            • **PIR sensors:** Binary sensors reporting on/off
+            • **mmWave sensors:** Human presence detection
+            • **Smart device sensors:** Phone/device presence
 
-            Example: sensor.phone_ble_area, binary_sensor.living_room_motion
+            **Example:** `sensor.phone_ble_area`, `binary_sensor.living_room_motion`
           default: []
           selector:
             entity:
@@ -720,13 +720,13 @@ blueprint:
         room_name_for_ble:
           name: Room Name for BLE Detection (Optional)
           description: |
-            If using BLE area sensors, specify the exact room name that indicates presence.
+            If using **BLE area sensors**, specify the exact room name that indicates presence.
 
-            • Must match sensor output exactly (case-sensitive)
-            • Common examples: "Office", "Living Room", "Bedroom"
-            • Check sensor state in Developer Tools for exact string
+            • **Must match sensor output exactly** (case-sensitive)
+            • **Common examples:** "Office", "Living Room", "Bedroom"
+            • **Check sensor state** in Developer Tools for exact string
 
-            Example: "Office" for sensor.phone_ble_area when it reports "Office"
+            **Example:** "Office" for `sensor.phone_ble_area` when it reports "Office"
           default: ""
           selector:
             text:
@@ -734,13 +734,13 @@ blueprint:
         smart_mode_behavior:
           name: Smart Mode Room Absence Behavior
           description: |
-            What to do when room presence sensors detect absence (after timeout):
+            What to do when **room presence sensors detect absence** (after timeout):
 
-            • ECO: Reduce to eco mode (saves power, maintains some comfort)
-            • MAINTAIN: Keep current temperature (comfort over efficiency)
-            • OFF: Turn off completely (maximum power savings)
+            • **ECO:** Reduce to eco mode (saves power, maintains some comfort)
+            • **MAINTAIN:** Keep current temperature (comfort over efficiency)
+            • **OFF:** Turn off completely (maximum power savings)
 
-            Only applies when still home but room is empty.
+            **Note:** Only applies when still home but room is empty.
           default: "eco"
           selector:
             select:
@@ -1398,14 +1398,14 @@ blueprint:
         extreme_low_temp:
           name: Extreme Low Temperature
           description: |
-            Safety threshold - activate heating even in Manual mode.
+            **Safety threshold** - activate heating even in Manual mode.
 
-            • Emergency override for extremely cold conditions
-            • Prevents pipes freezing and health risks
+            • **Emergency override** for extremely cold conditions
+            • **Prevents pipes freezing** and health risks
             • Only activates when indoor temperature falls below threshold
-            • Returns to Manual mode once temperature normalizes
+            • **Returns to Manual mode** once temperature normalizes
 
-            Set based on your heating needs and local climate conditions.
+            **Recommendation:** Set based on your heating needs and local climate conditions.
           default: 15
           selector:
             number:
@@ -1423,16 +1423,16 @@ blueprint:
         enable_dynamic_adaptation:
           name: Enable Dynamic Adaptation
           description: |
-            Automatically escalate/de-escalate cooling/heating power based on effectiveness.
+            **Automatically escalate/de-escalate** cooling/heating power based on effectiveness.
 
-            How it works:
+            **How it works:**
 
-            • Monitors temperature progress toward target
-            • Increases power when progress stalls
-            • Reduces power when target is approaching
-            • Learns your AC's effectiveness over time
+            • **Monitors temperature progress** toward target
+            • **Increases power** when progress stalls
+            • **Reduces power** when target is approaching
+            • **Learns** your AC's effectiveness over time
 
-            Requires helper entities for temperature tracking and analysis.
+            **Requirement:** Helper entities for temperature tracking and analysis.
           default: true
           selector:
             boolean:
@@ -1440,13 +1440,13 @@ blueprint:
         effectiveness_check_minutes:
           name: Effectiveness Check Interval
           description: |
-            Minutes to wait before checking if current mode is working.
+            **Minutes to wait** before checking if current mode is working.
 
-            • 5-10 minutes: Responsive adaptation
-            • 15 minutes: Balanced approach (recommended)
-            • 20-30 minutes: Conservative, gives more time for AC to work
+            • **5-10 minutes:** Responsive adaptation
+            • **15 minutes:** Balanced approach (recommended)
+            • **20-30 minutes:** Conservative, gives more time for AC to work
 
-            Too short may cause excessive mode switching; too long delays optimization.
+            **Trade-off:** Too short may cause excessive mode switching; too long delays optimization.
           default: 10
           selector:
             number:
@@ -1457,15 +1457,15 @@ blueprint:
         escalation_temp_tolerance:
           name: Temperature Stall Tolerance
           description: |
-            Degrees of acceptable temperature drift before escalating power.
+            **Degrees of acceptable temperature drift** before escalating power.
 
-            Tolerance levels:
+            **Tolerance levels:**
 
-            • 0.5-1.0°C: Aggressive response (tight control)
-            • 1.0-2.0°C: Balanced approach (recommended)
-            • 2.0-3.0°C: Patient response (allows more drift)
+            • **0.5-1.0°C:** Aggressive response (tight control)
+            • **1.0-2.0°C:** Balanced approach (recommended)
+            • **2.0-3.0°C:** Patient response (allows more drift)
 
-            Lower values provide tighter control but may increase cycling.
+            **Trade-off:** Lower values provide tighter control but may increase cycling.
           default: 1.0
           selector:
             number:
@@ -1477,14 +1477,14 @@ blueprint:
         deescalation_approach_threshold:
           name: De-escalation Approach Threshold
           description: |
-            Degrees from target when system can de-escalate power.
+            **Degrees from target** when system can de-escalate power.
 
-            • Prevents overshooting target temperature
-            • 1.0-2.0°C: Aggressive de-escalation
-            • 2.0-3.0°C: Balanced approach (recommended)
-            • 3.0-4.0°C: Conservative, maintains power longer
+            • **Prevents overshooting** target temperature
+            • **1.0-2.0°C:** Aggressive de-escalation
+            • **2.0-3.0°C:** Balanced approach (recommended)
+            • **3.0-4.0°C:** Conservative, maintains power longer
 
-            Works when temperature is trending correctly toward target.
+            **Note:** Works when temperature is trending correctly toward target.
           default: 2.0
           selector:
             number:
@@ -1496,14 +1496,14 @@ blueprint:
         helper_temp_history:
           name: Temperature History Helper (Optional)
           description: |
-            Input Number helper to store previous temperature reading.
+            **Input Number helper** to store previous temperature reading.
 
-            • Tracks temperature changes over time
-            • Required for dynamic adaptation features
-            • Automatically updated by the system
-            • Range: 0-50°C with 0.1°C steps
+            • **Tracks temperature changes** over time
+            • **Required** for dynamic adaptation features
+            • **Automatically updated** by the system
+            • **Range:** 0-50°C with 0.1°C steps
 
-            Example: input_number.climate_temp_history_living_room
+            **Example:** `input_number.climate_temp_history_living_room`
           default: []
           selector:
             entity:
@@ -1512,14 +1512,14 @@ blueprint:
         helper_trend_direction:
           name: Trend Direction Helper (Optional)
           description: |
-            Input Text helper to track temperature trend direction.
+            **Input Text helper** to track temperature trend direction.
 
-            • Stores: rising, falling, or stable
-            • Required for dynamic adaptation logic
-            • Automatically updated by the system
-            • Used to determine when to escalate/de-escalate
+            • **Stores:** rising, falling, or stable
+            • **Required** for dynamic adaptation logic
+            • **Automatically updated** by the system
+            • **Used to determine** when to escalate/de-escalate
 
-            Example: input_text.climate_trend_direction_living_room
+            **Example:** `input_text.climate_trend_direction_living_room`
           default: []
           selector:
             entity:
@@ -1528,14 +1528,14 @@ blueprint:
         helper_mode_start_time:
           name: Mode Start Time Helper (Optional)
           description: |
-            Input DateTime helper to track when current mode started.
+            **Input DateTime helper** to track when current mode started.
 
-            • Timestamp when current AC mode began
-            • Required for effectiveness calculations
-            • Used to determine how long to wait before changes
-            • Automatically updated by the system
+            • **Timestamp** when current AC mode began
+            • **Required** for effectiveness calculations
+            • **Used to determine** how long to wait before changes
+            • **Automatically updated** by the system
 
-            Example: input_datetime.climate_mode_start_time_living_room
+            **Example:** `input_datetime.climate_mode_start_time_living_room`
           default: []
           selector:
             entity:
@@ -1544,14 +1544,14 @@ blueprint:
         helper_effectiveness_score:
           name: Effectiveness Score Helper (Optional)
           description: |
-            Input Number helper to track how well current mode is working (0-100%).
+            **Input Number helper** to track how well current mode is working (0-100%).
 
-            • 0%: Mode not working (temperature getting worse)
-            • 50%: Mode working slowly
-            • 100%: Mode working effectively
-            • Used to decide escalation/de-escalation
+            • **0%:** Mode not working (temperature getting worse)
+            • **50%:** Mode working slowly
+            • **100%:** Mode working effectively
+            • **Used to decide** escalation/de-escalation
 
-            Example: input_number.climate_effectiveness_score_living_room
+            **Example:** `input_number.climate_effectiveness_score_living_room`
           default: []
           selector:
             entity:
@@ -1560,14 +1560,14 @@ blueprint:
         helper_temp_stable_since:
           name: Temperature Stable Since Helper (Optional)
           description: |
-            Input DateTime helper to track when temperature became stable.
+            **Input DateTime helper** to track when temperature became stable.
 
-            • Timestamp when temperature entered stable range
-            • Required for stability auto-off feature
-            • Used to calculate how long temperature has been stable
-            • Automatically updated by the system
+            • **Timestamp** when temperature entered stable range
+            • **Required** for stability auto-off feature
+            • **Used to calculate** how long temperature has been stable
+            • **Automatically updated** by the system
 
-            Example: input_datetime.temp_stable_since_living_room
+            **Example:** `input_datetime.temp_stable_since_living_room`
           default: []
           selector:
             entity:
@@ -1576,14 +1576,14 @@ blueprint:
         helper_last_transition:
           name: Last Transition Helper (Optional)
           description: |
-            Input Text helper to track last temperature zone transition.
+            **Input Text helper** to track last temperature zone transition.
 
-            • Stores: to_cooling, to_heating, to_comfort, etc.
-            • Used for hysteresis to prevent rapid switching
-            • Prevents oscillation at temperature boundaries
-            • Automatically updated by the system
+            • **Stores:** to_cooling, to_heating, to_comfort, etc.
+            • **Used for hysteresis** to prevent rapid switching
+            • **Prevents oscillation** at temperature boundaries
+            • **Automatically updated** by the system
 
-            Example: input_text.climate_last_transition_living_room
+            **Example:** `input_text.climate_last_transition_living_room`
           default: []
           selector:
             entity:
@@ -1592,14 +1592,14 @@ blueprint:
         hysteresis_tolerance:
           name: Hysteresis Tolerance
           description: |
-            Temperature tolerance for preventing rapid switching (±°C).
+            **Temperature tolerance** for preventing rapid switching (±°C).
 
-            • Prevents oscillation at temperature boundaries
-            • 0.1-0.3°C: Sensitive (may cause more switching)
-            • 0.3-0.5°C: Balanced approach (recommended)
-            • 0.5-1.0°C: Conservative (less switching)
+            • **Prevents oscillation** at temperature boundaries
+            • **0.1-0.3°C:** Sensitive (may cause more switching)
+            • **0.3-0.5°C:** Balanced approach (recommended)
+            • **0.5-1.0°C:** Conservative (less switching)
 
-            System won't change modes unless temperature exceeds threshold by this amount.
+            **Rule:** System won't change modes unless temperature exceeds threshold by this amount.
           default: 0.3
           selector:
             number:
@@ -1611,14 +1611,14 @@ blueprint:
         enable_debug_logging:
           name: Enable Debug Logging
           description: |
-            Enable detailed warning-level logs for troubleshooting.
+            **Enable detailed warning-level logs** for troubleshooting.
 
-            • Shows decision-making process and sensor states
-            • Helps diagnose automation issues
-            • View logs in Settings → System → Logs
-            • WARNING: Creates many log entries!
+            • **Shows decision-making process** and sensor states
+            • **Helps diagnose** automation issues
+            • **View logs** in Settings → System → Logs
+            • **WARNING:** Creates many log entries!
 
-            Enable only when troubleshooting - disable for normal operation.
+            **Recommendation:** Enable only when troubleshooting - disable for normal operation.
           default: false
           selector:
             boolean:
@@ -1626,13 +1626,13 @@ blueprint:
         check_interval_minutes:
           name: Check Interval
           description: |
-            How often to check conditions and evaluate temperature (in minutes).
+            **How often to check conditions** and evaluate temperature (in minutes).
 
-            • 1-3 minutes: Very responsive (more CPU usage)
-            • 5 minutes: Balanced approach (recommended)
-            • 10+ minutes: Conservative (less responsive)
-            
-            Lower intervals provide tighter control but increase system load.
+            • **1-3 minutes:** Very responsive (more CPU usage)
+            • **5 minutes:** Balanced approach (recommended)
+            • **10+ minutes:** Conservative (less responsive)
+
+            **Trade-off:** Lower intervals provide tighter control but increase system load.
           default: 5
           selector:
             number:
@@ -1692,21 +1692,21 @@ blueprint:
         enable_adaptive_control:
           name: Enable Adaptive Control Mode
           description: |
-            Automatically switches control modes based on room occupancy patterns.
+            **Automatically switches control modes** based on room occupancy patterns.
 
-            How it works:
+            **How it works:**
 
-            • Room becomes occupied → Switch to Auto/Smart mode after configurable delay
-            • Room becomes vacant → Switch to Manual mode and turn AC off after delay
+            • **Room becomes occupied** → Switch to Auto/Smart mode after configurable delay
+            • **Room becomes vacant** → Switch to Manual mode and turn AC off after delay
 
-            REQUIREMENTS:
+            **REQUIREMENTS:**
 
-            • Room presence sensors configured in Smart Mode Settings
+            • **Room presence sensors** configured in Smart Mode Settings
             • PIR/motion sensors, BLE tracking devices, or occupancy sensors
-            • Last Presence Helper Entity (input_datetime) to track timing
-            • Smart Mode must be properly configured
+            • **Last Presence Helper Entity** (input_datetime) to track timing
+            • **Smart Mode** must be properly configured
 
-            Use cases: Automatic comfort when you enter, energy savings when you leave.
+            **Use cases:** Automatic comfort when you enter, energy savings when you leave.
           default: false
           selector:
             boolean:
@@ -1714,12 +1714,12 @@ blueprint:
         adaptive_occupied_delay:
           name: Occupied Delay (minutes)
           description: |
-            How long to wait after detecting room presence before switching from Manual to Auto/Smart mode.
+            **How long to wait** after detecting room presence before switching from Manual to Auto/Smart mode.
 
-            • Shorter delays: More responsive but may switch too frequently
-            • Longer delays: Less responsive but avoids unnecessary switching
+            • **Shorter delays:** More responsive but may switch too frequently
+            • **Longer delays:** Less responsive but avoids unnecessary switching
 
-            Recommended: 5 minutes for balanced behavior.
+            **Recommended:** 5 minutes for balanced behavior.
           default: 5
           selector:
             number:
@@ -1732,12 +1732,12 @@ blueprint:
         adaptive_vacant_delay:
           name: Vacant Delay (minutes)
           description: |
-            How long to wait after room becomes vacant before switching to Manual mode and turning AC off.
+            **How long to wait** after room becomes vacant before switching to Manual mode and turning AC off.
 
-            • Shorter delays: Better energy savings but may turn off too quickly
-            • Longer delays: More comfort for brief departures but wastes energy
+            • **Shorter delays:** Better energy savings but may turn off too quickly
+            • **Longer delays:** More comfort for brief departures but wastes energy
 
-            Recommended: 15 minutes to handle brief absences without wasting energy.
+            **Recommended:** 15 minutes to handle brief absences without wasting energy.
           default: 15
           selector:
             number:
@@ -1750,12 +1750,12 @@ blueprint:
         adaptive_target_mode:
           name: Target Mode When Occupied
           description: |
-            Which control mode to activate when room occupancy is detected.
+            **Which control mode** to activate when room occupancy is detected.
 
-            • Auto Mode: Standard automatic temperature control
-            • Smart Mode: Advanced occupancy-based control with presence timeout
+            • **Auto Mode:** Standard automatic temperature control
+            • **Smart Mode:** Advanced occupancy-based control with presence timeout
 
-            Choose Smart Mode if you want the most intelligent behavior.
+            **Recommendation:** Choose Smart Mode if you want the most intelligent behavior.
           default: "auto"
           selector:
             select:
@@ -1768,21 +1768,21 @@ blueprint:
         adaptive_override_timeout:
           name: Manual Override Timeout (hours)
           description: |
-            How long to respect manual user changes before resuming adaptive control.
+            **How long to respect manual user changes** before resuming adaptive control.
 
-            When you manually change climate settings, adaptive control will pause for this duration.
+            When you **manually change climate settings**, adaptive control will pause for this duration.
 
-            • 0 hours: No override protection (always allow adaptive switching)
-            • 1-4 hours: Good for temporary comfort adjustments
-            • 8+ hours: Good for energy-saving periods or when pets are sensitive
+            • **0 hours:** No override protection (always allow adaptive switching)
+            • **1-4 hours:** Good for temporary comfort adjustments
+            • **8+ hours:** Good for energy-saving periods or when pets are sensitive
 
-            Common scenarios:
+            **Common scenarios:**
 
-            • You turn off AC because pets are cold → System waits before turning back on
-            • You manually adjust temperature for comfort → System respects your preference
-            • You turn off AC to save energy → System stays off for the configured time
+            • You turn off AC because pets are cold → **System waits** before turning back on
+            • You manually adjust temperature for comfort → **System respects** your preference
+            • You turn off AC to save energy → **System stays off** for the configured time
 
-            Recommended: 2 hours for most situations.
+            **Recommended:** 2 hours for most situations.
           default: 2
           selector:
             number:
@@ -1795,17 +1795,17 @@ blueprint:
         adaptive_override_helper:
           name: Override Helper (Optional)
           description: |
-            Optional input_boolean helper to manually disable adaptive control.
+            **Optional input_boolean helper** to manually disable adaptive control.
 
-            When configured and set to ON, adaptive control will be completely disabled until turned OFF.
+            When configured and set to **ON**, adaptive control will be **completely disabled** until turned OFF.
 
-            Example helper names:
+            **Example helper names:**
 
-            • input_boolean.climate_adaptive_override_office
-            • input_boolean.ac_manual_override_bedroom  
-            • input_boolean.disable_adaptive_living_room
-            
-            Use this for permanent manual control periods or when you want full override control via dashboard toggles.
+            • `input_boolean.climate_adaptive_override_office`
+            • `input_boolean.ac_manual_override_bedroom`
+            • `input_boolean.disable_adaptive_living_room`
+
+            **Use this for:** Permanent manual control periods or when you want full override control via dashboard toggles.
           default: ""
           selector:
             entity:
