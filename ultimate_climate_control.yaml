@@ -1,7 +1,7 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.2.1
+  name: Ultimate Smart Climate Control - v2.3
   description: >-
-    📌 Version: 2.2.1
+    📌 Version: 2.3.0
     
     
     🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
@@ -30,6 +30,9 @@ blueprint:
     
     ✨ NEW IN v2.2:
     • Adaptive Control Mode - Auto-switch modes based on room occupancy (optional)
+    
+    ✨ NEW IN v2.3:
+    • Manual Override Protection - Respects user manual changes for configurable time
     
     
     🧠 CONTROL MODES EXPLAINED:
@@ -1242,6 +1245,33 @@ blueprint:
                   value: "auto"
                 - label: "Smart Mode"
                   value: "smart"
+        
+        adaptive_override_timeout:
+          name: Manual Override Timeout (hours)
+          description: >
+            How long to respect manual user overrides before resuming adaptive control.
+            Set to 0 to disable override protection (always allow adaptive switching).
+            Recommended: 2 hours for pets/comfort, 8+ hours for energy saving.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 24
+              step: 0.5
+              unit_of_measurement: hours
+              mode: slider
+        
+        adaptive_override_helper:
+          name: Override Helper (Optional)
+          description: >
+            Optional input_boolean to manually disable adaptive control.
+            Example: input_boolean.climate_adaptive_override_office
+            When ON, adaptive control is disabled until turned OFF.
+          default: ""
+          selector:
+            entity:
+              domain: input_boolean
+              multiple: false
 
 variables:
   climate_list: !input climate_entities
@@ -1349,6 +1379,8 @@ variables:
   adaptive_occupied_delay: !input adaptive_occupied_delay
   adaptive_vacant_delay: !input adaptive_vacant_delay
   adaptive_target_mode: !input adaptive_target_mode
+  adaptive_override_timeout: !input adaptive_override_timeout
+  adaptive_override_helper: !input adaptive_override_helper
 
 trigger:
   - platform: state
@@ -2142,13 +2174,28 @@ action:
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
+          # Manual Override Protection
+          - condition: template
+            value_template: >
+              {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+                {{ not is_state(adaptive_override_helper, 'on') }}
+              {% else %}
+                true
+              {% endif %}
+          - condition: template
+            value_template: >
+              {% if adaptive_override_timeout > 0 %}
+                {% set last_change = states(helper_change) %}
+                {% if last_change not in ['unknown', 'unavailable', ''] %}
+                  {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
+                  {{ time_since_change >= adaptive_override_timeout }}
+                {% else %}
+                  true
+                {% endif %}
+              {% else %}
+                true
+              {% endif %}
         sequence:
-          # TEST: Check if this block is reached
-          - service: system_log.write
-            data:
-              message: "🔄 TEST: Adaptive Control block reached! adaptive_enabled={{ adaptive_enabled }}"
-              level: warning
-              logger: blueprints.climate_control
           # Debug logging for Adaptive Control evaluation
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -3532,6 +3579,18 @@ action:
         {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
         • Time Present: {{ presence_time | round(1) }} min
         • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
+        {% endif %}
+        • Override Timeout: {{ adaptive_override_timeout }}h
+        {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+        • Override Helper: {{ states(adaptive_override_helper) }}
+        {% endif %}
+        {% if adaptive_override_timeout > 0 %}
+        {% set last_change = states(helper_change) %}
+        {% if last_change not in ['unknown', 'unavailable', ''] %}
+        {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
+        • Time Since Change: {{ time_since_change | round(1) }}h
+        • Override Active: {{ time_since_change < adaptive_override_timeout }}
+        {% endif %}
         {% endif %}
       level: warning
       logger: blueprints.climate_control
