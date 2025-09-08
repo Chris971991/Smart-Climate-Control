@@ -4,28 +4,43 @@ blueprint:
     📌 Version: 2.3.0
     
     
-    🌡️ INTELLIGENT CLIMATE CONTROL with power-efficient operation, proximity-based 
+    🌡️ INTELLIGENT CLIMATE CONTROL: 
+    
+    Power-efficient operation, proximity-based 
     pre-conditioning, and presence detection. Control multiple A/C units with full 
     customization of temperatures, distances, and operating modes.
     
-    💡 POWER SAVING MODE: Configured to turn OFF in comfort zone (saves 40-60% energy)
+    💡 POWER SAVING MODE:
+    
+    Configured to turn OFF in comfort zone (saves 40-60% energy)
     with wider temperature tolerance (±2°C) and extended cycling protection.
     
-    🔄 UNIVERSAL COMPATIBILITY: Auto-detects and adapts to different A/C models:
+    🔄 UNIVERSAL COMPATIBILITY:
+    
+    Auto-detects and adapts to different A/C models:
+
     • HVAC modes: auto ↔ heat_cool, supports all Daikin variants
     • Fan speeds: Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence  
     • Swing modes: Both ↔ both, Vertical ↔ vertical, 3D ↔ both
     
-    🏠 SMART MODE PRESENCE: Room-specific climate control based on occupancy:
+    🏠 SMART MODE PRESENCE:
+    
+    Room-specific climate control based on occupancy:
+
     • Room occupied: Normal temperature control
     • Room empty (timeout): Configurable eco/off/maintain behavior  
     • Away from house: Global away mode (separate setting)
     
     ✨ NEW IN v2.1:
+
     • Time-Based Scheduling - Different temperatures for different times (optional)
+
     • Window Detection - Auto-off when windows open (optional)
+
     • Weather Compensation - Adjust based on outdoor temperature (optional)
+
     • Hysteresis Logic - Prevents rapid on/off cycling
+
     • Fixed stability timer and check interval bugs
     
     ✨ NEW IN v2.2:
@@ -37,15 +52,23 @@ blueprint:
     
     🧠 CONTROL MODES EXPLAINED:
     
-    • AUTO MODE: Full automation with occupancy detection and presence-based control. 
-      System automatically adjusts temperature when you're home or away.
+    • AUTO MODE: 
     
-    • MANUAL MODE: Full manual control with no automation. 
-      You control temperature, fan speed, and on/off manually.
+      Full automation with occupancy detection and presence-based control. 
+        System automatically adjusts temperature when you're home or away.
     
-    • SMART MODE: Aggressive presence detection and advanced occupancy sensing. 
+    • MANUAL MODE:
+    
+      Full manual control with no automation. 
+        You control temperature, fan speed, and on/off manually.
+    
+    • SMART MODE: 
+    
+    Aggressive presence detection and advanced occupancy sensing. 
+
       Uses motion sensors, door sensors, phone presence, and predictive algorithms 
       to optimize temperature before occupancy and maintain comfort during use.
+
       🌡️ NEW: Temperature Stability Auto-Off - automatically turns off AC when 
       temperature equilibrium is reached (configurable tolerance & duration).
     
