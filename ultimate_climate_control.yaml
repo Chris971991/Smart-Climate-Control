@@ -2499,6 +2499,96 @@ action:
               entity_id: "{{ helper_temp_stable_since }}"
             data:
               datetime: "1970-01-01 00:00:00"
+          
+          # Now activate cooling/heating as needed since we're outside comfort zone
+          - choose:
+              # Need cooling
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp > comfort_max_temp }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      hvac_mode: cool
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ cooling_target_temp }}"
+                  
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      fan_mode: >
+                        {% if current_temp >= cooling_high_temp %}
+                          {{ fan_speed_max }}
+                        {% else %}
+                          {{ fan_speed_medium }}
+                        {% endif %}
+                  
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "cooling"
+                  
+                  - service: system_log.write
+                    data:
+                      message: >
+                        ❄️ Cooling activated after stability reset
+                        • Temperature: {{ current_temp }}°C
+                        • Target: {{ cooling_target_temp }}°C
+                        • Mode: {{ 'High' if current_temp >= cooling_high_temp else 'Medium' }}
+                      level: warning
+                      logger: blueprints.climate_control
+              
+              # Need heating
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp < comfort_min_temp }}"
+                sequence:
+                  - service: climate.set_hvac_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      hvac_mode: heat
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ heating_target_temp }}"
+                  
+                  - service: climate.set_fan_mode
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      fan_mode: >
+                        {% if current_temp <= heating_low_temp %}
+                          {{ fan_speed_max }}
+                        {% else %}
+                          {{ fan_speed_medium }}
+                        {% endif %}
+                  
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "heating"
+                  
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🔥 Heating activated after stability reset
+                        • Temperature: {{ current_temp }}°C
+                        • Target: {{ heating_target_temp }}°C
+                        • Mode: {{ 'High' if current_temp <= heating_low_temp else 'Medium' }}
+                      level: warning
+                      logger: blueprints.climate_control
 
       # Pre-conditioning when approaching
       - conditions:
