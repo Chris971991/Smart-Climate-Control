@@ -194,6 +194,7 @@ blueprint:
       name: Last Mode Helper Entity *
       description: >
         Input Text helper to track the last active climate mode.
+
         
         Create a unique helper for each room/automation instance:
         
@@ -202,6 +203,7 @@ blueprint:
         • input_text.climate_last_mode_bedroom
         
         • input_text.climate_last_mode_office
+        
         
         This helper stores state information for proper automation behavior.
       selector:
@@ -216,7 +218,9 @@ blueprint:
         Create a unique helper for each room/automation instance:
         
         • input_datetime.climate_last_change_living_room
+
         • input_datetime.climate_last_change_bedroom
+
         • input_datetime.climate_last_change_office
         
         Used for timing calculations and manual override protection.
