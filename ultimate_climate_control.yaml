@@ -2491,14 +2491,17 @@ action:
             data:
               value: "off"
           
-          # Clear the stability timestamp to reset the feature
-          - condition: template
-            value_template: "{{ helper_temp_stable_since not in [none, '', 'unavailable', 'unknown'] }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ helper_temp_stable_since }}"
-            data:
-              datetime: "1970-01-01 00:00:00"
+          # Clear the stability timestamp to reset the feature (remove condition check)
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ helper_temp_stable_since not in [none, '', 'unavailable', 'unknown'] }}"
+                sequence:
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: "{{ helper_temp_stable_since }}"
+                    data:
+                      datetime: "1970-01-01 00:00:00"
           
           # Now activate cooling/heating as needed since we're outside comfort zone
           - choose:
@@ -2523,12 +2526,7 @@ action:
                     target:
                       entity_id: !input climate_entities
                     data:
-                      fan_mode: >
-                        {% if current_temp >= cooling_high_temp %}
-                          {{ fan_speed_max }}
-                        {% else %}
-                          {{ fan_speed_medium }}
-                        {% endif %}
+                      fan_mode: !input fan_speed_max
                   
                   - service: input_text.set_value
                     target:
@@ -2567,12 +2565,7 @@ action:
                     target:
                       entity_id: !input climate_entities
                     data:
-                      fan_mode: >
-                        {% if current_temp <= heating_low_temp %}
-                          {{ fan_speed_max }}
-                        {% else %}
-                          {{ fan_speed_medium }}
-                        {% endif %}
+                      fan_mode: !input fan_speed_max
                   
                   - service: input_text.set_value
                     target:
