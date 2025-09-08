@@ -198,7 +198,9 @@ blueprint:
         Create a unique helper for each room/automation instance:
         
         • input_text.climate_last_mode_living_room
+
         • input_text.climate_last_mode_bedroom
+        
         • input_text.climate_last_mode_office
         
         This helper stores state information for proper automation behavior.
