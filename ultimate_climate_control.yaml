@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.3.6
+  name: Ultimate Smart Climate Control - v2.4.0
 
   description: |
-    **Ultimate Smart Climate Control v2.3.6**
+    **Ultimate Smart Climate Control v2.4.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2935,6 +2935,142 @@ action:
               message: >
                 Pre-conditioning started - approaching home.
                 Current: {{ current_temp }}°C
+      
+      # Medium cooling - Normal cooling mode when temperature exceeds comfort zone
+      # Activates at cooling_medium_temp (e.g., 24.5°C) for balanced cooling
+      # Uses medium fan speed for efficient cooling without excessive power consumption
+      - conditions:
+          - condition: template
+            value_template: "{{ should_activate }}"
+          - condition: template
+            value_template: "{{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🌡️ MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_medium_temp }}°C (medium threshold)"
+              level: warning
+              logger: blueprints.climate_control
+          
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    
+                    # Smart cooling mode selection
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For cooling, try cooling-capable modes #}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif 'auto' in modes %}
+                        auto
+                      {% elif 'Auto' in modes %}
+                        Auto
+                      {% elif 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        {{ modes[0] if modes else 'off' }}
+                      {% endif %}
+                
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART MEDIUM COOL MODE: {{ repeat.item }}
+                      • Available: {{ available_modes | join(', ') }}
+                      • Selected: {{ selected_hvac_mode }}
+                      • Reason: Medium cooling mode for balanced temperature control
+                    level: debug
+                    logger: blueprints.climate_control
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ cooling_target_temp }}"
+          
+          # Use medium fan speed for balanced cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_medium_fan: "{{ fan_speed_medium }}"
+                    
+                    # Smart medium fan mode selection
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% set desired = fan_speed_medium %}
+                      
+                      {# First try the exact user selection #}
+                      {% if desired in fans %}
+                        {{ desired }}
+                      {# Then try medium speed equivalents in order of preference #}
+                      {% elif 'medium' in fans %}
+                        medium
+                      {% elif 'Medium' in fans %}
+                        Medium
+                      {% elif '3' in fans %}
+                        3
+                      {% elif 'Level 3' in fans %}
+                        Level 3
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {# Fallback to available options #}
+                      {% elif '2' in fans %}
+                        2
+                      {% elif 'Level 2' in fans %}
+                        Level 2
+                      {% elif 'low' in fans %}
+                        low
+                      {% elif 'high' in fans %}
+                        high
+                      {% else %}
+                        {{ fans[0] if fans else 'Auto' }}
+                      {% endif %}
+                
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART MEDIUM FAN: {{ repeat.item }}
+                      • Desired: {{ desired_medium_fan }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Reason: {{ 'Exact match' if desired_medium_fan in available_fans else 'Best equivalent for medium cooling' }}
+                    level: debug
+                    logger: blueprints.climate_control
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling"
       
       # Comfort zone - Eco mode or OFF mode (Power Saving)
       # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
