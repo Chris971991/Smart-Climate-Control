@@ -181,7 +181,7 @@ blueprint:
     # Basic required settings (always visible)
     climate_entities:
       name: Climate Entities *
-      description: >
+      description: |
         Select one or more climate entities to control with this automation.
         
         Supports all types of A/C units, heat pumps, and climate control devices.
@@ -192,19 +192,15 @@ blueprint:
     
     helper_last_mode:
       name: Last Mode Helper Entity *
-      description: >
+      description: |
         Input Text helper to track the last active climate mode.
 
-        
         Create a unique helper for each room/automation instance:
-        
-        • input_text.climate_last_mode_living_room
 
+        • input_text.climate_last_mode_living_room
         • input_text.climate_last_mode_bedroom
-        
         • input_text.climate_last_mode_office
-        
-        
+
         This helper stores state information for proper automation behavior.
       selector:
         entity:
@@ -212,17 +208,15 @@ blueprint:
     
     helper_last_change:
       name: Last Change Helper Entity *
-      description: >
+      description: |
         Input DateTime helper to track when climate changes occurred.
-        
+
         Create a unique helper for each room/automation instance:
-        
+
         • input_datetime.climate_last_change_living_room
-
         • input_datetime.climate_last_change_bedroom
-
         • input_datetime.climate_last_change_office
-        
+
         Used for timing calculations and manual override protection.
       selector:
         entity:
@@ -236,18 +230,18 @@ blueprint:
       input:
         temperature_sensor:
           name: Temperature Sensor (Optional)
-          description: >
+          description: |
             External temperature sensor for more accurate room temperature readings.
-            
+
             If not configured, the system will use your A/C unit's built-in sensor.
-            
+
             Best practices for external sensors:
-            
+
             • Place at seated height (1-1.5m from floor)
             • Position away from direct sunlight and heat sources
             • Central location in the room for representative readings
             • Avoid drafty areas or corners
-            
+
             External sensors provide significantly better temperature control accuracy.
           default: []
           selector:
@@ -257,12 +251,12 @@ blueprint:
         
         use_average_temperature:
           name: Use Average Temperature
-          description: >
+          description: |
             Controls how temperature is calculated when using multiple A/C units.
-            
+
             • ON: Average temperatures from all A/C units
             • OFF: Use temperature from the first A/C unit only
-            
+
             Turn OFF when using a single external sensor for all units to avoid conflicts.
           default: true
           selector:
@@ -271,12 +265,13 @@ blueprint:
         # SIMPLE CONTROLS (Always visible)
         target_temperature:
           name: 🎯 Target Temperature
-          description: >
+          description: |
             Your ideal room temperature in degrees Celsius.
-            
+
             This is the main temperature control that affects all other zones proportionally.
-            
+
             Adjusting this value will shift all temperature thresholds up or down together.
+
             This is where the system will maintain temperature in auto mode.
           default: 23
           selector:
@@ -289,14 +284,12 @@ blueprint:
         
         comfort_zone_width:
           name: 📏 Comfort Zone Range
-          description: >
+          description: |
             Temperature variation tolerance around target (±°C):
-            
+
             • Wider = more tolerance, less switching, more efficient
-            
             • Narrower = tighter control, more activity, less efficient
-            
-            
+
             Example: Target 23°C with ±2°C = comfort zone 21-25°C (saves 40-60% power)
           default: 2
           selector:
@@ -309,24 +302,19 @@ blueprint:
         
         temperature_aggressiveness:
           name: ⚡ Response Aggressiveness
-          description: >
+          description: |
             How quickly system responds beyond comfort zone:
-            
+
             • 1 = Gentle (extreme modes at ±3°C from comfort, slow, very efficient)
-            
             • 2 = Smooth (medium at comfort edge, high at +1°C, max at +2°C)
-            
             • 3 = Balanced (extreme modes at ±2°C from comfort, good balance)
-            
             • 5 = Aggressive (extreme modes at ±1°C from comfort, fast, less efficient)
-            
-            
+
+
             Example (Target 23°C, Zone ±2°C, Aggressiveness 2):
-            
+
             • Comfort: 21-25°C (OFF mode for power savings)
-            
             • Medium: 25°C & 21°C (gentle response at comfort edge)
-            
             • High: 26°C & 20°C (strong response at ±1°C from edge)
           default: 2
           selector:
@@ -339,14 +327,13 @@ blueprint:
         # ADVANCED OVERRIDES (Hidden by default)
         enable_advanced_temp:
           name: 🔧 Enable Advanced Temperature Controls
-          description: >
+          description: |
             Manually override individual temperature thresholds.
-            
+
             • For users who want precise control over all thresholds
             • Overrides automatic calculations based on target temperature
             • Allows fine-tuning of comfort zones and trigger points
-            
-            
+
             Most users should leave this disabled and use the base target temperature.
           default: false
           selector:
