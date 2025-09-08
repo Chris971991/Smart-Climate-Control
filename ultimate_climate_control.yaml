@@ -2489,11 +2489,19 @@ action:
               level: warning
               logger: blueprints.climate_control
           
+          # Don't set to "off" - set directly to cooling/heating to bypass checks
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
             data:
-              value: "off"
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cooling
+                {% elif current_temp < comfort_min_temp %}
+                  heating
+                {% else %}
+                  off
+                {% endif %}
           
           # Clear the stability timestamp to reset the feature (remove condition check)
           - choose:
