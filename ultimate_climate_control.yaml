@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.3.2
+  name: Ultimate Smart Climate Control - v2.3.3
 
   description: |
-    **Ultimate Smart Climate Control v2.3.2**
+    **Ultimate Smart Climate Control v2.3.3**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2761,6 +2761,183 @@ action:
                 Pre-conditioning started - approaching home.
                 Current: {{ current_temp }}°C
       
+      # Comfort zone - Eco mode or OFF mode (Power Saving)
+      # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
+      # OFF mode saves 40-60% more energy vs eco mode but allows temperature drift
+      - conditions:
+          - condition: template
+            value_template: "{{ should_activate }}"
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min }}"
+        sequence:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 CLIMATE DEBUG: Comfort Zone Action Triggered
+                Control Mode: {{ control_mode }}
+                Should Activate: {{ should_activate }}
+                Extreme Temp Detected: {{ extreme_temp_detected }}
+                Current Temp: {{ current_temp }}°C
+                Extreme High: {{ extreme_high }}°C
+                Extreme Low: {{ extreme_low }}°C
+                Room Presence: {{ room_presence_detected }}
+                Approaching Home: {{ approaching_home }}
+              level: warning
+              logger: blueprints.climate_control
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ eco_enabled }}"
+                sequence:
+                  # Eco mode - maintain with reduced fan and wider setpoint (uses ~150-250W)
+                  # Set HVAC mode to auto for maximum efficiency in comfort zone
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: >
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% else %}
+                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% endif %}
+                  
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ target_temp }}"
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌡️ TEMP SET: Comfort Zone Maintenance
+                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ target_temp | round(1) }}°C
+                        Reason: Maintaining target temperature within comfort zone
+                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+                      level: warning
+                      logger: blueprints.climate_control
+                  
+                  # Set auto fan mode for maximum efficiency in comfort zone
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if 'Auto' in available_fans %}
+                                Auto
+                              {% elif 'auto' in available_fans %}
+                                auto
+                              {% elif 'low' in available_fans %}
+                                low
+                              {% elif 'Quiet' in available_fans %}
+                                Quiet
+                              {% elif 'Silence' in available_fans %}
+                                Silence
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
+                              {% elif '1' in available_fans %}
+                                1
+                              {% else %}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
+                              {% endif %}
+                  
+                  # Set swing mode with compatibility check for eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                            desired_swing: !input swing_mode_active
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: >
+                              {% if desired_swing in available_swings %}
+                                {{ desired_swing }}
+                              {% elif desired_swing == 'both' and '3D' in available_swings %}
+                                3D
+                              {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                                Both
+                              {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                                Vertical
+                              {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                                vertical
+                              {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                                Horizontal
+                              {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                                horizontal
+                              {% elif 'both' in available_swings %}
+                                both
+                              {% elif 'Both' in available_swings %}
+                                Both
+                              {% elif '3D' in available_swings %}
+                                3D
+                              {% elif 'Vertical' in available_swings %}
+                                Vertical
+                              {% elif 'vertical' in available_swings %}
+                                vertical
+                              {% else %}
+                                {{ available_swings[0] if available_swings else 'Off' }}
+                              {% endif %}
+                  
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "eco"
+                  
+                  - condition: template
+                    value_template: "{{ enable_notifications }}"
+                  
+                  - service: !input notification_service
+                    data:
+                      title: "Climate Control"
+                      message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
+            
+            default:
+              # OFF mode - Maximum power savings (0W consumption)
+              # A/C turns completely off when temperature is acceptable
+              # Will restart when temp exits comfort zone (e.g., <21°C or >25°C)
+              - service: climate.turn_off
+                target:
+                  entity_id: !input climate_entities
+              
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_last_mode
+                data:
+                  value: "off"
+              
+              - condition: template
+                value_template: "{{ enable_notifications }}"
+              
+              - service: !input notification_service
+                data:
+                  title: "Climate Control"
+                  message: "Turned off - Comfort zone ({{ current_temp }}°C)"
+
       # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached)
       - conditions:
           - condition: template
@@ -4013,182 +4190,6 @@ action:
             data:
               value: "heating"
       
-      # Comfort zone - Eco mode or OFF mode (Power Saving)
-      # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
-      # OFF mode saves 40-60% more energy vs eco mode but allows temperature drift
-      - conditions:
-          - condition: template
-            value_template: "{{ should_activate }}"
-          - condition: template
-            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
-          - condition: template
-            value_template: "{{ time_since_change > runtime_min }}"
-        sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🔍 CLIMATE DEBUG: Comfort Zone Action Triggered
-                Control Mode: {{ control_mode }}
-                Should Activate: {{ should_activate }}
-                Extreme Temp Detected: {{ extreme_temp_detected }}
-                Current Temp: {{ current_temp }}°C
-                Extreme High: {{ extreme_high }}°C
-                Extreme Low: {{ extreme_low }}°C
-                Room Presence: {{ room_presence_detected }}
-                Approaching Home: {{ approaching_home }}
-              level: warning
-              logger: blueprints.climate_control
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ eco_enabled }}"
-                sequence:
-                  # Eco mode - maintain with reduced fan and wider setpoint (uses ~150-250W)
-                  # Set HVAC mode to auto for maximum efficiency in comfort zone
-                  - repeat:
-                      for_each: "{{ climate_list }}"
-                      sequence:
-                        - variables:
-                            current_entity: "{{ repeat.item }}"
-                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                        - service: climate.set_hvac_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            hvac_mode: >
-                              {% if 'auto' in available_modes %}
-                                auto
-                              {% elif 'heat_cool' in available_modes %}
-                                heat_cool
-                              {% else %}
-                                {{ available_modes[0] if available_modes else 'off' }}
-                              {% endif %}
-                  
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      temperature: "{{ target_temp }}"
-
-                  - service: system_log.write
-                    data:
-                      message: >
-                        🌡️ TEMP SET: Comfort Zone Maintenance
-                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
-                        Actual value: {{ target_temp | round(1) }}°C
-                        Reason: Maintaining target temperature within comfort zone
-                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
-                      level: warning
-                      logger: blueprints.climate_control
-                  
-                  # Set auto fan mode for maximum efficiency in comfort zone
-                  - repeat:
-                      for_each: "{{ climate_list }}"
-                      sequence:
-                        - variables:
-                            current_entity: "{{ repeat.item }}"
-                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
-                              {% if 'Auto' in available_fans %}
-                                Auto
-                              {% elif 'auto' in available_fans %}
-                                auto
-                              {% elif 'low' in available_fans %}
-                                low
-                              {% elif 'Quiet' in available_fans %}
-                                Quiet
-                              {% elif 'Silence' in available_fans %}
-                                Silence
-                              {% elif 'Level 1' in available_fans %}
-                                Level 1
-                              {% elif '1' in available_fans %}
-                                1
-                              {% else %}
-                                {{ available_fans[0] if available_fans else 'Auto' }}
-                              {% endif %}
-                  
-                  # Set swing mode with compatibility check for eco mode
-                  - repeat:
-                      for_each: "{{ climate_list }}"
-                      sequence:
-                        - variables:
-                            current_entity: "{{ repeat.item }}"
-                            available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
-                            desired_swing: !input swing_mode_active
-                        - service: climate.set_swing_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            swing_mode: >
-                              {% if desired_swing in available_swings %}
-                                {{ desired_swing }}
-                              {% elif desired_swing == 'both' and '3D' in available_swings %}
-                                3D
-                              {% elif desired_swing == 'both' and 'Both' in available_swings %}
-                                Both
-                              {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
-                                Vertical
-                              {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
-                                vertical
-                              {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
-                                Horizontal
-                              {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
-                                horizontal
-                              {% elif 'both' in available_swings %}
-                                both
-                              {% elif 'Both' in available_swings %}
-                                Both
-                              {% elif '3D' in available_swings %}
-                                3D
-                              {% elif 'Vertical' in available_swings %}
-                                Vertical
-                              {% elif 'vertical' in available_swings %}
-                                vertical
-                              {% else %}
-                                {{ available_swings[0] if available_swings else 'Off' }}
-                              {% endif %}
-                  
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "eco"
-                  
-                  - condition: template
-                    value_template: "{{ enable_notifications }}"
-                  
-                  - service: !input notification_service
-                    data:
-                      title: "Climate Control"
-                      message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
-            
-            default:
-              # OFF mode - Maximum power savings (0W consumption)
-              # A/C turns completely off when temperature is acceptable
-              # Will restart when temp exits comfort zone (e.g., <21°C or >25°C)
-              - service: climate.turn_off
-                target:
-                  entity_id: !input climate_entities
-              
-              - service: input_text.set_value
-                target:
-                  entity_id: !input helper_last_mode
-                data:
-                  value: "off"
-              
-              - condition: template
-                value_template: "{{ enable_notifications }}"
-              
-              - service: !input notification_service
-                data:
-                  title: "Climate Control"
-                  message: "Turned off - Comfort zone ({{ current_temp }}°C)"
 
       # FALLBACK: Dynamic Escalation - Only if no normal modes triggered
       - conditions:
