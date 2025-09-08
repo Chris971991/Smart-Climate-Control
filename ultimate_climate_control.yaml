@@ -3675,7 +3675,7 @@ action:
                 - service: system_log.write
                   data:
                     message: >
-                      ✅ Adaptive Control: OCCUPIED → SWITCHING TO {{ adaptive_target_mode | title }} MODE
+                      ✅ {{ room_name | upper }} ADAPTIVE CONTROL: OCCUPIED → SWITCHING TO {{ adaptive_target_mode | title }} MODE
                       • Current Mode: {{ control_mode }} → {{ adaptive_target_mode | title }}
                       • Room Presence: {{ room_presence_detected }}
                       • Required Delay: {{ adaptive_occupied_delay }} min
@@ -3700,7 +3700,7 @@ action:
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
                   data:
-                    message: "✅ Adaptive Control: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
+                    message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
@@ -3778,7 +3778,7 @@ action:
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
                   data:
-                    message: "✅ Adaptive Control: VACANT actions completed - mode set to Manual, all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
+                    message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: VACANT actions completed - mode set to Manual, all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
@@ -4791,7 +4791,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔥 SMART ESCALATION LEVEL {{ escalation_level }}/4 ACTIVATED
+                🔥 {{ room_name | upper }} SMART ESCALATION LEVEL {{ escalation_level }}/4 ACTIVATED
                 Effectiveness: {{ current_effectiveness }}% • Distance: {{ distance_from_target }}°C • Runtime: {{ time_in_current_mode }}min
                 Reason: {% if escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
                 {% elif escalation_level == 3 %}🔥 HIGH - {{ 'Still far after 5min' if distance_from_target > 3 else 'Poor effectiveness' if current_effectiveness <= 25 else 'Progress stalled' }}
@@ -5023,7 +5023,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            ✅ Climate System: All Good
+            ✅ {{ room_name | upper }} CLIMATE CONTROL: All Good
             {% if current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}🎯 Temperature {{ current_temp }}°C is perfect - no changes needed{% else %}⏸️ No action required right now{% endif %}
             
             📋 Technical: {{ current_temp }}°C, {{ 'someone home' if anyone_home else 'nobody home' }}, {{ last_mode }} mode
