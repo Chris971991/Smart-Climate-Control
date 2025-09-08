@@ -2378,12 +2378,13 @@ action:
               {% set temp_diff = (current_temp - previous_temp) | abs %}
               {{ temp_diff > stability_tolerance }}
         sequence:
-          # Temperature is no longer stable - clear the timestamp
+          # Temperature is no longer stable - set to current time
+          # This resets the stability timer without causing calculation issues
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_temp_stable_since }}"
             data:
-              datetime: "1970-01-01 00:00:00"
+              datetime: "{{ now() }}"
   
   # Exit immediately if windows are open (unless disabled)
   - condition: template
