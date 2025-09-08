@@ -2482,32 +2482,17 @@ action:
       logger: blueprints.climate_control
 
   - choose:
-      # FIX: Handle broken 1970 timestamp when temperature is critical
+      # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
-            value_template: >
-              {% if helper_temp_stable_since %}
-                {% set stable_since = states(helper_temp_stable_since) %}
-                {% set stable_timestamp = as_timestamp(stable_since) | float(0) %}
-                {{ stable_timestamp < 86400 and current_temp > comfort_max_temp }}
-              {% else %}
-                false
-              {% endif %}
+            value_template: "{{ current_temp >= cooling_high_temp and should_activate and last_mode == 'off' }}"
         sequence:
           - service: system_log.write
             data:
-              message: "🔧 Fixing broken 1970 timestamp and activating cooling"
+              message: "🔥 HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C"
               level: warning
               logger: blueprints.climate_control
           
-          # Fix the timestamp
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ helper_temp_stable_since }}"
-            data:
-              datetime: "{{ now() }}"
-          
-          # Turn on cooling immediately
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
