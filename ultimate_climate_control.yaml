@@ -2579,21 +2579,21 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 DEBUG Part 1: Basic conditions
+        🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
         • last_mode: "{{ last_mode }}"
         • should_activate: {{ should_activate }}
         • current_temp: {{ current_temp }}°C
         • cooling_high: {{ cooling_high_temp }}°C
         • cooling_medium: {{ cooling_medium_temp }}°C
       level: warning
-      logger: blueprints.climate_control
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
   - condition: template
     value_template: "{{ debug_enabled }}"
   - service: system_log.write
     data:
       message: >
-        🔍 DEBUG Part 2: Cooling checks
+        🔍 {{ room_name | upper }} DEBUG Part 2: Cooling checks
         • last_transition: "{{ last_transition }}"
         • hysteresis: {{ hysteresis_tolerance }}°C
         • temp >= high: {{ current_temp >= cooling_high_temp }}
@@ -2603,7 +2603,7 @@ action:
         • mode_check: {{ last_mode != 'cooling' }}
         • ALL cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
       level: warning
-      logger: blueprints.climate_control
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - choose:
       # PRIORITY: Check for high temperature first when AC is off
@@ -5013,7 +5013,7 @@ action:
         {% endif %}
         {% endif %}
       level: warning
-      logger: blueprints.climate_control
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Debug: No conditions matched
   - if:
