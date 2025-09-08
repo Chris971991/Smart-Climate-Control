@@ -2454,23 +2454,29 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 DEBUG: Checking conditions
+        🔍 DEBUG Part 1: Basic conditions
         • last_mode: "{{ last_mode }}"
         • should_activate: {{ should_activate }}
-        • control_mode: {{ control_mode }}
-        • smart_presence_active: {{ smart_presence_active }}
-        • anyone_home: {{ anyone_home }}
-        • room_presence_detected: {{ room_presence_detected }}
-        • extreme_temp_detected: {{ extreme_temp_detected }}
         • current_temp: {{ current_temp }}°C
-        • cooling_high_temp: {{ cooling_high_temp }}°C
-        • cooling_medium_temp: {{ cooling_medium_temp }}°C
+        • cooling_high: {{ cooling_high_temp }}°C
+        • cooling_medium: {{ cooling_medium_temp }}°C
+      level: warning
+      logger: blueprints.climate_control
+  
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 DEBUG Part 2: Cooling checks
         • last_transition: "{{ last_transition }}"
-        • hysteresis_tolerance: {{ hysteresis_tolerance }}
-        • temp check for high cooling: {{ current_temp >= cooling_high_temp }}
-        • time_since_change: {{ time_since_change }} min
-        • runtime_min: {{ runtime_min }} min
-        • time check: {{ time_since_change > runtime_min or last_mode != 'cooling' }}
+        • hysteresis: {{ hysteresis_tolerance }}°C
+        • temp >= high: {{ current_temp >= cooling_high_temp }}
+        • time_since_change: {{ time_since_change }}min
+        • runtime_min: {{ runtime_min }}min
+        • time_check: {{ time_since_change > runtime_min }}
+        • mode_check: {{ last_mode != 'cooling' }}
+        • ALL cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
       level: warning
       logger: blueprints.climate_control
 
