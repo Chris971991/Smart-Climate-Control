@@ -3440,7 +3440,7 @@ action:
                   title: "{{ room_name }} Climate Control"
                   message: "Turned off - Comfort zone ({{ current_temp }}°C)"
 
-      # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached)
+      # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached AND in comfort zone)
       - conditions:
           - condition: template
             value_template: "{{ temp_stability_enabled }}"
@@ -3452,15 +3452,18 @@ action:
             value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] }}"
           - condition: template
             value_template: "{{ time_since_change > offtime_min }}"
+          # CRITICAL: Only turn off if temperature is actually in comfort zone
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
             data:
               message: >
-                🎯 Smart Feature: Temperature Stability Detected
-                🌡️ Temperature has been steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
-                💡 AC job appears complete - switching to {{ stability_behavior|upper }} mode to save energy
+                🎯 Smart Feature: Temperature Stable & Comfortable
+                🌡️ Temperature steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
+                ✅ Within comfort zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C) - switching to {{ stability_behavior|upper }} mode to save energy
                 
                 📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
               level: warning
