@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.3.3
+  name: Ultimate Smart Climate Control - v2.3.6
 
   description: |
-    **Ultimate Smart Climate Control v2.3.3**
+    **Ultimate Smart Climate Control v2.3.6**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2506,10 +2506,16 @@ action:
                     hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
+                      {% elif 'Cool' in available_modes %}
+                        Cool
                       {% elif 'auto' in available_modes %}
                         auto
+                      {% elif 'Auto' in available_modes %}
+                        Auto
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
+                      {% elif 'Heat/Cool' in available_modes %}
+                        Heat/Cool
                       {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
@@ -2520,28 +2526,75 @@ action:
             data:
               temperature: "{{ cooling_target_temp }}"
           
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% set desired_max_fan = fan_speed_max %}
-                {% if desired_max_fan in available_fans %}
-                  {{ desired_max_fan }}
-                {% elif 'Level 5' in available_fans %}
-                  Level 5
-                {% elif '5' in available_fans %}
-                  5
-                {% elif 'high' in available_fans %}
-                  high
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[-1] if available_fans else 'Auto' }}
-                {% endif %}
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: "{{ fan_speed_max }}"
+                    
+                    # Smart fan mode selection - finds the best match for "maximum" speed
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% set desired = fan_speed_max %}
+                      
+                      {# First try the exact user selection #}
+                      {% if desired in fans %}
+                        {{ desired }}
+                      {# Then try maximum speed equivalents in order of preference #}
+                      {% elif 'high' in fans %}
+                        high
+                      {% elif 'High' in fans %}
+                        High
+                      {% elif '5' in fans %}
+                        5
+                      {% elif 'Level 5' in fans %}
+                        Level 5
+                      {% elif 'turbo' in fans %}
+                        turbo
+                      {% elif 'Turbo' in fans %}
+                        Turbo
+                      {% elif 'max' in fans %}
+                        max
+                      {% elif 'Max' in fans %}
+                        Max
+                      {# Fallback to highest available numeric #}
+                      {% elif '4' in fans %}
+                        4
+                      {% elif 'Level 4' in fans %}
+                        Level 4
+                      {% elif '3' in fans %}
+                        3
+                      {% elif 'Level 3' in fans %}
+                        Level 3
+                      {# Last resort - Auto or highest available #}
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% else %}
+                        {{ fans[-1] if fans else 'Auto' }}
+                      {% endif %}
+                
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART FAN: {{ repeat.item }}
+                      • Desired: {{ desired_max_fan }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Reason: {{ 'Exact match' if desired_max_fan in available_fans else 'Best equivalent for maximum cooling' }}
+                    level: debug
+                    logger: blueprints.climate_control
           
           - service: input_text.set_value
             target:
@@ -2603,11 +2656,50 @@ action:
                   - condition: template
                     value_template: "{{ current_temp > comfort_max_temp }}"
                 sequence:
-                  - service: climate.set_hvac_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      hvac_mode: cool
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                            
+                            # Smart cooling mode selection
+                            selected_hvac_mode: >
+                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                              {# For cooling, try cooling-capable modes #}
+                              {% if 'cool' in modes %}
+                                cool
+                              {% elif 'Cool' in modes %}
+                                Cool
+                              {% elif 'auto' in modes %}
+                                auto
+                              {% elif 'Auto' in modes %}
+                                Auto
+                              {% elif 'heat_cool' in modes %}
+                                heat_cool
+                              {% elif 'Heat/Cool' in modes %}
+                                Heat/Cool
+                              {% else %}
+                                {{ modes[0] if modes else 'off' }}
+                              {% endif %}
+                        
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ selected_hvac_mode }}"
+                        
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                        - service: system_log.write
+                          data:
+                            message: >
+                              🔍 SMART COOL MODE: {{ repeat.item }}
+                              • Available: {{ available_modes | join(', ') }}
+                              • Selected: {{ selected_hvac_mode }}
+                              • Reason: Best cooling mode for this AC unit
+                            level: debug
+                            logger: blueprints.climate_control
                   
                   - service: climate.set_temperature
                     target:
@@ -2615,11 +2707,33 @@ action:
                     data:
                       temperature: "{{ cooling_target_temp }}"
                   
-                  - service: climate.set_fan_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      fan_mode: !input fan_speed_max
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_max_fan: !input fan_speed_max
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_max_fan in available_fans %}
+                                {{ desired_max_fan }}
+                              {% elif '5' in available_fans %}
+                                5
+                              {% elif 'Level 5' in available_fans %}
+                                Level 5
+                              {% elif 'high' in available_fans %}
+                                high
+                              {% elif 'Auto' in available_fans %}
+                                Auto
+                              {% elif 'auto' in available_fans %}
+                                auto
+                              {% else %}
+                                {{ available_fans[-1] if available_fans else 'Auto' }}
+                              {% endif %}
                   
                   - service: input_text.set_value
                     target:
@@ -2642,11 +2756,50 @@ action:
                   - condition: template
                     value_template: "{{ current_temp < comfort_min_temp }}"
                 sequence:
-                  - service: climate.set_hvac_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      hvac_mode: heat
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                            
+                            # Smart heating mode selection
+                            selected_hvac_mode: >
+                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                              {# For heating, try heating-capable modes #}
+                              {% if 'heat' in modes %}
+                                heat
+                              {% elif 'Heat' in modes %}
+                                Heat
+                              {% elif 'auto' in modes %}
+                                auto
+                              {% elif 'Auto' in modes %}
+                                Auto
+                              {% elif 'heat_cool' in modes %}
+                                heat_cool
+                              {% elif 'Heat/Cool' in modes %}
+                                Heat/Cool
+                              {% else %}
+                                {{ modes[0] if modes else 'off' }}
+                              {% endif %}
+                        
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ selected_hvac_mode }}"
+                        
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                        - service: system_log.write
+                          data:
+                            message: >
+                              🔍 SMART HEAT MODE: {{ repeat.item }}
+                              • Available: {{ available_modes | join(', ') }}
+                              • Selected: {{ selected_hvac_mode }}
+                              • Reason: Best heating mode for this AC unit
+                            level: debug
+                            logger: blueprints.climate_control
                   
                   - service: climate.set_temperature
                     target:
@@ -2654,11 +2807,33 @@ action:
                     data:
                       temperature: "{{ heating_target_temp }}"
                   
-                  - service: climate.set_fan_mode
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      fan_mode: !input fan_speed_max
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_max_fan: !input fan_speed_max
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_max_fan in available_fans %}
+                                {{ desired_max_fan }}
+                              {% elif '5' in available_fans %}
+                                5
+                              {% elif 'Level 5' in available_fans %}
+                                Level 5
+                              {% elif 'high' in available_fans %}
+                                high
+                              {% elif 'Auto' in available_fans %}
+                                Auto
+                              {% elif 'auto' in available_fans %}
+                                auto
+                              {% else %}
+                                {{ available_fans[-1] if available_fans else 'Auto' }}
+                              {% endif %}
                   
                   - service: input_text.set_value
                     target:
@@ -2737,10 +2912,10 @@ action:
                 {% set desired_medium_fan = fan_speed_medium %}
                 {% if desired_medium_fan in available_fans %}
                   {{ desired_medium_fan }}
-                {% elif 'Level 3' in available_fans %}
-                  Level 3
                 {% elif '3' in available_fans %}
                   3
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
                 {% elif 'medium' in available_fans %}
                   medium
                 {% elif 'Auto' in available_fans %}
@@ -2808,7 +2983,11 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
+                              {% elif 'Auto' in available_modes %}
+                                Auto
                               {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
                               {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
@@ -2853,10 +3032,10 @@ action:
                                 Quiet
                               {% elif 'Silence' in available_fans %}
                                 Silence
-                              {% elif 'Level 1' in available_fans %}
-                                Level 1
                               {% elif '1' in available_fans %}
                                 1
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
                               {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
@@ -3414,7 +3593,11 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
+                              {% elif 'Auto' in available_modes %}
+                                Auto
                               {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
                               {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
@@ -3531,7 +3714,11 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
+                              {% elif 'Auto' in available_modes %}
+                                Auto
                               {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
                               {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
@@ -3585,10 +3772,10 @@ action:
                                 Quiet
                               {% elif 'Silence' in available_fans %}
                                 Silence
-                              {% elif 'Level 1' in available_fans %}
-                                Level 1
                               {% elif '1' in available_fans %}
                                 1
+                              {% elif 'Level 1' in available_fans %}
+                                Level 1
                               {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
@@ -3653,10 +3840,16 @@ action:
                     hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
+                      {% elif 'Cool' in available_modes %}
+                        Cool
                       {% elif 'auto' in available_modes %}
                         auto
+                      {% elif 'Auto' in available_modes %}
+                        Auto
                       {% elif 'heat_cool' in available_modes %}
                         heat_cool
+                      {% elif 'Heat/Cool' in available_modes %}
+                        Heat/Cool
                       {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
@@ -3707,10 +3900,10 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
@@ -3988,10 +4181,10 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
@@ -4274,10 +4467,10 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
                       {% elif '5' in available_fans %}
                         5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
                       {% elif 'high' in available_fans %}
                         high
                       {% elif 'Auto' in available_fans %}
