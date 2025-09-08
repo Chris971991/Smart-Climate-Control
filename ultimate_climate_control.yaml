@@ -157,7 +157,10 @@ blueprint:
     # Basic required settings (always visible)
     climate_entities:
       name: Climate Entities *
-      description: Select one or more A/C units to control
+      description: >
+        Select one or more climate entities to control with this automation.
+        
+        Supports all types of A/C units, heat pumps, and climate control devices.
       selector:
         entity:
           multiple: true
@@ -166,10 +169,15 @@ blueprint:
     helper_last_mode:
       name: Last Mode Helper Entity *
       description: >
-        Input Text helper to track last climate mode.
-        Create unique helper for each room/automation:
-        Examples: input_text.climate_last_mode_living_room,
-        input_text.climate_last_mode_bedroom
+        Input Text helper to track the last active climate mode.
+        
+        Create a unique helper for each room/automation instance:
+        
+        • input_text.climate_last_mode_living_room
+        • input_text.climate_last_mode_bedroom
+        • input_text.climate_last_mode_office
+        
+        This helper stores state information for proper automation behavior.
       selector:
         entity:
           domain: input_text
@@ -177,10 +185,15 @@ blueprint:
     helper_last_change:
       name: Last Change Helper Entity *
       description: >
-        Input DateTime helper to track last change time.
-        Create unique helper for each room/automation:
-        Examples: input_datetime.climate_last_change_living_room,
-        input_datetime.climate_last_change_bedroom
+        Input DateTime helper to track when climate changes occurred.
+        
+        Create a unique helper for each room/automation instance:
+        
+        • input_datetime.climate_last_change_living_room
+        • input_datetime.climate_last_change_bedroom
+        • input_datetime.climate_last_change_office
+        
+        Used for timing calculations and manual override protection.
       selector:
         entity:
           domain: input_datetime
@@ -194,9 +207,18 @@ blueprint:
         temperature_sensor:
           name: Temperature Sensor (Optional)
           description: >
-            External temperature sensor for more accurate readings. 
-            If not set, uses the A/C's internal sensor (less accurate).
-            Recommended: Use a sensor placed at seated height in the room center.
+            External temperature sensor for more accurate room temperature readings.
+            
+            If not configured, the system will use your A/C unit's built-in sensor.
+            
+            Best practices for external sensors:
+            
+            • Place at seated height (1-1.5m from floor)
+            • Position away from direct sunlight and heat sources
+            • Central location in the room for representative readings
+            • Avoid drafty areas or corners
+            
+            External sensors provide significantly better temperature control accuracy.
           default: []
           selector:
             entity:
@@ -206,8 +228,12 @@ blueprint:
         use_average_temperature:
           name: Use Average Temperature
           description: >
-            When using multiple A/C units, average all their temperatures.
-            Turn OFF if using a single external sensor for all units.
+            Controls how temperature is calculated when using multiple A/C units.
+            
+            • ON: Average temperatures from all A/C units
+            • OFF: Use temperature from the first A/C unit only
+            
+            Turn OFF when using a single external sensor for all units to avoid conflicts.
           default: true
           selector:
             boolean:
@@ -216,7 +242,11 @@ blueprint:
         target_temperature:
           name: 🎯 Target Temperature
           description: >
-            Your ideal room temperature - changes ALL zones proportionally.
+            Your ideal room temperature in degrees Celsius.
+            
+            This is the main temperature control that affects all other zones proportionally.
+            
+            Adjusting this value will shift all temperature thresholds up or down together.
             This is where the system will maintain temperature in auto mode.
           default: 23
           selector:
@@ -279,7 +309,15 @@ blueprint:
         # ADVANCED OVERRIDES (Hidden by default)
         enable_advanced_temp:
           name: 🔧 Enable Advanced Temperature Controls
-          description: Manually override individual temperature thresholds
+          description: >
+            Manually override individual temperature thresholds.
+            
+            • For users who want precise control over all thresholds
+            • Overrides automatic calculations based on target temperature
+            • Allows fine-tuning of comfort zones and trigger points
+            
+            
+            Most users should leave this disabled and use the base target temperature.
           default: false
           selector:
             boolean:
@@ -287,7 +325,15 @@ blueprint:
         # These are only shown when advanced mode is enabled
         comfort_min_temp:
           name: Comfort Zone Minimum (Advanced)
-          description: Override auto-calculated minimum
+          description: >
+            Override auto-calculated minimum comfort temperature.
+            
+            • Bottom of comfort zone where heating may start
+            • Should be lower than comfort maximum
+            • Typically 1-2°C below target temperature
+            
+            
+            When room is above this, system stays in eco/off mode.
           default: 21
           selector:
             number:
@@ -298,7 +344,15 @@ blueprint:
         
         comfort_max_temp:
           name: Comfort Zone Maximum (Advanced)
-          description: Override auto-calculated maximum
+          description: >
+            Override auto-calculated maximum comfort temperature.
+            
+            • Top of comfort zone where cooling may start
+            • Should be higher than comfort minimum
+            • Typically 1-2°C above target temperature
+            
+            
+            When room is below this, system stays in eco/off mode.
           default: 23
           selector:
             number:
@@ -309,7 +363,15 @@ blueprint:
         
         cooling_target_temp:
           name: Cooling Target (Advanced)
-          description: Override cooling target
+          description: >
+            Override cooling target temperature.
+            
+            • What temperature to cool the room to
+            • Used when room exceeds comfort maximum
+            • Usually same as or slightly below base target
+            
+            
+            System will cool to this temperature then switch to eco/off.
           default: 22
           selector:
             number:
@@ -320,7 +382,15 @@ blueprint:
         
         heating_target_temp:
           name: Heating Target (Advanced)
-          description: Override heating target
+          description: >
+            Override heating target temperature.
+            
+            • What temperature to heat the room to
+            • Used when room falls below comfort minimum
+            • Usually same as or slightly above base target
+            
+            
+            System will heat to this temperature then switch to eco/off.
           default: 23
           selector:
             number:
@@ -331,7 +401,15 @@ blueprint:
         
         precool_target_temp:
           name: Pre-cooling Target (Advanced)
-          description: Override pre-conditioning target
+          description: >
+            Override pre-conditioning target temperature.
+            
+            • Temperature to achieve before you arrive home
+            • Used with proximity sensors and approaching detection
+            • Should be comfortable for immediate occupancy
+            
+            
+            Usually matches your preferred target temperature.
           default: 22
           selector:
             number:
@@ -342,7 +420,15 @@ blueprint:
         
         cooling_high_temp:
           name: High Cooling Threshold (Advanced)
-          description: Override maximum cooling trigger
+          description: >
+            Override maximum cooling trigger temperature.
+            
+            • Temperature that triggers high-power cooling mode
+            • When room exceeds this, system uses maximum fan speed
+            • Should be significantly higher than comfort maximum
+            
+            
+            For emergency cooling when room gets very hot.
           default: 26
           selector:
             number:
@@ -353,7 +439,15 @@ blueprint:
         
         cooling_medium_temp:
           name: Medium Cooling Threshold (Advanced)
-          description: Override medium cooling trigger
+          description: >
+            Override medium cooling trigger temperature.
+            
+            • Temperature that triggers medium-power cooling mode
+            • When room exceeds this, system uses moderate fan speed
+            • Should be between comfort max and high cooling trigger
+            
+            
+            Balanced cooling for moderately warm conditions.
           default: 24
           selector:
             number:
@@ -364,7 +458,15 @@ blueprint:
         
         heating_low_temp:
           name: Low Heating Threshold (Advanced)
-          description: Override maximum heating trigger
+          description: >
+            Override maximum heating trigger temperature.
+            
+            • Temperature that triggers high-power heating mode
+            • When room falls below this, system uses maximum fan speed
+            • Should be significantly lower than comfort minimum
+            
+            
+            For emergency heating when room gets very cold.
           default: 18
           selector:
             number:
@@ -375,7 +477,15 @@ blueprint:
         
         heating_medium_temp:
           name: Medium Heating Threshold (Advanced)
-          description: Override medium heating trigger
+          description: >
+            Override medium heating trigger temperature.
+            
+            • Temperature that triggers medium-power heating mode
+            • When room falls below this, system uses moderate fan speed
+            • Should be between comfort min and low heating trigger
+            
+            
+            Balanced heating for moderately cool conditions.
           default: 20
           selector:
             number:
@@ -392,7 +502,12 @@ blueprint:
       input:
         presence_persons:
           name: People to Track
-          description: Select people for presence detection
+          description: >
+            Select people for presence detection.
+            
+            • Used for away mode detection
+            • Triggers pre-conditioning when approaching home
+            • Works with proximity/direction sensors for advanced features
           default: []
           selector:
             entity:
@@ -401,7 +516,18 @@ blueprint:
         
         presence_devices:
           name: Presence Detection Devices
-          description: Additional devices indicating presence (e.g., PC power states)
+          description: >
+            Additional devices indicating presence when person entities aren't sufficient.
+            
+            Examples:
+            
+            • PC power state sensors
+            • Smart TV power sensors
+            • Gaming console entities
+            • Workstation activity sensors
+            
+            
+            These supplement person presence detection for more accurate home/away detection.
           default: []
           selector:
             entity:
@@ -409,7 +535,15 @@ blueprint:
         
         proximity_sensor:
           name: Proximity Distance Sensor
-          description: Sensor tracking nearest person's distance from home
+          description: >
+            Sensor tracking nearest person's distance from home.
+            
+            • Used for proximity-based pre-conditioning
+            • Works with direction sensor for smart approach detection
+            • Example: sensor.home_nearest_distance
+            
+            
+            Requires Home Assistant proximity integration setup.
           default: sensor.home_nearest_distance
           selector:
             entity:
@@ -417,7 +551,17 @@ blueprint:
         
         direction_sensor:
           name: Direction of Travel Sensor
-          description: Sensor tracking direction of travel (towards/away/arrived)
+          description: >
+            Sensor tracking direction of travel relative to home.
+            
+            States:
+            
+            • towards: Approaching home
+            • away: Moving away from home
+            • arrived: At home location
+            
+            
+            Example: sensor.home_nearest_direction_of_travel
           default: sensor.home_nearest_direction_of_travel
           selector:
             entity:
@@ -481,7 +625,15 @@ blueprint:
         helper_control_mode:
           name: Control Mode Helper Entity
           description: >
-            Input Select helper for control mode (Auto/Manual/Smart).
+            Input Select helper for control mode selection.
+            
+            Required options:
+            
+            • Auto: Temperature-based control
+            • Manual: User-controlled operation
+            • Smart: Advanced presence-aware control
+            
+            
             Example: input_select.climate_control_mode_living_room
           selector:
             entity:
@@ -491,6 +643,12 @@ blueprint:
           name: Last Presence Helper Entity
           description: >
             Input DateTime helper to track when presence was last detected.
+            
+            • Used for presence timeout calculations
+            • Updated automatically by the system
+            • Required for Smart Mode functionality
+            
+            
             Example: input_datetime.presence_last_detected_living_room
           selector:
             entity:
@@ -500,6 +658,12 @@ blueprint:
           name: Proximity Override Helper Entity
           description: >
             Input Boolean helper for emergency temperature override.
+            
+            • Bypasses all automation when enabled
+            • Allows manual control during emergencies
+            • Auto-resets after specified duration
+            
+            
             Example: input_boolean.climate_proximity_override_living_room
           selector:
             entity:
@@ -509,7 +673,13 @@ blueprint:
           name: Presence Timeout
           description: >
             Minutes to wait after leaving room before taking action.
-            Prevents shutdown during brief departures (bathroom, etc.)
+            
+            • Prevents shutdown during brief departures
+            • Common scenarios: bathroom breaks, quick errands
+            • Recommended: 15-30 minutes for comfort balance
+            
+            
+            Lower values save more energy but may cause comfort issues.
           default: 15
           selector:
             number:
@@ -521,9 +691,17 @@ blueprint:
         room_presence_sensors:
           name: Room Presence Sensors (Optional)
           description: >
-            BLE, PIR or other sensors for room-specific presence.
-            For BLE area sensors, use the sensor that reports room names (e.g., sensor.phone_ble_area).
-            For PIR sensors, use binary sensors that report on/off.
+            BLE, PIR or other sensors for room-specific presence detection.
+            
+            Supported sensor types:
+            
+            • BLE area sensors: Reports room names (e.g., "Office", "Living Room")
+            • PIR sensors: Binary sensors reporting on/off
+            • mmWave sensors: Human presence detection
+            • Smart device sensors: Phone/device presence
+            
+            
+            Example: sensor.phone_ble_area, binary_sensor.living_room_motion
           default: []
           selector:
             entity:
@@ -536,6 +714,12 @@ blueprint:
           name: Room Name for BLE Detection (Optional)
           description: >
             If using BLE area sensors, specify the exact room name that indicates presence.
+            
+            • Must match sensor output exactly (case-sensitive)
+            • Common examples: "Office", "Living Room", "Bedroom"
+            • Check sensor state in Developer Tools for exact string
+            
+            
             Example: "Office" for sensor.phone_ble_area when it reports "Office"
           default: ""
           selector:
@@ -570,9 +754,16 @@ blueprint:
         stability_tolerance:
           name: Stability Temperature Tolerance
           description: >
-            Temperature range considered "stable" (±°C from previous reading).
-            Smaller values = more sensitive. Larger values = less sensitive.
-            Typical: ±0.3°C for sensitive, ±0.5°C for moderate.
+            Temperature range considered "stable" for auto-off detection.
+            
+            Sensitivity levels:
+            
+            • ±0.3°C: High sensitivity (recommended for most users)
+            • ±0.5°C: Moderate sensitivity (balanced approach)
+            • ±1.0°C: Low sensitivity (less aggressive)
+            
+            
+            Smaller values trigger auto-off sooner, larger values wait longer.
           default: 0.3
           selector:
             number:
@@ -585,8 +776,15 @@ blueprint:
           name: Stability Duration
           description: >
             Minutes temperature must remain stable before auto-off triggers.
-            Shorter duration = more aggressive. Longer duration = more conservative.
-            Typical: 15min for efficiency, 25min for comfort.
+            
+            Timing strategies:
+            
+            • 10-15 minutes: Aggressive energy savings
+            • 20-25 minutes: Balanced efficiency and comfort
+            • 25-30 minutes: Conservative, prioritizes comfort
+            
+            
+            Shorter duration saves more energy but may cause temperature fluctuations.
           default: 15
           selector:
             number:
@@ -617,15 +815,29 @@ blueprint:
         enable_scheduling:
           name: Enable Time-Based Scheduling
           description: >
-            Different temperatures for different times of day.
-            When enabled, target temperature will automatically adjust based on time.
+            Automatically adjust temperatures based on time of day.
+            
+            Benefits:
+            
+            • Optimized comfort for different activities
+            • Energy savings during sleeping hours
+            • Cooler mornings, warmer evenings as needed
+            • Separate weekend schedule option
+            
+            
+            Overrides base target temperature when enabled.
           default: false
           selector:
             boolean:
         
         morning_temp:
           name: Morning Temperature (6am-9am)
-          description: Temperature target for morning hours
+          description: >
+            Temperature target for morning hours (6am-9am).
+            
+            • Typically cooler for waking up comfort
+            • Good for productivity during morning routines
+            • Consider personal preferences and climate
           default: 22
           selector:
             number:
@@ -636,7 +848,12 @@ blueprint:
         
         day_temp:
           name: Day Temperature (9am-6pm)
-          description: Temperature target for daytime hours
+          description: >
+            Temperature target for daytime hours (9am-6pm).
+            
+            • Optimize for work/activity comfort
+            • Balance productivity and energy efficiency
+            • Consider sunlight and heat gain during day
           default: 23
           selector:
             number:
@@ -647,7 +864,12 @@ blueprint:
         
         evening_temp:
           name: Evening Temperature (6pm-10pm)
-          description: Temperature target for evening hours
+          description: >
+            Temperature target for evening hours (6pm-10pm).
+            
+            • Relaxation and family time comfort
+            • May prefer slightly warmer for leisure
+            • Accounts for reduced outdoor temperatures
           default: 23
           selector:
             number:
@@ -658,7 +880,12 @@ blueprint:
         
         night_temp:
           name: Night Temperature (10pm-6am)
-          description: Temperature target for sleeping hours
+          description: >
+            Temperature target for sleeping hours (10pm-6am).
+            
+            • Sleep research recommends 18-21°C for best rest
+            • Cooler temperatures promote deeper sleep
+            • Energy savings during extended periods
           default: 24
           selector:
             number:
@@ -669,14 +896,27 @@ blueprint:
         
         enable_weekend_schedule:
           name: Different Weekend Schedule
-          description: Use different temperature schedule on weekends
+          description: >
+            Use different temperature schedule on weekends.
+            
+            • Later wake times with extended morning periods
+            • Different activity patterns and comfort needs
+            • More flexible scheduling for leisure days
+            
+            
+            Weekend morning period: 6am-10am (vs weekday 6am-9am)
           default: false
           selector:
             boolean:
         
         weekend_morning_temp:
           name: Weekend Morning Temperature
-          description: Weekend morning temperature (6am-10am)
+          description: >
+            Weekend morning temperature (6am-10am).
+            
+            • Extended morning period for leisurely weekends
+            • May prefer warmer for relaxed mornings
+            • Adjust based on weekend routines and preferences
           default: 23
           selector:
             number:
@@ -687,7 +927,15 @@ blueprint:
         
         weekend_day_temp:
           name: Weekend Day Temperature
-          description: Weekend daytime temperature (10am-10pm)
+          description: >
+            Weekend daytime temperature (10am-10pm).
+            
+            • Extended day period for weekend activities
+            • Covers both day and evening in one setting
+            • Simplifies weekend scheduling
+            
+            
+            Single temperature for entire active weekend period.
           default: 23
           selector:
             number:
@@ -698,7 +946,15 @@ blueprint:
         
         weekend_night_temp:
           name: Weekend Night Temperature
-          description: Weekend night temperature (10pm-6am)
+          description: >
+            Weekend night temperature (10pm-6am).
+            
+            • Same sleep optimization as weeknight temperature
+            • May differ if weekend bedtime routines vary
+            • Maintains consistent sleep comfort
+            
+            
+            Consider if weekend sleep patterns require different settings.
           default: 24
           selector:
             number:
@@ -717,7 +973,16 @@ blueprint:
           name: Enable Window Detection
           description: >
             Automatically turn off AC when windows or doors are opened.
-            Prevents cooling/heating the outdoors and saves energy.
+            
+            Benefits:
+            
+            • Prevents cooling/heating the outdoors
+            • Significant energy savings
+            • Protects AC equipment from overwork
+            • Automatic resumption when closed
+            
+            
+            Requires binary sensors on doors/windows.
           default: false
           selector:
             boolean:
@@ -726,7 +991,16 @@ blueprint:
           name: Window/Door Sensors
           description: >
             Select sensors that should turn off AC when opened.
-            Works with door, window, and opening binary sensors.
+            
+            Compatible sensors:
+            
+            • Door contact sensors
+            • Window opening sensors
+            • Magnetic reed switches
+            • Smart window/door sensors
+            
+            
+            All selected sensors will trigger AC shutdown when opened.
           default: []
           selector:
             entity:
@@ -737,7 +1011,14 @@ blueprint:
           name: Window Open Delay
           description: >
             Minutes to wait after window opens before turning off AC.
-            Prevents false triggers from brief openings.
+            
+            • Prevents false triggers from brief openings
+            • 0 minutes: Immediate shutdown (most responsive)
+            • 1-2 minutes: Balanced (recommended)
+            • 3+ minutes: Delayed response
+            
+            
+            Brief openings won't unnecessarily stop your AC.
           default: 2
           selector:
             number:
@@ -750,7 +1031,13 @@ blueprint:
           name: Window Close Delay
           description: >
             Minutes to wait after window closes before resuming AC.
-            Ensures window is properly closed before restarting.
+            
+            • Ensures window is properly closed before restarting
+            • Allows time for air exchange to stabilize
+            • Prevents rapid on/off cycling
+            
+            
+            Short delay recommended to confirm sensor stability.
           default: 1
           selector:
             number:
@@ -769,7 +1056,15 @@ blueprint:
           name: Enable Weather Compensation
           description: >
             Adjust indoor target temperature based on outdoor conditions.
-            Helps maintain comfort while saving energy.
+            
+            How it works:
+            
+            • Hot outdoor weather: Slightly raise AC target (less aggressive cooling)
+            • Mild outdoor weather: Use normal targets
+            • Cool outdoor weather: Lower targets for efficiency
+            
+            
+            Maintains comfort while optimizing energy usage based on natural conditions.
           default: false
           selector:
             boolean:
@@ -777,8 +1072,14 @@ blueprint:
         weather_entity:
           name: Weather Entity
           description: >
-            Weather integration for outdoor temperature.
-            Usually weather.home or weather.forecast_home.
+            Weather integration for outdoor temperature data.
+            
+            • Provides base outdoor temperature readings
+            • Usually weather.home or weather.forecast_home
+            • Fallback if no dedicated outdoor sensor available
+            
+            
+            Most users should start with their default weather integration.
           default: weather.home
           selector:
             entity:
@@ -788,7 +1089,13 @@ blueprint:
           name: Outdoor Temperature Sensor (Optional)
           description: >
             External temperature sensor for more accurate readings.
-            If not set, uses weather entity temperature.
+            
+            • More precise than weather service data
+            • Real-time local conditions vs forecast data
+            • Optional: Falls back to weather entity if not set
+            
+            
+            Recommended for users with outdoor temperature sensors.
           default: []
           selector:
             entity:
@@ -799,7 +1106,15 @@ blueprint:
           name: Compensation Factor
           description: >
             How much outdoor temperature affects indoor target (0-1).
-            0 = No effect, 0.2 = Mild adjustment, 1 = Full adjustment.
+            
+            Factor levels:
+            
+            • 0.0: No compensation (disabled)
+            • 0.1-0.2: Mild adjustment (recommended)
+            • 0.3-0.5: Moderate adjustment
+            • 0.6-1.0: Aggressive adjustment
+            
+            
             Example: 0.2 factor with 30°C outside adds ~1°C to cooling target.
           default: 0.2
           selector:
@@ -812,7 +1127,13 @@ blueprint:
           name: Maximum Compensation
           description: >
             Maximum degrees to adjust target temperature.
-            Limits the compensation to prevent extreme adjustments.
+            
+            • Safety limit to prevent extreme adjustments
+            • 1-2°C: Conservative, maintains close to base target
+            • 3-5°C: Aggressive, allows significant weather adaptation
+            
+            
+            Prevents compensation from making indoor temperatures uncomfortable.
           default: 2
           selector:
             number:
@@ -825,7 +1146,14 @@ blueprint:
           name: Compensation Base Temperature
           description: >
             Outdoor temperature considered "neutral" (no compensation).
-            Compensation increases/decreases from this baseline.
+            
+            • Temperature where no adjustment is needed
+            • 25°C: Good baseline for most climates
+            • Above baseline: Targets increase (less aggressive cooling)
+            • Below baseline: Targets decrease (more efficient operation)
+            
+            
+            Adjust based on your local climate and comfort preferences.
           default: 25
           selector:
             number:
@@ -842,7 +1170,15 @@ blueprint:
       input:
         fan_speed_max:
           name: Maximum Fan Speed
-          description: Fan speed for maximum cooling/heating (auto-detects Level 5 vs 5)
+          description: >
+            Fan speed for maximum cooling/heating conditions.
+            
+            • Auto: Let AC system manage fan speed
+            • Level 5/5: Maximum airflow for rapid temperature changes
+            • System auto-detects your AC's fan speed format
+            
+            
+            Used when temperature is far from target or during initial conditioning.
           default: "Level 5"
           selector:
             select:
@@ -867,7 +1203,15 @@ blueprint:
         
         fan_speed_medium:
           name: Medium Fan Speed
-          description: Fan speed for medium cooling/heating (auto-detects Level 3 vs 3)
+          description: >
+            Fan speed for medium cooling/heating conditions.
+            
+            • Balanced airflow for moderate temperature adjustments
+            • Good for maintaining temperatures within comfort zone
+            • System auto-detects your AC's fan speed format
+            
+            
+            Used when temperature is moderately outside target range.
           default: "Level 3"
           selector:
             select:
@@ -892,7 +1236,16 @@ blueprint:
         
         fan_speed_eco:
           name: Eco Fan Speed
-          description: Fan speed for eco mode (comfort zone) (auto-detects Level 1 vs 1)
+          description: >
+            Fan speed for eco mode and comfort zone operation.
+            
+            • Quiet, energy-efficient operation
+            • Used when temperature is within comfort zone
+            • Minimal noise for continuous operation
+            • System auto-detects your AC's fan speed format
+            
+            
+            Balances comfort with energy efficiency and noise levels.
           default: "Level 1"
           selector:
             select:
@@ -917,7 +1270,16 @@ blueprint:
         
         swing_mode_active:
           name: Active Swing Mode
-          description: Swing mode when actively cooling/heating
+          description: >
+            Swing mode when actively cooling/heating.
+            
+            • both: Full directional coverage (recommended)
+            • horizontal: Left-right movement only
+            • vertical: Up-down movement only
+            • off: Fixed direction
+            
+            
+            Better air circulation helps achieve target temperatures faster.
           default: "both"
           selector:
             select:
@@ -945,7 +1307,15 @@ blueprint:
         
         eco_mode_setpoint_offset:
           name: Eco Mode Setpoint Offset
-          description: Degrees to adjust setpoint in eco mode (reduces cycling)
+          description: >
+            Degrees to adjust setpoint in eco mode to reduce cycling.
+            
+            • 0°C: Standard eco mode (maintains exact target)
+            • 1°C: Relaxed eco mode (recommended)
+            • 2-3°C: Very relaxed (maximum efficiency)
+            
+            
+            Higher values reduce compressor cycling and save more energy.
           default: 1
           selector:
             number:
@@ -956,7 +1326,16 @@ blueprint:
         
         min_runtime_minutes:
           name: Minimum Runtime
-          description: Minimum minutes A/C must run before allowing mode change
+          description: >
+            Minimum minutes A/C must run before allowing mode change.
+            
+            • Prevents rapid on/off cycling (protects compressor)
+            • 5-10 minutes: Aggressive efficiency
+            • 15-20 minutes: Balanced approach (recommended)
+            • 25-30 minutes: Conservative, equipment protection
+            
+            
+            Extends compressor lifespan and improves efficiency.
           default: 15
           selector:
             number:
@@ -966,7 +1345,16 @@ blueprint:
         
         min_off_time_minutes:
           name: Minimum Off Time
-          description: Minimum minutes A/C must be off before restarting
+          description: >
+            Minimum minutes A/C must be off before restarting.
+            
+            • Allows compressor pressure to equalize
+            • 3-5 minutes: Minimum for compressor safety
+            • 10 minutes: Recommended balance
+            • 15 minutes: Conservative protection
+            
+            
+            Critical for compressor longevity and energy efficiency.
           default: 10
           selector:
             number:
@@ -976,7 +1364,16 @@ blueprint:
         
         enable_gradual_adjustment:
           name: Enable Gradual Temperature Adjustment
-          description: Gradually adjust temperature instead of immediate changes
+          description: >
+            Gradually adjust temperature instead of immediate changes.
+            
+            • Smoother operation with less temperature overshoot
+            • More comfortable temperature transitions
+            • Better energy efficiency through controlled adjustment
+            • Reduces wear on AC equipment
+            
+            
+            Recommended for most users for optimal comfort and efficiency.
           default: true
           selector:
             boolean:
@@ -992,7 +1389,16 @@ blueprint:
         
         extreme_high_temp:
           name: Extreme High Temperature
-          description: Safety threshold - activate cooling even in Manual mode
+          description: >
+            Safety threshold - activate cooling even in Manual mode.
+            
+            • Emergency override for extremely hot conditions
+            • Protects health and equipment from overheating
+            • Only activates when indoor temperature exceeds threshold
+            • Returns to Manual mode once temperature normalizes
+            
+            
+            Set based on your comfort limits and local climate conditions.
           default: 30
           selector:
             number:
@@ -1003,7 +1409,16 @@ blueprint:
         
         extreme_low_temp:
           name: Extreme Low Temperature
-          description: Safety threshold - activate heating even in Manual mode
+          description: >
+            Safety threshold - activate heating even in Manual mode.
+            
+            • Emergency override for extremely cold conditions
+            • Prevents pipes freezing and health risks
+            • Only activates when indoor temperature falls below threshold
+            • Returns to Manual mode once temperature normalizes
+            
+            
+            Set based on your heating needs and local climate conditions.
           default: 15
           selector:
             number:
@@ -1022,14 +1437,31 @@ blueprint:
           name: Enable Dynamic Adaptation
           description: >
             Automatically escalate/de-escalate cooling/heating power based on effectiveness.
-            System learns and adjusts when current mode isn't reaching target temperature.
+            
+            How it works:
+            
+            • Monitors temperature progress toward target
+            • Increases power when progress stalls
+            • Reduces power when target is approaching
+            • Learns your AC's effectiveness over time
+            
+            
+            Requires helper entities for temperature tracking and analysis.
           default: true
           selector:
             boolean:
         
         effectiveness_check_minutes:
           name: Effectiveness Check Interval
-          description: Minutes to wait before checking if current mode is working
+          description: >
+            Minutes to wait before checking if current mode is working.
+            
+            • 5-10 minutes: Responsive adaptation
+            • 15 minutes: Balanced approach (recommended)
+            • 20-30 minutes: Conservative, gives more time for AC to work
+            
+            
+            Too short may cause excessive mode switching; too long delays optimization.
           default: 10
           selector:
             number:
@@ -1041,7 +1473,15 @@ blueprint:
           name: Temperature Stall Tolerance
           description: >
             Degrees of acceptable temperature drift before escalating power.
-            Lower = more aggressive, Higher = more patient
+            
+            Tolerance levels:
+            
+            • 0.5-1.0°C: Aggressive response (tight control)
+            • 1.0-2.0°C: Balanced approach (recommended)
+            • 2.0-3.0°C: Patient response (allows more drift)
+            
+            
+            Lower values provide tighter control but may increase cycling.
           default: 1.0
           selector:
             number:
@@ -1054,7 +1494,14 @@ blueprint:
           name: De-escalation Approach Threshold
           description: >
             Degrees from target when system can de-escalate power.
-            When within this range and trending correctly, reduce power.
+            
+            • Prevents overshooting target temperature
+            • 1.0-2.0°C: Aggressive de-escalation
+            • 2.0-3.0°C: Balanced approach (recommended)
+            • 3.0-4.0°C: Conservative, maintains power longer
+            
+            
+            Works when temperature is trending correctly toward target.
           default: 2.0
           selector:
             number:
@@ -1067,7 +1514,14 @@ blueprint:
           name: Temperature History Helper (Optional)
           description: >
             Input Number helper to store previous temperature reading.
-            Required for dynamic adaptation. Example: input_number.climate_temp_history_living_room
+            
+            • Tracks temperature changes over time
+            • Required for dynamic adaptation features
+            • Automatically updated by the system
+            • Range: 0-50°C with 0.1°C steps
+            
+            
+            Example: input_number.climate_temp_history_living_room
           default: []
           selector:
             entity:
@@ -1076,8 +1530,15 @@ blueprint:
         helper_trend_direction:
           name: Trend Direction Helper (Optional)
           description: >
-            Input Text helper to track temperature trend (rising/falling/stable).
-            Required for dynamic adaptation. Example: input_text.climate_trend_direction_living_room
+            Input Text helper to track temperature trend direction.
+            
+            • Stores: rising, falling, or stable
+            • Required for dynamic adaptation logic
+            • Automatically updated by the system
+            • Used to determine when to escalate/de-escalate
+            
+            
+            Example: input_text.climate_trend_direction_living_room
           default: []
           selector:
             entity:
@@ -1087,7 +1548,14 @@ blueprint:
           name: Mode Start Time Helper (Optional)
           description: >
             Input DateTime helper to track when current mode started.
-            Required for dynamic adaptation. Example: input_datetime.climate_mode_start_time_living_room
+            
+            • Timestamp when current AC mode began
+            • Required for effectiveness calculations
+            • Used to determine how long to wait before changes
+            • Automatically updated by the system
+            
+            
+            Example: input_datetime.climate_mode_start_time_living_room
           default: []
           selector:
             entity:
@@ -1097,7 +1565,14 @@ blueprint:
           name: Effectiveness Score Helper (Optional)
           description: >
             Input Number helper to track how well current mode is working (0-100%).
-            Required for dynamic adaptation. Example: input_number.climate_effectiveness_score_living_room
+            
+            • 0%: Mode not working (temperature getting worse)
+            • 50%: Mode working slowly
+            • 100%: Mode working effectively
+            • Used to decide escalation/de-escalation
+            
+            
+            Example: input_number.climate_effectiveness_score_living_room
           default: []
           selector:
             entity:
@@ -1107,7 +1582,14 @@ blueprint:
           name: Temperature Stable Since Helper (Optional)
           description: >
             Input DateTime helper to track when temperature became stable.
-            Required for proper stability detection. Example: input_datetime.temp_stable_since_living_room
+            
+            • Timestamp when temperature entered stable range
+            • Required for stability auto-off feature
+            • Used to calculate how long temperature has been stable
+            • Automatically updated by the system
+            
+            
+            Example: input_datetime.temp_stable_since_living_room
           default: []
           selector:
             entity:
@@ -1117,7 +1599,14 @@ blueprint:
           name: Last Transition Helper (Optional)
           description: >
             Input Text helper to track last temperature zone transition.
-            Used for hysteresis to prevent rapid switching. Example: input_text.climate_last_transition_living_room
+            
+            • Stores: to_cooling, to_heating, to_comfort, etc.
+            • Used for hysteresis to prevent rapid switching
+            • Prevents oscillation at temperature boundaries
+            • Automatically updated by the system
+            
+            
+            Example: input_text.climate_last_transition_living_room
           default: []
           selector:
             entity:
@@ -1127,8 +1616,14 @@ blueprint:
           name: Hysteresis Tolerance
           description: >
             Temperature tolerance for preventing rapid switching (±°C).
+            
+            • Prevents oscillation at temperature boundaries
+            • 0.1-0.3°C: Sensitive (may cause more switching)
+            • 0.3-0.5°C: Balanced approach (recommended)
+            • 0.5-1.0°C: Conservative (less switching)
+            
+            
             System won't change modes unless temperature exceeds threshold by this amount.
-            Prevents oscillation at temperature boundaries.
           default: 0.3
           selector:
             number:
@@ -1141,8 +1636,14 @@ blueprint:
           name: Enable Debug Logging
           description: >
             Enable detailed warning-level logs for troubleshooting.
-            View logs in Settings → System → Logs.
-            WARNING: This will create many log entries!
+            
+            • Shows decision-making process and sensor states
+            • Helps diagnose automation issues
+            • View logs in Settings → System → Logs
+            • WARNING: Creates many log entries!
+            
+            
+            Enable only when troubleshooting - disable for normal operation.
           default: false
           selector:
             boolean:
@@ -1151,7 +1652,13 @@ blueprint:
           name: Check Interval
           description: >
             How often to check conditions and evaluate temperature (in minutes).
-            The automation will run exactly at this interval.
+            
+            • 1-3 minutes: Very responsive (more CPU usage)
+            • 5 minutes: Balanced approach (recommended)
+            • 10+ minutes: Conservative (less responsive)
+            
+            
+            Lower intervals provide tighter control but increase system load.
           default: 5
           selector:
             number:
@@ -1169,21 +1676,35 @@ blueprint:
       input:
         enable_notifications:
           name: Enable Notifications
-          description: Send notifications about climate changes
+          description: >
+            Enable push notifications when the climate control system makes changes.
+            
+            Notifications include mode switches, temperature adjustments, and system status updates.
           default: true
           selector:
             boolean:
         
         notification_service:
           name: Notification Service
-          description: Service to use for notifications
+          description: >
+            Primary notification service to send alerts to.
+            
+            Common options: notify.notify, notify.mobile_app_yourphone, notify.pushbullet
           default: notify.notify
           selector:
             text:
         
         additional_notify_services:
           name: Additional Notification Services
-          description: Additional services to notify (e.g., notify.mobile_app_phone)
+          description: >
+            Additional services to notify beyond the primary service.
+            
+            • One service per line
+            • Useful for multiple people or notification methods
+            • Examples: notify.mobile_app_phone2, notify.telegram
+            
+            
+            Leave empty if only one notification service is needed.
           default: []
           selector:
             text:
@@ -1198,21 +1719,36 @@ blueprint:
         enable_adaptive_control:
           name: Enable Adaptive Control Mode
           description: >
-            Automatically switch control modes based on room occupancy:
-            • Room occupied → Switch to Auto/Smart mode after delay
-            • Room vacant → Switch to Manual mode + turn AC off after delay
+            Automatically switches control modes based on room occupancy patterns.
             
-            ⚠️ REQUIRES: Room presence sensors configured in Smart Mode Settings:
-            • PIR/motion sensors, or BLE tracking devices, or occupancy sensors
-            • Last Presence Helper Entity (input_datetime) to track presence timing
-            • Smart Mode must be properly configured for this feature to work
+            How it works:
+            
+            • Room becomes occupied → Switch to Auto/Smart mode after configurable delay
+            • Room becomes vacant → Switch to Manual mode and turn AC off after delay
+            
+            
+            REQUIREMENTS:
+            
+            • Room presence sensors configured in Smart Mode Settings
+            • PIR/motion sensors, BLE tracking devices, or occupancy sensors
+            • Last Presence Helper Entity (input_datetime) to track timing
+            • Smart Mode must be properly configured
+            
+            
+            Use cases: Automatic comfort when you enter, energy savings when you leave.
           default: false
           selector:
             boolean:
         
         adaptive_occupied_delay:
           name: Occupied Delay (minutes)
-          description: Time to wait after detecting presence before switching to Auto/Smart mode
+          description: >
+            How long to wait after detecting room presence before switching from Manual to Auto/Smart mode.
+            
+            • Shorter delays: More responsive but may switch too frequently
+            • Longer delays: Less responsive but avoids unnecessary switching
+            
+            Recommended: 5 minutes for balanced behavior.
           default: 5
           selector:
             number:
@@ -1224,7 +1760,13 @@ blueprint:
         
         adaptive_vacant_delay:
           name: Vacant Delay (minutes)
-          description: Time to wait after room becomes vacant before switching to Manual mode and turning AC off
+          description: >
+            How long to wait after room becomes vacant before switching to Manual mode and turning AC off.
+            
+            • Shorter delays: Better energy savings but may turn off too quickly
+            • Longer delays: More comfort for brief departures but wastes energy
+            
+            Recommended: 15 minutes to handle brief absences without wasting energy.
           default: 15
           selector:
             number:
@@ -1236,7 +1778,13 @@ blueprint:
         
         adaptive_target_mode:
           name: Target Mode When Occupied
-          description: Which mode to switch to when room is occupied
+          description: >
+            Which control mode to activate when room occupancy is detected.
+            
+            • Auto Mode: Standard automatic temperature control
+            • Smart Mode: Advanced occupancy-based control with presence timeout
+            
+            Choose Smart Mode if you want the most intelligent behavior.
           default: "auto"
           selector:
             select:
@@ -1249,9 +1797,23 @@ blueprint:
         adaptive_override_timeout:
           name: Manual Override Timeout (hours)
           description: >
-            How long to respect manual user overrides before resuming adaptive control.
-            Set to 0 to disable override protection (always allow adaptive switching).
-            Recommended: 2 hours for pets/comfort, 8+ hours for energy saving.
+            How long to respect manual user changes before resuming adaptive control.
+            
+            When you manually change climate settings, adaptive control will pause for this duration.
+            
+            • 0 hours: No override protection (always allow adaptive switching)
+            • 1-4 hours: Good for temporary comfort adjustments
+            • 8+ hours: Good for energy-saving periods or when pets are sensitive
+            
+            
+            Common scenarios:
+            
+            • You turn off AC because pets are cold → System waits before turning back on
+            • You manually adjust temperature for comfort → System respects your preference
+            • You turn off AC to save energy → System stays off for the configured time
+            
+            
+            Recommended: 2 hours for most situations.
           default: 2
           selector:
             number:
@@ -1264,9 +1826,18 @@ blueprint:
         adaptive_override_helper:
           name: Override Helper (Optional)
           description: >
-            Optional input_boolean to manually disable adaptive control.
-            Example: input_boolean.climate_adaptive_override_office
-            When ON, adaptive control is disabled until turned OFF.
+            Optional input_boolean helper to manually disable adaptive control.
+            
+            When configured and set to ON, adaptive control will be completely disabled until turned OFF.
+            
+            Example helper names:
+            
+            • input_boolean.climate_adaptive_override_office
+            • input_boolean.ac_manual_override_bedroom  
+            • input_boolean.disable_adaptive_living_room
+            
+            
+            Use this for permanent manual control periods or when you want full override control via dashboard toggles.
           default: ""
           selector:
             entity:
