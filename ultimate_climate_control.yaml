@@ -3884,6 +3884,15 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+          
+          # CRITICAL: Update helper_change to start 3-hour override protection
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown', []] and helper_change is string and helper_change != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_change }}"
+            data:
+              datetime: "{{ now() }}"
               
           # Turn off AC when switching to Manual mode from automation-controlled state
           - service: climate.turn_off
