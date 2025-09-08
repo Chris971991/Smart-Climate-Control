@@ -134,6 +134,22 @@ blueprint:
   source_url: https://github.com/yourusername/ultimate-climate-control
   input:
     # Basic required settings (always visible)
+    room_name:
+      name: Room Name *
+      description: |
+        **Enter the name of this room** for logging and BLE detection.
+        
+        **Used for:**
+        • **Debug logging:** Prefixes all log entries with room name
+        • **BLE triangulation:** Must match sensor output exactly for presence detection
+        • **Multi-room setup:** Helps distinguish between different AC automations
+        
+        **Examples:** "Office", "Living Room", "Master Bedroom"
+        
+        **Important:** If using BLE sensors, check sensor state in Developer Tools for exact string
+      selector:
+        text:
+    
     climate_entities:
       name: Climate Entities *
       description: |
@@ -672,19 +688,7 @@ blueprint:
                 - binary_sensor
                 - sensor
         
-        room_name_for_ble:
-          name: Room Name for BLE Detection (Optional)
-          description: |
-            If using **BLE area sensors**, specify the exact room name that indicates presence.
-
-            • **Must match sensor output exactly** (case-sensitive)
-            • **Common examples:** "Office", "Living Room", "Bedroom"
-            • **Check sensor state** in Developer Tools for exact string
-
-            **Example:** "Office" for `sensor.phone_ble_area` when it reports "Office"
-          default: ""
-          selector:
-            text:
+        # Room name is now configured at the top as a required field
         
         smart_mode_behavior:
           name: Smart Mode Room Absence Behavior
@@ -759,10 +763,14 @@ blueprint:
         stability_behavior:
           name: Stability Auto-Off Action  
           description: |
-            What to do when temperature stability is detected:
-
-            • OFF: Turn off completely (maximum energy savings)
-            • ECO: Switch to eco mode (moderate energy savings, maintains some comfort)
+            **Triggered when temperature becomes STABLE** (±1°C for 15+ minutes):
+            
+            **Purpose:** Recognizes AC achieved its goal and temperature isn't changing
+            
+            • **OFF:** Turn off completely (maximum energy savings)
+            • **ECO:** Switch to eco mode (moderate energy savings, maintains some comfort)
+            
+            **Different from Eco Mode:** This responds to temperature **stability**, not comfort zone
           default: "off"
           selector:
             select:
@@ -1244,10 +1252,16 @@ blueprint:
         enable_eco_mode:
           name: Enable Eco Mode
           description: |
-            **When temperature is in comfort zone:**
-
+            **Triggered when temperature is in COMFORT ZONE** (21-23°C range):
+            
+            **Purpose:** Maintain temperature efficiently when already comfortable
+            
             • **ON** = Eco mode (low power, maintains temp, uses ~150-250W)
             • **OFF** = Turn off completely (zero power, allows drift, saves more energy)
+            
+            **Different from Stability:** This responds to being in **comfort zone**, not temperature stability
+            
+            **Recommended:** Use Stability: OFF + Eco Mode: ON for maximum efficiency
           default: false
           selector:
             boolean:
@@ -1833,7 +1847,8 @@ variables:
   presence_timeout: !input presence_timeout_minutes
   home_zone_distance: !input home_zone_distance
   room_sensors: !input room_presence_sensors
-  room_ble_name: !input room_name_for_ble
+  room_name: !input room_name
+  room_ble_name: !input room_name
   smart_behavior: !input smart_mode_behavior
   temp_stability_enabled: !input temp_stability_enabled
   stability_tolerance: !input stability_tolerance
@@ -2002,12 +2017,12 @@ action:
       - service: system_log.write
         data:
           message: >
-            🏠 Climate System Activated
+            🏠 {{ room_name | upper }} CLIMATE CONTROL ACTIVATED
             {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
             
             📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
           level: warning
-          logger: blueprints.climate_control
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
   - variables:
       current_temp: >
@@ -2522,7 +2537,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            📊 Climate System Status
+            📊 {{ room_name | upper }} CLIMATE CONTROL STATUS
             
             🌡️ Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
             🏠 People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
@@ -2539,7 +2554,7 @@ action:
             • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
             {% if dynamic_enabled %}• Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3{% endif %}
           level: warning
-          logger: blueprints.climate_control
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
   # Update temperature history and trend tracking
   - condition: template
@@ -2598,9 +2613,9 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C"
+              message: "🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C"
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -2703,7 +2718,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_max_fan in available_fans else 'Best equivalent for maximum cooling' }}
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -2738,7 +2753,7 @@ action:
                 • Was in mode: {{ last_mode }}
                 • Clearing stability mode to allow normal operation
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Don't set to "off" - set directly to cooling/heating to bypass checks
           - service: input_text.set_value
@@ -2826,7 +2841,7 @@ action:
                               • Selected: {{ selected_hvac_mode }}
                               • Reason: Best cooling mode for this AC unit
                             level: debug
-                            logger: blueprints.climate_control
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                   
                   - service: climate.set_temperature
                     target:
@@ -2885,7 +2900,7 @@ action:
                         • Target: {{ cooling_target_temp }}°C
                         • Mode: {{ 'High' if current_temp >= cooling_high_temp else 'Medium' }}
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
               
               # Need heating
               - conditions:
@@ -2935,7 +2950,7 @@ action:
                               • Selected: {{ selected_hvac_mode }}
                               • Reason: Best heating mode for this AC unit
                             level: debug
-                            logger: blueprints.climate_control
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                   
                   - service: climate.set_temperature
                     target:
@@ -2994,7 +3009,7 @@ action:
                         • Target: {{ heating_target_temp }}°C
                         • Mode: {{ 'High' if current_temp <= heating_low_temp else 'Medium' }}
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # Pre-conditioning when approaching
       - conditions:
@@ -3017,7 +3032,7 @@ action:
                 {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
                 Temperature: {{ current_temp }}°C needs adjustment
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -3046,7 +3061,7 @@ action:
                 Reason: Pre-conditioning target temperature (approaching home)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: climate.set_fan_mode
             target:
@@ -3094,9 +3109,9 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🌡️ MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_medium_temp }}°C (medium threshold)"
+              message: "🌡️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_medium_temp }}°C (medium threshold)"
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -3141,7 +3156,7 @@ action:
                       • Selected: {{ selected_hvac_mode }}
                       • Reason: Medium cooling mode for balanced temperature control
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: climate.set_temperature
             target:
@@ -3209,7 +3224,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_medium_fan in available_fans else 'Best equivalent for medium cooling' }}
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -3252,7 +3267,7 @@ action:
                 Room Presence: {{ room_presence_detected }}
                 Approaching Home: {{ approaching_home }}
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - choose:
               - conditions:
                   - condition: template
@@ -3298,7 +3313,7 @@ action:
                         Reason: Maintaining target temperature within comfort zone
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                   
                   # Set auto fan mode for maximum efficiency in comfort zone
                   - repeat:
@@ -3391,7 +3406,7 @@ action:
                   
                   - service: !input notification_service
                     data:
-                      title: "Climate Control"
+                      title: "{{ room_name }} Climate Control"
                       message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
             
             default:
@@ -3422,7 +3437,7 @@ action:
               
               - service: !input notification_service
                 data:
-                  title: "Climate Control"
+                  title: "{{ room_name }} Climate Control"
                   message: "Turned off - Comfort zone ({{ current_temp }}°C)"
 
       # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached)
@@ -3449,7 +3464,7 @@ action:
                 
                 📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - choose:
               - conditions:
@@ -3469,7 +3484,7 @@ action:
                         Reason: Temperature equilibrium reached - AC job complete
                         Stable at: {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
               
               - conditions:
                   - condition: template
@@ -3539,7 +3554,7 @@ action:
                         Reason: Temperature stability eco mode (gentle maintenance after equilibrium)
                         Current: {{ current_temp | round(1) }}°C → Stable for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -3560,7 +3575,7 @@ action:
             value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
           - service: "{{ notification_service }}"
             data:
-              title: "Climate Control"
+              title: "{{ room_name }} Climate Control"
               message: "Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode | round(0) }}min, {{ current_temp }}°C)"
 
       
@@ -3609,7 +3624,7 @@ action:
                 • Time Since Last Presence: {{ presence_time | round(1) }} min
                 {% endif %}
               level: debug
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Main condition evaluation and action logic
           - condition: or
@@ -3672,7 +3687,7 @@ action:
                       {% endif %}
                       • Action: Switching control mode helper to {{ adaptive_target_mode | title }}
                     level: info
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
                 - service: input_select.select_option
                   target:
@@ -3687,13 +3702,13 @@ action:
                   data:
                     message: "✅ Adaptive Control: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
                 - service: "{{ notification_service }}"
                   data:
-                    title: "Adaptive Climate Control"
+                    title: "{{ room_name }} Adaptive Climate Control"
                     message: "Room occupied - switched to {{ adaptive_target_mode | title }} mode"
             
             # Handle vacant room - switch to Manual mode and turn AC off
@@ -3718,7 +3733,7 @@ action:
                       {% endif %}
                       • Actions: 1) Switch to Manual mode 2) Turn off {{ climate_list | length }} climate entities
                     level: info
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
                 - service: input_select.select_option
                   target:
@@ -3736,7 +3751,7 @@ action:
                         data:
                           message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ loop.index }}/{{ climate_list | length }})"
                           level: debug
-                          logger: blueprints.climate_control
+                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                       
                       - service: climate.turn_off
                         target:
@@ -3765,13 +3780,13 @@ action:
                   data:
                     message: "✅ Adaptive Control: VACANT actions completed - mode set to Manual, all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
                 - service: "{{ notification_service }}"
                   data:
-                    title: "Adaptive Climate Control"
+                    title: "{{ room_name }} Adaptive Climate Control"
                     message: "Room vacant - switched to Manual mode and turned AC off"
 
       # Adaptive Control Debug - Log when enabled but conditions not met
@@ -3833,7 +3848,7 @@ action:
                 • No valid presence timestamp available from helper: {{ presence_detected_helper }}
                 {% endif %}
               level: debug
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # Manual Mode - Immediately clear automation states when detected
       - conditions:
@@ -3853,7 +3868,7 @@ action:
                 
                 📋 Technical: Manual mode = instant automation disable
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
           - service: input_text.set_value
             target:
@@ -3899,7 +3914,7 @@ action:
                 
                 📋 Technical: {{ time_since_change | round(1) }}min since last change
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - choose:
               - conditions:
@@ -3964,7 +3979,7 @@ action:
                         Reason: {{ 'Eco cooling (comfort max +' + eco_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
               
               - conditions:
                   - condition: template
@@ -3985,7 +4000,7 @@ action:
                         Reason: Smart mode maintain current temperature (room empty but still home)
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -4007,7 +4022,7 @@ action:
           
           - service: !input notification_service
             data:
-              title: "Climate Control"
+              title: "{{ room_name }} Climate Control"
               message: "Smart Mode: {{ smart_behavior }} (room empty {{ minutes_since_presence | round(0) }}min, {{ current_temp }}°C)"
 
       # Away mode (Global - nobody home)
@@ -4029,7 +4044,7 @@ action:
                 Nobody home detected
                 Time since last change: {{ time_since_change | round(1) }} min
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - choose:
               - conditions:
@@ -4092,7 +4107,7 @@ action:
                         Reason: {{ 'Eco cooling (target +' + eco_mode_setpoint_offset|string + '°C offset)' if current_temp > comfort_max_temp else 'Eco heating (target -' + eco_mode_setpoint_offset|string + '°C offset)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: blueprints.climate_control
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                   
                   # Set auto fan mode for efficient away eco mode
                   - repeat:
@@ -4157,7 +4172,7 @@ action:
                 • time_since_change: {{ time_since_change }} > runtime_min: {{ runtime_min }}
                 • last_mode: {{ last_mode }}
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -4168,7 +4183,7 @@ action:
                 Target: {{ cooling_target_temp }}°C
                 Fan: Maximum
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set HVAC mode with auto preference and fallback
           - repeat:
@@ -4218,7 +4233,7 @@ action:
                 Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Update hysteresis tracking - we're now cooling
           - condition: template
@@ -4319,7 +4334,7 @@ action:
           
           - service: !input notification_service
             data:
-              title: "Climate Control"
+              title: "{{ room_name }} Climate Control"
               message: "High cooling mode - {{ current_temp }}°C"
       
       # Medium cooling mode
@@ -4349,7 +4364,7 @@ action:
                 Approaching Home: {{ approaching_home }}
                 Extreme High Threshold: {{ extreme_high }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set HVAC mode to auto for efficient medium cooling
           - repeat:
@@ -4393,7 +4408,7 @@ action:
                 Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set auto/medium fan mode for efficient cooling
           - repeat:
@@ -4496,7 +4511,7 @@ action:
                 Target: {{ heating_target_temp }}°C
                 Fan: Maximum
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: climate.set_hvac_mode
             target:
@@ -4526,7 +4541,7 @@ action:
                 Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set max fan mode with compatibility check
           - repeat:
@@ -4618,7 +4633,7 @@ action:
           
           - service: !input notification_service
             data:
-              title: "Climate Control"
+              title: "{{ room_name }} Climate Control"
               message: "High heating mode - {{ current_temp }}°C"
       
       # Medium heating mode
@@ -4640,7 +4655,7 @@ action:
                 Target: {{ heating_target_temp }}°C
                 Fan: Auto/Medium (efficient)
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set HVAC mode to auto for efficient medium heating
           - repeat:
@@ -4679,7 +4694,7 @@ action:
                 Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set auto/medium fan mode for efficient heating
           - repeat:
@@ -4785,7 +4800,7 @@ action:
                 {% endif %}
                 Power Level: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Force maximum cooling/heating mode
           - repeat:
@@ -4833,7 +4848,7 @@ action:
                 Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
               level: warning
-              logger: blueprints.climate_control
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set graduated fan speed based on escalation level
           - repeat:
@@ -4948,7 +4963,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Power: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
                     level: debug
-                    logger: blueprints.climate_control
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -5013,6 +5028,6 @@ action:
             
             📋 Technical: {{ current_temp }}°C, {{ 'someone home' if anyone_home else 'nobody home' }}, {{ last_mode }} mode
           level: warning
-          logger: blueprints.climate_control
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
 mode: restart
