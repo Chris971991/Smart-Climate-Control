@@ -2454,13 +2454,17 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 DEBUG: Checking stability reset conditions
-        • last_mode value: "{{ last_mode }}"
-        • last_mode in list: {{ last_mode in ['stability_off', 'stability_eco'] }}
-        • temp check: {{ current_temp < comfort_min_temp or current_temp > comfort_max_temp }}
+        🔍 DEBUG: Checking conditions
+        • last_mode: "{{ last_mode }}"
+        • should_activate: {{ should_activate }}
+        • control_mode: {{ control_mode }}
+        • smart_presence_active: {{ smart_presence_active }}
+        • anyone_home: {{ anyone_home }}
+        • room_presence_detected: {{ room_presence_detected }}
+        • extreme_temp_detected: {{ extreme_temp_detected }}
         • current_temp: {{ current_temp }}°C
-        • comfort_min: {{ comfort_min_temp }}°C
-        • comfort_max: {{ comfort_max_temp }}°C
+        • cooling_high_temp: {{ cooling_high_temp }}°C
+        • cooling_medium_temp: {{ cooling_medium_temp }}°C
       level: warning
       logger: blueprints.climate_control
 
