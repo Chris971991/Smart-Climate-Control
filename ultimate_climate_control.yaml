@@ -2710,6 +2710,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
       
       # CRITICAL: Clear stability mode when temperature exits comfort zone
       # This MUST be the FIRST condition to prevent getting stuck
@@ -2744,6 +2753,15 @@ action:
                 {% else %}
                   off
                 {% endif %}
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
           
           # Clear the stability timestamp to reset the feature
           # Don't use 1970 as it causes calculation issues - use current time instead
@@ -2850,6 +2868,15 @@ action:
                     data:
                       value: "cooling"
                   
+                  # Update mode start time for effectiveness tracking
+                  - condition: template
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: "{{ helper_mode_time }}"
+                    data:
+                      datetime: "{{ now() }}"
+                  
                   - service: system_log.write
                     data:
                       message: >
@@ -2949,6 +2976,15 @@ action:
                       entity_id: !input helper_last_mode
                     data:
                       value: "heating"
+                  
+                  # Update mode start time for effectiveness tracking
+                  - condition: template
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: "{{ helper_mode_time }}"
+                    data:
+                      datetime: "{{ now() }}"
                   
                   - service: system_log.write
                     data:
@@ -3180,6 +3216,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
       
       # Comfort zone - Eco mode or OFF mode (Power Saving)
       # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
@@ -3332,6 +3377,15 @@ action:
                     data:
                       value: "eco"
                   
+                  # Update mode start time for effectiveness tracking
+                  - condition: template
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: "{{ helper_mode_time }}"
+                    data:
+                      datetime: "{{ now() }}"
+                  
                   - condition: template
                     value_template: "{{ enable_notifications }}"
                   
@@ -3353,6 +3407,15 @@ action:
                   entity_id: !input helper_last_mode
                 data:
                   value: "off"
+              
+              # Update mode start time for effectiveness tracking
+              - condition: template
+                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_mode_time }}"
+                data:
+                  datetime: "{{ now() }}"
               
               - condition: template
                 value_template: "{{ enable_notifications }}"
@@ -3483,6 +3546,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "stability_{{ stability_behavior }}"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
           
           - condition: template
             value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -3677,6 +3749,15 @@ action:
                   data:
                     value: "adaptive_off"
                 
+                # Update mode start time for effectiveness tracking
+                - condition: template
+                  value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                - service: input_datetime.set_datetime
+                  target:
+                    entity_id: "{{ helper_mode_time }}"
+                  data:
+                    datetime: "{{ now() }}"
+                
                 # Debug completion log
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -3779,6 +3860,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "manual"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
               
           # Turn off AC when switching to Manual mode from automation-controlled state
           - service: climate.turn_off
@@ -3902,6 +3992,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "smart_{{ smart_behavior }}"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -4206,6 +4305,15 @@ action:
             data:
               value: "cooling"
           
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
+          
           - condition: template
             value_template: "{{ enable_notifications }}"
           
@@ -4359,6 +4467,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
       
       # Low heating mode
       - conditions:
@@ -4486,6 +4603,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -4627,6 +4753,15 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
       
 
       # FALLBACK: Dynamic Escalation - Only if no normal modes triggered
@@ -4825,6 +4960,15 @@ action:
                 {% else %}
                   heating_escalated  
                 {% endif %}
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
 
   # Adaptive Control Status Debug Log  
   - service: system_log.write
