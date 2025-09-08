@@ -2448,6 +2448,22 @@ action:
     data:
       value: "{{ calculated_trend }}"
 
+  # Debug: Log the actual last_mode value to see what's happening
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 DEBUG: Checking stability reset conditions
+        • last_mode value: "{{ last_mode }}"
+        • last_mode in list: {{ last_mode in ['stability_off', 'stability_eco'] }}
+        • temp check: {{ current_temp < comfort_min_temp or current_temp > comfort_max_temp }}
+        • current_temp: {{ current_temp }}°C
+        • comfort_min: {{ comfort_min_temp }}°C
+        • comfort_max: {{ comfort_max_temp }}°C
+      level: warning
+      logger: blueprints.climate_control
+
   - choose:
       # CRITICAL: Clear stability mode when temperature exits comfort zone
       # This MUST be the FIRST condition to prevent getting stuck
@@ -2457,8 +2473,7 @@ action:
           - condition: template
             value_template: "{{ current_temp < comfort_min_temp or current_temp > comfort_max_temp }}"
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
+          # Always log this critical reset
           - service: system_log.write
             data:
               message: >
