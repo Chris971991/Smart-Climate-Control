@@ -624,6 +624,7 @@ blueprint:
           name: Away Mode Action
           description: >
             What to do when everyone leaves home:
+            
             • OFF: Turn AC completely off (saves most energy, slow to cool when returning)
             • ECO: Reduce to eco mode with wider temperature range (balanced energy savings)
             • MAINTAIN: Keep current temperature (wastes energy but fastest comfort when returning)
@@ -755,9 +756,12 @@ blueprint:
           name: Smart Mode Room Absence Behavior
           description: >
             What to do when room presence sensors detect absence (after timeout):
+            
             • ECO: Reduce to eco mode (saves power, maintains some comfort)
-            • MAINTAIN: Keep current temperature (comfort over efficiency)  
+            • MAINTAIN: Keep current temperature (comfort over efficiency)
             • OFF: Turn off completely (maximum power savings)
+            
+            
             Only applies when still home but room is empty.
           default: "eco"
           selector:
@@ -823,6 +827,7 @@ blueprint:
           name: Stability Auto-Off Action  
           description: >
             What to do when temperature stability is detected:
+            
             • OFF: Turn off completely (maximum energy savings)
             • ECO: Switch to eco mode (moderate energy savings, maintains some comfort)
           default: "off"
