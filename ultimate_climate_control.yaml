@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.3.1
+  name: Ultimate Smart Climate Control - v2.3.2
 
   description: |
-    **Ultimate Smart Climate Control v2.3.1**
+    **Ultimate Smart Climate Control v2.3.2**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2509,7 +2509,24 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              fan_mode: !input fan_speed_max
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_max_fan = fan_speed_max %}
+                {% if desired_max_fan in available_fans %}
+                  {{ desired_max_fan }}
+                {% elif 'Level 5' in available_fans %}
+                  Level 5
+                {% elif '5' in available_fans %}
+                  5
+                {% elif 'high' in available_fans %}
+                  high
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[-1] if available_fans else 'Auto' }}
+                {% endif %}
           
           - service: input_text.set_value
             target:
