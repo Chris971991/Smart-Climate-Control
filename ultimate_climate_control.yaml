@@ -2493,11 +2493,26 @@ action:
               level: warning
               logger: blueprints.climate_control
           
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: cool
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: >
+                      {% if 'cool' in available_modes %}
+                        cool
+                      {% elif 'auto' in available_modes %}
+                        auto
+                      {% elif 'heat_cool' in available_modes %}
+                        heat_cool
+                      {% else %}
+                        {{ available_modes[0] if available_modes else 'off' }}
+                      {% endif %}
           
           - service: climate.set_temperature
             target:
