@@ -2482,6 +2482,56 @@ action:
       logger: blueprints.climate_control
 
   - choose:
+      # FIX: Handle broken 1970 timestamp when temperature is critical
+      - conditions:
+          - condition: template
+            value_template: >
+              {% if helper_temp_stable_since %}
+                {% set stable_since = states(helper_temp_stable_since) %}
+                {% set stable_timestamp = as_timestamp(stable_since) | float(0) %}
+                {{ stable_timestamp < 86400 and current_temp > comfort_max_temp }}
+              {% else %}
+                false
+              {% endif %}
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🔧 Fixing broken 1970 timestamp and activating cooling"
+              level: warning
+              logger: blueprints.climate_control
+          
+          # Fix the timestamp
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_temp_stable_since }}"
+            data:
+              datetime: "{{ now() }}"
+          
+          # Turn on cooling immediately
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: cool
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ cooling_target_temp }}"
+          
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: !input fan_speed_max
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling"
+      
       # CRITICAL: Clear stability mode when temperature exits comfort zone
       # This MUST be the FIRST condition to prevent getting stuck
       - conditions:
