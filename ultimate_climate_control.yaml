@@ -1,152 +1,109 @@
 blueprint:
   name: Ultimate Smart Climate Control - v2.3.1
 
-  description: >-
-    📌 Version: 2.3.1
-    
-    
-    🌡️ INTELLIGENT CLIMATE CONTROL: 
-    
-    Power-efficient operation, proximity-based 
-    pre-conditioning, and presence detection. Control multiple A/C units with full 
-    customization of temperatures, distances, and operating modes.
-    
-    💡 POWER SAVING MODE:
-    
-    Configured to turn OFF in comfort zone (saves 40-60% energy)
-    with wider temperature tolerance (±2°C) and extended cycling protection.
-    
-    🔄 UNIVERSAL COMPATIBILITY:
-    
-    Auto-detects and adapts to different A/C models:
+  description: |
+    **Ultimate Smart Climate Control v2.3.1**
 
-    • HVAC modes: auto ↔ heat_cool, supports all Daikin variants
-    • Fan speeds: Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence  
-    • Swing modes: Both ↔ both, Vertical ↔ vertical, 3D ↔ both
-    
-    🏠 SMART MODE PRESENCE:
-    
-    Room-specific climate control based on occupancy:
+    🌡️ **INTELLIGENT CLIMATE CONTROL**
 
-    • Room occupied: Normal temperature control
-    • Room empty (timeout): Configurable eco/off/maintain behavior  
-    • Away from house: Global away mode (separate setting)
-    
-    ✨ NEW IN v2.1:
+    Advanced power-efficient climate automation with **proximity-based pre-conditioning** and **intelligent presence detection**. Control multiple A/C units with full customization of temperatures, distances, and operating modes.
 
-    • Time-Based Scheduling - Different temperatures for different times (optional)
+    **POWER SAVING FEATURES:**
 
-    • Window Detection - Auto-off when windows open (optional)
+    • **Energy Optimization:** Configured to turn OFF in comfort zone (saves 40-60% energy)
+    • **Smart Tolerance:** Wider temperature tolerance (±2°C) with extended cycling protection
+    • **Eco Mode:** Reduces energy use by 30-40% vs traditional on/off cycling
 
-    • Weather Compensation - Adjust based on outdoor temperature (optional)
+    **UNIVERSAL COMPATIBILITY:**
 
-    • Hysteresis Logic - Prevents rapid on/off cycling
+    **Auto-detects and adapts** to different A/C models:
 
-    • Fixed stability timer and check interval bugs
-    
-    ✨ NEW IN v2.2:
-    • Adaptive Control Mode - Auto-switch modes based on room occupancy (optional)
-    
-    ✨ NEW IN v2.3:
-    • Manual Override Protection - Respects user manual changes for configurable time
-    
-    
-    🧠 CONTROL MODES EXPLAINED:
-    
-    • AUTO MODE: 
-    
-      Full automation with occupancy detection and presence-based control. 
-        System automatically adjusts temperature when you're home or away.
-    
-    • MANUAL MODE:
-    
-      Full manual control with no automation. 
-        You control temperature, fan speed, and on/off manually.
-    
-    • SMART MODE: 
-    
-    Aggressive presence detection and advanced occupancy sensing. 
+    • **HVAC modes:** auto ↔ heat_cool, supports all Daikin variants
+    • **Fan speeds:** Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence
+    • **Swing modes:** Both ↔ both, Vertical ↔ vertical, 3D ↔ both
 
-      Uses motion sensors, door sensors, phone presence, and predictive algorithms 
+    **SMART MODE PRESENCE:**
+
+    **Room-specific climate control** based on occupancy:
+
+    • **Room occupied:** Normal temperature control
+    • **Room empty (timeout):** Configurable eco/off/maintain behavior
+    • **Away from house:** Global away mode (separate setting)
+
+    **VERSION UPDATES:**
+
+    **v2.3 Features:**
+    • **Manual Override Protection** - Respects user manual changes for configurable time
+    • **Enhanced stability** and improved logic flow
+
+    **v2.2 Features:**
+    • **Adaptive Control Mode** - Auto-switch modes based on room occupancy (optional)
+
+    **v2.1 Features:**
+    • **Time-Based Scheduling** - Different temperatures for different times (optional)
+    • **Window Detection** - Auto-off when windows open (optional)
+    • **Weather Compensation** - Adjust based on outdoor temperature (optional)
+    • **Hysteresis Logic** - Prevents rapid on/off cycling
+
+    **CONTROL MODES:**
+
+    • **AUTO MODE:**
+      Full automation with occupancy detection and presence-based control.
+      System automatically adjusts temperature when you're home or away.
+
+    • **MANUAL MODE:**
+      Full manual control with no automation.
+      You control temperature, fan speed, and on/off manually.
+
+    • **SMART MODE:**
+      Aggressive presence detection and advanced occupancy sensing.
+      Uses motion sensors, door sensors, phone presence, and predictive algorithms
       to optimize temperature before occupancy and maintain comfort during use.
-
-      🌡️ NEW: Temperature Stability Auto-Off - automatically turns off AC when 
+      
+      **NEW:** Temperature Stability Auto-Off - automatically turns off AC when
       temperature equilibrium is reached (configurable tolerance & duration).
-    
-    
-    ⚡ KEY FEATURES:
-    
-    • Smart Mode Control - Auto/Manual/Smart modes with presence timeout
-    
-    • Room-Specific Presence - BLE/PIR sensors for accurate occupancy
-    
-    • Proximity Zones - Different behaviors based on distance from home
-    
-    • Eco Mode - Reduces energy use by 30-40% vs on/off cycling
-    
-    • Smart Pre-conditioning - Activates when approaching home
-    
-    • Multi-Zone Support - Control 1 or many A/C units
-    
-    • Gradual Adjustments - Prevents aggressive cycling
-    
-    • Runtime Protection - Extends equipment life
-    
-    
-    ⚠️ REQUIRED SETUP - Create unique helpers for EACH room/automation:
-    
-    
-    1️⃣ Input Text Helper (unique per room):
-    
-    • Living Room: input_text.climate_last_mode_living_room
-    
-    • Bedroom: input_text.climate_last_mode_bedroom
-    
-    • Office: input_text.climate_last_mode_office
-    
-    • Icon: mdi:air-conditioner
-    
-    
-    2️⃣ Input DateTime Helper (unique per room):
-    
-    • Living Room: input_datetime.climate_last_change_living_room
-    
-    • Bedroom: input_datetime.climate_last_change_bedroom  
-    
-    • Office: input_datetime.climate_last_change_office
-    
-    • Has date: ✅ Yes
-    
-    • Has time: ✅ Yes
-    
-    • Icon: mdi:clock-outline
-    
-    
-    🧠 SMART MODE HELPERS (for advanced control):
-    
-    • input_select.climate_control_mode_[room] (Auto/Manual/Smart modes)
-    
-    • input_datetime.presence_last_detected_[room] (presence timeout tracking)
-    
-    • input_boolean.climate_proximity_override_[room] (emergency override)
-    
-    
-    🧠 DYNAMIC ADAPTATION HELPERS (for smart escalation):
-    
-    • input_number.climate_temp_history_[room] (temperature tracking)
-    
-    • input_text.climate_trend_direction_[room] (rising/falling/stable)
-    
-    • input_datetime.climate_mode_start_time_[room] (when current mode started)
-    
-    • input_number.climate_effectiveness_score_[room] (0-100, how well it's working)
-    
-    
-    🔧 STABILITY & HYSTERESIS HELPERS (for v2.1+ features):
-    
-    • input_datetime.temp_stable_since_[room] (tracks when temp became stable)
-    
-    • input_text.climate_last_transition_[room] (for hysteresis tracking)
+
+    **KEY FEATURES:**
+
+    • **Smart Mode Control** - Auto/Manual/Smart modes with presence timeout
+    • **Room-Specific Presence** - BLE/PIR sensors for accurate occupancy
+    • **Proximity Zones** - Different behaviors based on distance from home
+    • **Eco Mode** - Reduces energy use by 30-40% vs on/off cycling
+    • **Smart Pre-conditioning** - Activates when approaching home
+    • **Multi-Zone Support** - Control 1 or many A/C units
+    • **Gradual Adjustments** - Prevents aggressive cycling
+    • **Runtime Protection** - Extends equipment life
+
+    **REQUIRED SETUP** - Create unique helpers for EACH room/automation:
+
+    **1. Input Text Helper** (unique per room):
+    • Living Room: `input_text.climate_last_mode_living_room`
+    • Bedroom: `input_text.climate_last_mode_bedroom`
+    • Office: `input_text.climate_last_mode_office`
+    • Icon: `mdi:air-conditioner`
+
+    **2. Input DateTime Helper** (unique per room):
+    • Living Room: `input_datetime.climate_last_change_living_room`
+    • Bedroom: `input_datetime.climate_last_change_bedroom`
+    • Office: `input_datetime.climate_last_change_office`
+    • Has date: **Yes** ✅
+    • Has time: **Yes** ✅
+    • Icon: `mdi:clock-outline`
+
+    **OPTIONAL: SMART MODE HELPERS** (for advanced control):
+    • `input_select.climate_control_mode_[room]` (Auto/Manual/Smart modes)
+    • `input_datetime.presence_last_detected_[room]` (presence timeout tracking)
+    • `input_boolean.climate_proximity_override_[room]` (emergency override)
+
+    **OPTIONAL: DYNAMIC ADAPTATION HELPERS** (for smart escalation):
+    • `input_number.climate_temp_history_[room]` (temperature tracking)
+    • `input_text.climate_trend_direction_[room]` (rising/falling/stable)
+    • `input_datetime.climate_mode_start_time_[room]` (when current mode started)
+    • `input_number.climate_effectiveness_score_[room]` (0-100, how well it's working)
+
+    **OPTIONAL: STABILITY & HYSTERESIS HELPERS** (for v2.1+ features):
+    • `input_datetime.temp_stable_since_[room]` (tracks when temp became stable)
+    • `input_text.climate_last_transition_[room]` (for hysteresis tracking)
     
     
     📍 Create via: Settings → Devices & Services → Helpers → Create Helper
@@ -168,13 +125,11 @@ blueprint:
     • sensor.home_nearest_direction_of_travel (towards/away/stationary/arrived)
     
     
-    📊 Optional Energy Tracking:
+    **OPTIONAL: Energy Tracking Helpers:**
     
-    • input_number.climate_power_saving_score (efficiency %)
-    
-    • sensor.climate_runtime_today (daily runtime tracking)
-    
-    • sensor.climate_efficiency_rating (efficiency score)
+    • `input_number.climate_power_saving_score` (efficiency %)
+    • `sensor.climate_runtime_today` (daily runtime tracking)
+    • `sensor.climate_efficiency_rating` (efficiency score)
   domain: automation
   source_url: https://github.com/yourusername/ultimate-climate-control
   input:
