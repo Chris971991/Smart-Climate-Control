@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.6
+  name: Ultimate Smart Climate Control - v2.6.7
 
   description: |
-    **Ultimate Smart Climate Control v2.6.6**
+    **Ultimate Smart Climate Control v2.6.7**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -1894,6 +1894,16 @@ variables:
   helper_mode_time: !input helper_mode_start_time
   helper_effectiveness: !input helper_effectiveness_score
   last_mode: "{{ states(helper_mode) | default('off') }}"
+  # Check actual AC state, not just internal tracking
+  actual_ac_state: >
+    {% set ac_states = namespace(all_off=true) %}
+    {% for entity in climate_list %}
+      {% set hvac_mode = states(entity) %}
+      {% if hvac_mode not in ['off', 'Off', 'unavailable', 'unknown'] %}
+        {% set ac_states.all_off = false %}
+      {% endif %}
+    {% endfor %}
+    {{ 'off' if ac_states.all_off else 'on' }}
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
@@ -2787,7 +2797,8 @@ action:
     data:
       message: >
         🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
-        • last_mode: "{{ last_mode }}"
+        • last_mode (internal): "{{ last_mode }}"
+        • actual_ac_state: "{{ actual_ac_state }}"
         • should_activate: {{ should_activate }}
         • current_temp: {{ current_temp }}°C
         • cooling_high: {{ cooling_high_temp }}°C
@@ -2808,7 +2819,8 @@ action:
         • runtime_min: {{ runtime_min }}min
         • time_check: {{ time_since_change > runtime_min }}
         • mode_check: {{ last_mode != 'cooling' }}
-        • ALL cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
+        • actual_ac_off: {{ actual_ac_state == 'off' }}
+        • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -2816,7 +2828,7 @@ action:
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
-            value_template: "{{ current_temp >= cooling_high_temp and should_activate and last_mode == 'off' }}"
+            value_template: "{{ current_temp >= cooling_high_temp and should_activate and actual_ac_state == 'off' }}"
         sequence:
           - service: system_log.write
             data:
