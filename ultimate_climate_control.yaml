@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.5
+  name: Ultimate Smart Climate Control - v2.7.6
 
   description: |
-    **Ultimate Smart Climate Control v2.7.5**
+    **Ultimate Smart Climate Control v2.7.6**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,66 +32,18 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.7.6 Features:**
+    • **Cleaned Up Description** - Removed excessive version history, added GitHub link for full changelog
+    
     **v2.7.5 Features:**
     • **Fixed Duplicate Sequence Keys** - Removed duplicate sequence block causing YAML parser warnings
     
-    **v2.7.4 Features:**
-    • **Fixed Critical YAML Structure** - Added missing sequence block that was causing validation errors
-    
-    **v2.7.3 Features:**
-    • **Fixed YAML Structure** - Corrected debug logging placement to prevent automation validation errors
-    
-    **v2.7.2 Features:**
-    • **Fixed Automation Validation Error** - Corrected debug logging structure to prevent blueprint errors
-    
     **v2.7.1 Features:**
-    • **Added Debug Logging** - Enhanced parent condition debugging for Adaptive Control troubleshooting
     • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario  
     • **Ensures AC turns off** - System now properly shuts down AC when stuck in Manual mode with vacant room
 
-    **v2.6.9 Features:**
-    • **Fixed Adaptive Control Template Error** - Fixed "loop.index" error that prevented AC shutdown when leaving room
-
-    **v2.6.8 Features:**
-    • **Fixed Transition State Handling** - "unknown" and "unavailable" transition states now handled properly for hysteresis logic
-    • **Added Missing Heating Transition Tracking** - Hysteresis tracking now updates for both cooling and heating modes
-
-    **v2.6.6 Features:**
-    • **Fixed Temperature Stability Logic** - Stability detection now requires being within comfort zone
-
-    **v2.6.5 Features:**
-    • **Fixed Heating Trigger Logic** - Corrected backwards heating temperature thresholds
-
-    **v2.6.4 Features:**
-    • **Fixed Datetime Timezone Error** - Resolved timezone-aware/naive datetime mixing issue
-
-    **v2.6.3 Features:**
-    • **Improved Presence Session Tracking** - Smart detection of new presence sessions vs continuous presence
-
-    **v2.6.2 Features:**
-    • **Fixed Adaptive Control Timer Bug** - Presence timer now accumulates correctly instead of resetting
-
-    **v2.6.1 Features:**
-    • **Fixed Sensor Detection Bug** - PIR sensors now properly detected as motion, not BLE
-
-    **v2.6.0 Features:**
-    • **Multi-Sensor Presence Validation** - Prevents false triggers from adjacent rooms
-    • **5 Validation Modes** - ANY, ALL, SMART, MAJORITY, BLE_PLUS for flexible detection
-    • **Enhanced Debug Logging** - Detailed presence sensor analysis for troubleshooting
-    • **Smart BLE+Motion** - Intelligent validation when both sensor types are available
-
-    **v2.3 Features:**
-    • **Manual Override Protection** - Respects user manual changes for configurable time
-    • **Enhanced stability** and improved logic flow
-
-    **v2.2 Features:**
-    • **Adaptive Control Mode** - Auto-switch modes based on room occupancy (optional)
-
-    **v2.1 Features:**
-    • **Time-Based Scheduling** - Different temperatures for different times (optional)
-    • **Window Detection** - Auto-off when windows open (optional)
-    • **Weather Compensation** - Adjust based on outdoor temperature (optional)
-    • **Hysteresis Logic** - Prevents rapid on/off cycling
+    📖 **For complete changelog and version history, visit:**
+    🔗 https://github.com/Chris971991/Smart-Climate-Control
 
     **CONTROL MODES:**
 
