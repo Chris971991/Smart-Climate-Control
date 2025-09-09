@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.2
+  name: Ultimate Smart Climate Control - v2.7.3
 
   description: |
-    **Ultimate Smart Climate Control v2.7.2**
+    **Ultimate Smart Climate Control v2.7.3**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,9 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.7.3 Features:**
+    • **Fixed YAML Structure** - Corrected debug logging placement to prevent automation validation errors
+    
     **v2.7.2 Features:**
     • **Fixed Automation Validation Error** - Corrected debug logging structure to prevent blueprint errors
     
@@ -3821,27 +3824,6 @@ action:
 
       
       # Adaptive Control Mode - Auto-switch modes based on room occupancy
-      - choose:
-        - conditions:
-            - condition: template
-              value_template: "{{ debug_enabled }}"
-          sequence:
-            - service: system_log.write
-              data:
-                message: >
-                  🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Check...
-                  • adaptive_enabled: {{ adaptive_enabled }}
-                  • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
-                  {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-                  • override_helper state: {{ states(adaptive_override_helper) }}
-                  {% endif %}
-                  • override_timeout: {{ adaptive_override_timeout }} hours
-                  {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-                  {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
-                  • time_since_last_change: {{ time_since_change | round(2) }} hours
-                  {% endif %}
-                level: debug
-                logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
@@ -3884,6 +3866,28 @@ action:
                 {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
                 {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
                 • Time Since Last Presence: {{ presence_time | round(1) }} min
+                {% endif %}
+              level: debug
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+          # Additional parent conditions debug logging
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Detail...
+                • adaptive_enabled: {{ adaptive_enabled }}
+                • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
+                {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+                • override_helper state: {{ states(adaptive_override_helper) }}
+                • override_active: {{ is_state(adaptive_override_helper, 'on') }}
+                {% endif %}
+                • override_timeout: {{ adaptive_override_timeout }} hours
+                {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+                {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
+                • time_since_last_change: {{ time_since_change | round(2) }} hours
+                • timeout_met: {{ time_since_change >= adaptive_override_timeout }}
                 {% endif %}
               level: debug
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
