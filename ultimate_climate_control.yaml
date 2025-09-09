@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.3
+  name: Ultimate Smart Climate Control - v2.6.4
 
   description: |
-    **Ultimate Smart Climate Control v2.6.3**
+    **Ultimate Smart Climate Control v2.6.4**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.4 Features:**
+    • **Fixed Datetime Timezone Error** - Resolved timezone-aware/naive datetime mixing issue
 
     **v2.6.3 Features:**
     • **Improved Presence Session Tracking** - Smart detection of new presence sessions vs continuous presence
@@ -2553,8 +2556,9 @@ action:
       # Check if we had recent presence activity (within presence timeout + 5 minutes buffer)
       had_recent_presence: >
         {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-          {% set last_presence_time = states(presence_detected_helper) | as_datetime %}
-          {% set minutes_since_last = (now() - last_presence_time).total_seconds() / 60 %}
+          {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
+          {% set current_timestamp = as_timestamp(now()) %}
+          {% set minutes_since_last = (current_timestamp - last_presence_timestamp) / 60 %}
           {{ minutes_since_last <= (presence_timeout + 5) }}
         {% else %}
           false
