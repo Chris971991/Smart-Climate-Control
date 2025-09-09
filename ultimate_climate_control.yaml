@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.0
+  name: Ultimate Smart Climate Control - v2.6.1
 
   description: |
-    **Ultimate Smart Climate Control v2.6.0**
+    **Ultimate Smart Climate Control v2.6.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.1 Features:**
+    • **Fixed Sensor Detection Bug** - PIR sensors now properly detected as motion, not BLE
 
     **v2.6.0 Features:**
     • **Multi-Sensor Presence Validation** - Prevents false triggers from adjacent rooms
@@ -2397,7 +2400,7 @@ action:
             {% set is_triggered = false %}
             
             {# Check if this is a BLE/area sensor #}
-            {% if 'sensor.' in sensor and room_ble_name %}
+            {% if sensor.startswith('sensor.') and room_ble_name %}
               {% set ble_sensor_count.count = ble_sensor_count.count + 1 %}
               {% if sensor_state == room_ble_name | lower %}
                 {% set ble_detected.value = true %}
@@ -2405,7 +2408,7 @@ action:
               {% endif %}
             
             {# Check if this is a motion/binary sensor #}
-            {% elif 'binary_sensor.' in sensor %}
+            {% elif sensor.startswith('binary_sensor.') %}
               {% set motion_sensor_count.count = motion_sensor_count.count + 1 %}
               {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
                 {% set motion_detected.value = true %}
@@ -2664,14 +2667,14 @@ action:
               {% set sensor_state = states(sensor) | lower %}
               {% set is_triggered = false %}
               
-              {% if 'sensor.' in sensor and room_ble_name %}
+              {% if sensor.startswith('sensor.') and room_ble_name %}
                 {% if sensor_state == room_ble_name | lower %}
                   {% set ble_detected.value = true %}
                   {% set ble_detected.sensors = ble_detected.sensors + [sensor] %}
                   {% set is_triggered = true %}
                 {% endif %}
                 • BLE: {{ sensor }} = "{{ sensor_state }}" ({{ 'TRIGGERED' if is_triggered else 'not detected' }})
-              {% elif 'binary_sensor.' in sensor %}
+              {% elif sensor.startswith('binary_sensor.') %}
                 {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
                   {% set motion_detected.value = true %}
                   {% set motion_detected.sensors = motion_detected.sensors + [sensor] %}
@@ -2776,7 +2779,7 @@ action:
         • last_transition: "{{ last_transition }}"
         • hysteresis: {{ hysteresis_tolerance }}°C
         • temp >= high: {{ current_temp >= cooling_high_temp }}
-        • time_since_change: {{ time_since_change }}min
+        • time_since_change: {{ time_since_change | round(1) }}min
         • runtime_min: {{ runtime_min }}min
         • time_check: {{ time_since_change > runtime_min }}
         • mode_check: {{ last_mode != 'cooling' }}
@@ -4360,7 +4363,7 @@ action:
                 • Temperature: {{ current_temp }}°C
                 • Cooling high temp: {{ cooling_high_temp }}°C
                 • should_activate: {{ should_activate }}
-                • time_since_change: {{ time_since_change }} > runtime_min: {{ runtime_min }}
+                • time_since_change: {{ time_since_change | round(1) }}min > runtime_min: {{ runtime_min }}min
                 • last_mode: {{ last_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
