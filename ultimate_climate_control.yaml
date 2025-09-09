@@ -34,7 +34,7 @@ blueprint:
 
     **v2.7.6 Features:**
     • **Cleaned Up Description** - Removed excessive version history, added GitHub link for full changelog
-    
+
     **v2.7.5 Features:**
     • **Fixed Duplicate Sequence Keys** - Removed duplicate sequence block causing YAML parser warnings
 
