@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.4
+  name: Ultimate Smart Climate Control - v2.6.6
 
   description: |
-    **Ultimate Smart Climate Control v2.6.4**
+    **Ultimate Smart Climate Control v2.6.6**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.6 Features:**
+    • **Fixed Temperature Stability Logic** - Stability detection now requires being within comfort zone
+
+    **v2.6.5 Features:**
+    • **Fixed Heating Trigger Logic** - Corrected backwards heating temperature thresholds
 
     **v2.6.4 Features:**
     • **Fixed Datetime Timezone Error** - Resolved timezone-aware/naive datetime mixing issue
@@ -1871,8 +1877,8 @@ variables:
   # Auto-calculate base thresholds based on aggressiveness (smooth graduated response)
   base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else base_comfort_max | round(1) }}"
   base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + aggressiveness/2) | round(1) }}"
-  base_heating_medium: "{{ heating_medium_input if advanced_enabled else base_comfort_min | round(1) }}"
-  base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
+  base_heating_medium: "{{ heating_medium_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
+  base_heating_low: "{{ heating_low_input if advanced_enabled else base_comfort_min | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
@@ -2271,7 +2277,9 @@ action:
         {% if temp_stability_enabled and helper_temp_history %}
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% set time_threshold = stability_duration | float %}
-          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' %}
+          {# CRITICAL: Only consider stable if temp is stable AND within comfort zone #}
+          {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
+          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone %}
             {% if temp_stability_time >= time_threshold %}
               {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] %}
                 true
