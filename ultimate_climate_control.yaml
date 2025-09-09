@@ -32,7 +32,7 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.6.7 Features:**
+    **v2.6.8 Features:**
     • **Fixed Transition State Handling** - "unknown" and "unavailable" transition states now handled properly for hysteresis logic
     • **Added Missing Heating Transition Tracking** - Hysteresis tracking now updates for both cooling and heating modes
 
