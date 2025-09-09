@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.9
+  name: Ultimate Smart Climate Control - v2.7.0
 
   description: |
-    **Ultimate Smart Climate Control v2.6.9**
+    **Ultimate Smart Climate Control v2.7.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,10 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.7.0 Features:**
+    • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario
+    • **Ensures AC turns off** - System now properly shuts down AC when stuck in Manual mode with vacant room
 
     **v2.6.9 Features:**
     • **Fixed Adaptive Control Template Error** - Fixed "loop.index" error that prevented AC shutdown when leaving room
@@ -4022,6 +4026,79 @@ action:
                     title: "{{ room_name }} Adaptive Climate Control"
                     message: "Room vacant - switched to Manual mode and turned AC off"
 
+            # Handle case where already in Manual mode but AC still running and room vacant
+            - conditions:
+                - condition: template
+                  value_template: "{{ control_mode == 'Manual' and not room_presence_detected }}"
+                - condition: template
+                  value_template: >
+                    {% set last_presence = states(presence_detected_helper) %}
+                    {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                      {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                      {{ (vacant_time / 60) >= adaptive_vacant_delay }}
+                    {% else %}
+                      false
+                    {% endif %}
+                - condition: template
+                  value_template: "{{ states(climate_list[0]) != 'off' if climate_list else false }}"
+              sequence:
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔴 Adaptive Control: ALREADY MANUAL → TURNING AC OFF
+                      • Already in Manual mode, room vacant, AC still running
+                      • Room Presence: {{ room_presence_detected }}
+                      • Required Delay: {{ adaptive_vacant_delay }} min
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                      {% set vacant_time = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
+                      • Actual Vacant Time: {{ vacant_time | round(1) }} min ({{ vacant_time | round(1) - adaptive_vacant_delay | round(1) }}min over threshold)
+                      • Last Presence Detected: {{ as_timestamp(last_presence) | timestamp_custom('%H:%M:%S') }}
+                      {% endif %}
+                      • Action: Turning off {{ climate_list | length }} climate entities
+                    level: info
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                
+                # Turn off all climate entities
+                - repeat:
+                    for_each: "{{ climate_list }}"
+                    sequence:
+                      - condition: template
+                        value_template: "{{ debug_enabled }}"
+                      - service: system_log.write
+                        data:
+                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
+                          level: debug
+                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ repeat.item }}"
+                
+                # Update last mode helper to prevent conflicts
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_mode }}"
+                  data:
+                    value: "adaptive_off"
+                
+                # Debug completion log
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: MANUAL+VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                
+                - condition: template
+                  value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
+                - service: "{{ notification_service }}"
+                  data:
+                    title: "{{ room_name }} Adaptive Climate Control"
+                    message: "Room vacant - turned AC off (was already in Manual mode)"
 
       # Adaptive Control Debug - Log when enabled but conditions not met
       - conditions:
