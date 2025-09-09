@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.1
+  name: Ultimate Smart Climate Control - v2.7.2
 
   description: |
-    **Ultimate Smart Climate Control v2.7.1**
+    **Ultimate Smart Climate Control v2.7.2**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,9 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.7.2 Features:**
+    • **Fixed Automation Validation Error** - Corrected debug logging structure to prevent blueprint errors
+    
     **v2.7.1 Features:**
     • **Added Debug Logging** - Enhanced parent condition debugging for Adaptive Control troubleshooting
     • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario  
@@ -3818,24 +3821,27 @@ action:
 
       
       # Adaptive Control Mode - Auto-switch modes based on room occupancy
-      - condition: template
-        value_template: "{{ debug_enabled }}"
-      - service: system_log.write
-        data:
-          message: >
-            🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Check...
-            • adaptive_enabled: {{ adaptive_enabled }}
-            • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
-            {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-            • override_helper state: {{ states(adaptive_override_helper) }}
-            {% endif %}
-            • override_timeout: {{ adaptive_override_timeout }} hours
-            {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-            {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
-            • time_since_last_change: {{ time_since_change | round(2) }} hours
-            {% endif %}
-          level: debug
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+      - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ debug_enabled }}"
+          sequence:
+            - service: system_log.write
+              data:
+                message: >
+                  🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Check...
+                  • adaptive_enabled: {{ adaptive_enabled }}
+                  • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
+                  {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+                  • override_helper state: {{ states(adaptive_override_helper) }}
+                  {% endif %}
+                  • override_timeout: {{ adaptive_override_timeout }} hours
+                  {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+                  {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
+                  • time_since_last_change: {{ time_since_change | round(2) }} hours
+                  {% endif %}
+                level: debug
+                logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
