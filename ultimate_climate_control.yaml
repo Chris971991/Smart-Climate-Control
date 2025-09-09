@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.0
+  name: Ultimate Smart Climate Control - v2.8.1
 
   description: |
-    **Ultimate Smart Climate Control v2.8.0**
+    **Ultimate Smart Climate Control v2.8.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,9 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.8.1 Features:**
+    • **Fixed Presence Validation Formatting** - Presence sensor summary now uses clean sectioned format instead of cramped single line
+    
     **v2.8.0 Features:**
     • **Enhanced Status Formatting** - Climate status messages now use clean sectioned formatting with proper line breaks
     
@@ -2714,12 +2717,15 @@ action:
               {% endif %}
             {% endfor %}
             
-            🎯 Validation Mode: {{ validation_mode | upper }}
-            • Total Sensors: {{ room_sensors | length }}
-            • Triggered: {{ sensors_triggered.count }} ({{ sensors_triggered.list | join(', ') if sensors_triggered.list else 'none' }})
-            • BLE Detected: {{ ble_detected.value }} ({{ ble_detected.sensors | join(', ') if ble_detected.sensors else 'none' }})
-            • Motion Detected: {{ motion_detected.value }} ({{ motion_detected.sensors | join(', ') if motion_detected.sensors else 'none' }})
-            • Other Detected: {{ other_detected.value }} ({{ other_detected.sensors | join(', ') if other_detected.sensors else 'none' }})
+            🎯 Validation Summary:
+                • Mode: {{ validation_mode | upper }}
+                • Total Sensors: {{ room_sensors | length }}
+                • Triggered: {{ sensors_triggered.count }} ({{ sensors_triggered.list | join(', ') if sensors_triggered.list else 'none' }})
+            
+            📊 Detection Results:
+                • BLE Detected: {{ ble_detected.value }} ({{ ble_detected.sensors | join(', ') if ble_detected.sensors else 'none' }})
+                • Motion Detected: {{ motion_detected.value }} ({{ motion_detected.sensors | join(', ') if motion_detected.sensors else 'none' }})
+                • Other Detected: {{ other_detected.value }} ({{ other_detected.sensors | join(', ') if other_detected.sensors else 'none' }})
             
             ✅ Room Presence Result: {{ room_presence_detected }}
             {% if validation_mode == 'smart' and ble_detected.sensors | length > 0 and motion_detected.sensors | length == 0 %}
