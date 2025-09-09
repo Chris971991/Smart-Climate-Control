@@ -32,6 +32,10 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.6.7 Features:**
+    • **Fixed Transition State Handling** - "unknown" and "unavailable" transition states now handled properly for hysteresis logic
+    • **Added Missing Heating Transition Tracking** - Hysteresis tracking now updates for both cooling and heating modes
+
     **v2.6.6 Features:**
     • **Fixed Temperature Stability Logic** - Stability detection now requires being within comfort zone
 
@@ -2321,7 +2325,8 @@ action:
       # Hysteresis logic - prevent rapid switching at temperature boundaries
       last_transition: >
         {% if helper_last_transition %}
-          {{ states(helper_last_transition) | default('none') }}
+          {% set transition_state = states(helper_last_transition) | default('none') %}
+          {{ 'none' if transition_state in ['unknown', 'unavailable', ''] else transition_state }}
         {% else %}
           none
         {% endif %}
@@ -4471,7 +4476,7 @@ action:
           
           # Update hysteresis tracking - we're now cooling
           - condition: template
-            value_template: "{{ helper_last_transition not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
           - service: input_text.set_value
             target:
               entity_id: "{{ helper_last_transition }}"
@@ -4853,6 +4858,15 @@ action:
             data:
               value: "heating"
           
+          # Update hysteresis tracking - we're now heating
+          - condition: template
+            value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_last_transition }}"
+            data:
+              value: "heating"
+          
           # Update mode start time for effectiveness tracking
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
@@ -5000,6 +5014,15 @@ action:
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
+            data:
+              value: "heating"
+          
+          # Update hysteresis tracking - we're now heating
+          - condition: template
+            value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_last_transition }}"
             data:
               value: "heating"
           
