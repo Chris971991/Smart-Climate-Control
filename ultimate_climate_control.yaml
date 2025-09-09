@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.0
+  name: Ultimate Smart Climate Control - v2.7.1
 
   description: |
-    **Ultimate Smart Climate Control v2.7.0**
+    **Ultimate Smart Climate Control v2.7.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,8 +32,9 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.7.0 Features:**
-    • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario
+    **v2.7.1 Features:**
+    • **Added Debug Logging** - Enhanced parent condition debugging for Adaptive Control troubleshooting
+    • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario  
     • **Ensures AC turns off** - System now properly shuts down AC when stuck in Manual mode with vacant room
 
     **v2.6.9 Features:**
@@ -3817,6 +3818,24 @@ action:
 
       
       # Adaptive Control Mode - Auto-switch modes based on room occupancy
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Check...
+            • adaptive_enabled: {{ adaptive_enabled }}
+            • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
+            {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+            • override_helper state: {{ states(adaptive_override_helper) }}
+            {% endif %}
+            • override_timeout: {{ adaptive_override_timeout }} hours
+            {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+            {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
+            • time_since_last_change: {{ time_since_change | round(2) }} hours
+            {% endif %}
+          level: debug
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
@@ -3898,6 +3917,24 @@ action:
                       {% else %}
                         false
                       {% endif %}
+              # Handle case where already in Manual mode but AC still running and room vacant
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ control_mode == 'Manual' }}"
+                  - condition: template
+                    value_template: "{{ not room_presence_detected }}"
+                  - condition: template
+                    value_template: >
+                      {% set last_presence = states(presence_detected_helper) %}
+                      {% if last_presence not in ['unknown', 'unavailable', ''] %}
+                        {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
+                        {{ (vacant_time / 60) >= adaptive_vacant_delay }}
+                      {% else %}
+                        false
+                      {% endif %}
+                  - condition: template
+                    value_template: "{{ states(climate_list[0]) != 'off' if climate_list else false }}"
         
           
           # Execute actions when conditions are met
@@ -4029,18 +4066,7 @@ action:
             # Handle case where already in Manual mode but AC still running and room vacant
             - conditions:
                 - condition: template
-                  value_template: "{{ control_mode == 'Manual' and not room_presence_detected }}"
-                - condition: template
-                  value_template: >
-                    {% set last_presence = states(presence_detected_helper) %}
-                    {% if last_presence not in ['unknown', 'unavailable', ''] %}
-                      {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
-                      {{ (vacant_time / 60) >= adaptive_vacant_delay }}
-                    {% else %}
-                      false
-                    {% endif %}
-                - condition: template
-                  value_template: "{{ states(climate_list[0]) != 'off' if climate_list else false }}"
+                  value_template: "{{ control_mode == 'Manual' and not room_presence_detected and (states(climate_list[0]) != 'off' if climate_list else false) }}"
               sequence:
                 - condition: template
                   value_template: "{{ debug_enabled }}"
