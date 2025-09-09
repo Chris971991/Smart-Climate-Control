@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.4
+  name: Ultimate Smart Climate Control - v2.7.5
 
   description: |
-    **Ultimate Smart Climate Control v2.7.4**
+    **Ultimate Smart Climate Control v2.7.5**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,9 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.7.5 Features:**
+    • **Fixed Duplicate Sequence Keys** - Removed duplicate sequence block causing YAML parser warnings
+    
     **v2.7.4 Features:**
     • **Fixed Critical YAML Structure** - Added missing sequence block that was causing validation errors
     
@@ -3948,7 +3951,7 @@ action:
                       {% endif %}
                   - condition: template
                     value_template: "{{ states(climate_list[0]) != 'off' if climate_list else false }}"
-        sequence:
+          
           # Execute actions when conditions are met
           # Handle occupied room - switch to Auto/Smart mode
           - choose:
