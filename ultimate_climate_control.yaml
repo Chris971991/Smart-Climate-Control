@@ -2757,7 +2757,7 @@ action:
             • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
             • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
             • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
-            {% if temp_stability_enabled %}• Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
+            {% if temp_stability_enabled %}• Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
             • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
             {% if dynamic_enabled %}• Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3{% endif %}
           level: warning
