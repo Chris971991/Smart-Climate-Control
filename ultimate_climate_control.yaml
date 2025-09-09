@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.8
+  name: Ultimate Smart Climate Control - v2.6.9
 
   description: |
-    **Ultimate Smart Climate Control v2.6.8**
+    **Ultimate Smart Climate Control v2.6.9**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.9 Features:**
+    • **Fixed Adaptive Control Template Error** - Fixed "loop.index" error that prevented AC shutdown when leaving room
 
     **v2.6.8 Features:**
     • **Fixed Transition State Handling** - "unknown" and "unavailable" transition states now handled properly for hysteresis logic
@@ -3979,7 +3982,7 @@ action:
                         value_template: "{{ debug_enabled }}"
                       - service: system_log.write
                         data:
-                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ loop.index }}/{{ climate_list | length }})"
+                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                           level: debug
                           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                       
