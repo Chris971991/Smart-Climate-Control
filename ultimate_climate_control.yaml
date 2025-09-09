@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.7
+  name: Ultimate Smart Climate Control - v2.6.8
 
   description: |
-    **Ultimate Smart Climate Control v2.6.7**
+    **Ultimate Smart Climate Control v2.6.8**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -1884,6 +1884,9 @@ variables:
   enable_away_mode: !input enable_away_mode
   enable_notifications: !input enable_notifications
   eco_mode_setpoint_offset: !input eco_mode_setpoint_offset
+  # Fan speed settings
+  fan_speed_max: !input fan_speed_max
+  fan_speed_medium: !input fan_speed_medium
   # Dynamic adaptation settings
   dynamic_enabled: !input enable_dynamic_adaptation
   effectiveness_check_mins: !input effectiveness_check_minutes
