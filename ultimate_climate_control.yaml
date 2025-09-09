@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.6.1
+  name: Ultimate Smart Climate Control - v2.6.3
 
   description: |
-    **Ultimate Smart Climate Control v2.6.1**
+    **Ultimate Smart Climate Control v2.6.3**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.3 Features:**
+    • **Improved Presence Session Tracking** - Smart detection of new presence sessions vs continuous presence
+
+    **v2.6.2 Features:**
+    • **Fixed Adaptive Control Timer Bug** - Presence timer now accumulates correctly instead of resetting
 
     **v2.6.1 Features:**
     • **Fixed Sensor Detection Bug** - PIR sensors now properly detected as motion, not BLE
@@ -2542,19 +2548,26 @@ action:
           {{ anyone_home or approaching_home }}
         {% endif %}
   
-  # Update presence helper only when room presence FIRST becomes detected (not continuously)
+  # Update presence helper only when room presence FIRST becomes detected (state change from False → True)
+  - variables:
+      # Check if we had recent presence activity (within presence timeout + 5 minutes buffer)
+      had_recent_presence: >
+        {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+          {% set last_presence_time = states(presence_detected_helper) | as_datetime %}
+          {% set minutes_since_last = (now() - last_presence_time).total_seconds() / 60 %}
+          {{ minutes_since_last <= (presence_timeout + 5) }}
+        {% else %}
+          false
+        {% endif %}
+  
+  # Only update timestamp if:
+  # 1. Room presence is currently detected AND
+  # 2. We haven't had recent presence activity (indicating this is a NEW session)
   - if:
       - condition: template
         value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
       - condition: template
-        value_template: >
-          {% set last_presence = states(presence_detected_helper) %}
-          {% if last_presence not in ['unknown', 'unavailable', ''] %}
-            {% set time_since_update = (as_timestamp(now()) - as_timestamp(last_presence)) / 60 %}
-            {{ time_since_update > 2 }}
-          {% else %}
-            true
-          {% endif %}
+        value_template: "{{ not had_recent_presence }}"
     then:
       - service: input_datetime.set_datetime
         target:
