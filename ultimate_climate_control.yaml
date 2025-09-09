@@ -37,10 +37,6 @@ blueprint:
     
     **v2.7.5 Features:**
     • **Fixed Duplicate Sequence Keys** - Removed duplicate sequence block causing YAML parser warnings
-    
-    **v2.7.1 Features:**
-    • **Fixed Adaptive Control Logic Gap** - Added handling for Manual mode + vacant room + running AC scenario  
-    • **Ensures AC turns off** - System now properly shuts down AC when stuck in Manual mode with vacant room
 
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
