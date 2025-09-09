@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.7.7
+  name: Ultimate Smart Climate Control - v2.7.8
 
   description: |
-    **Ultimate Smart Climate Control v2.7.7**
+    **Ultimate Smart Climate Control v2.7.8**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,15 +32,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.7.8 Features:**
+    • **Enhanced Debug Formatting** - All debug logs now use clean line-break formatting for improved readability
+    
     **v2.7.7 Features:**
     • **Fixed Smart Mode Absence Behavior** - AC now respects "OFF" absence behavior immediately when room is empty
     • **Added Safety Override** - Extreme temperatures (30°C+) still activate cooling for safety even in empty rooms
     
     **v2.7.6 Features:**
     • **Cleaned Up Description** - Removed excessive version history, added GitHub link for full changelog
-
-    **v2.7.5 Features:**
-    • **Fixed Duplicate Sequence Keys** - Removed duplicate sequence block causing YAML parser warnings
 
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
@@ -2781,12 +2781,14 @@ action:
     data:
       message: >
         🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
-        • last_mode (internal): "{{ last_mode }}"
-        • actual_ac_state: "{{ actual_ac_state }}"
-        • should_activate: {{ should_activate }}
-        • current_temp: {{ current_temp }}°C
-        • cooling_high: {{ cooling_high_temp }}°C
-        • cooling_medium: {{ cooling_medium_temp }}°C
+        
+        📊 Core Variables:
+            • last_mode (internal): "{{ last_mode }}"
+            • actual_ac_state: "{{ actual_ac_state }}"
+            • should_activate: {{ should_activate }}
+            • current_temp: {{ current_temp }}°C
+            • cooling_high: {{ cooling_high_temp }}°C
+            • cooling_medium: {{ cooling_medium_temp }}°C
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
@@ -2796,15 +2798,17 @@ action:
     data:
       message: >
         🔍 {{ room_name | upper }} DEBUG Part 2: Cooling checks
-        • last_transition: "{{ last_transition }}"
-        • hysteresis: {{ hysteresis_tolerance }}°C
-        • temp >= high: {{ current_temp >= cooling_high_temp }}
-        • time_since_change: {{ time_since_change | round(1) }}min
-        • runtime_min: {{ runtime_min }}min
-        • time_check: {{ time_since_change > runtime_min }}
-        • mode_check: {{ last_mode != 'cooling' }}
-        • actual_ac_off: {{ actual_ac_state == 'off' }}
-        • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
+        
+        🌡️ Temperature Logic:
+            • last_transition: "{{ last_transition }}"
+            • hysteresis: {{ hysteresis_tolerance }}°C
+            • temp >= high: {{ current_temp >= cooling_high_temp }}
+            • time_since_change: {{ time_since_change | round(1) }}min
+            • runtime_min: {{ runtime_min }}min
+            • time_check: {{ time_since_change > runtime_min }}
+            • mode_check: {{ last_mode != 'cooling' }}
+            • actual_ac_off: {{ actual_ac_state == 'off' }}
+            • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -3461,14 +3465,16 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: Comfort Zone Action Triggered
-                Control Mode: {{ control_mode }}
-                Should Activate: {{ should_activate }}
-                Extreme Temp Detected: {{ extreme_temp_detected }}
-                Current Temp: {{ current_temp }}°C
-                Extreme High: {{ extreme_high }}°C
-                Extreme Low: {{ extreme_low }}°C
-                Room Presence: {{ room_presence_detected }}
-                Approaching Home: {{ approaching_home }}
+                
+                🎛️ Control Status:
+                    • Control Mode: {{ control_mode }}
+                    • Should Activate: {{ should_activate }}
+                    • Extreme Temp Detected: {{ extreme_temp_detected }}
+                    • Current Temp: {{ current_temp }}°C
+                    • Extreme High: {{ extreme_high }}°C
+                    • Extreme Low: {{ extreme_low }}°C
+                    • Room Presence: {{ room_presence_detected }}
+                    • Approaching Home: {{ approaching_home }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - choose:
@@ -3818,16 +3824,18 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} Adaptive Control: Evaluating conditions...
-                • Enabled: {{ adaptive_enabled }}
-                • Current Mode: {{ control_mode }}
-                • Room Presence: {{ room_presence_detected }}
-                • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
-                • Occupied Delay: {{ adaptive_occupied_delay }} min
-                • Vacant Delay: {{ adaptive_vacant_delay }} min
-                • Target Mode: {{ adaptive_target_mode | title }}
+                
+                ⚙️ Adaptive Settings:
+                    • Enabled: {{ adaptive_enabled }}
+                    • Current Mode: {{ control_mode }}
+                    • Room Presence: {{ room_presence_detected }}
+                    • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
+                    • Occupied Delay: {{ adaptive_occupied_delay }} min
+                    • Vacant Delay: {{ adaptive_vacant_delay }} min
+                    • Target Mode: {{ adaptive_target_mode | title }}
                 {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
                 {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
-                • Time Since Last Presence: {{ presence_time | round(1) }} min
+                    • Time Since Last Presence: {{ presence_time | round(1) }} min
                 {% endif %}
               level: debug
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -3839,17 +3847,19 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} Adaptive Control: Parent Conditions Detail...
-                • adaptive_enabled: {{ adaptive_enabled }}
-                • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
+                
+                🔒 Override Protection:
+                    • adaptive_enabled: {{ adaptive_enabled }}
+                    • override_helper exists: {{ adaptive_override_helper not in ['', 'unknown', 'unavailable'] if adaptive_override_helper else false }}
                 {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-                • override_helper state: {{ states(adaptive_override_helper) }}
-                • override_active: {{ is_state(adaptive_override_helper, 'on') }}
+                    • override_helper state: {{ states(adaptive_override_helper) }}
+                    • override_active: {{ is_state(adaptive_override_helper, 'on') }}
                 {% endif %}
-                • override_timeout: {{ adaptive_override_timeout }} hours
+                    • override_timeout: {{ adaptive_override_timeout }} hours
                 {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
                 {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
-                • time_since_last_change: {{ time_since_change | round(2) }} hours
-                • timeout_met: {{ time_since_change >= adaptive_override_timeout }}
+                    • time_since_last_change: {{ time_since_change | round(2) }} hours
+                    • timeout_met: {{ time_since_change >= adaptive_override_timeout }}
                 {% endif %}
               level: debug
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -5325,26 +5335,28 @@ action:
     data:
       message: >
         🔍 Adaptive Control: Status Check
-        • Adaptive Enabled: {{ adaptive_enabled }}
-        • Control Mode: {{ control_mode }}
-        • Room Presence: {{ room_presence_detected }}
-        • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
-        • Required Delay: {{ adaptive_occupied_delay }} min
+        
+        📊 Current Status:
+            • Adaptive Enabled: {{ adaptive_enabled }}
+            • Control Mode: {{ control_mode }}
+            • Room Presence: {{ room_presence_detected }}
+            • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
+            • Required Delay: {{ adaptive_occupied_delay }} min
         {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
         {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
-        • Time Present: {{ presence_time | round(1) }} min
-        • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
+            • Time Present: {{ presence_time | round(1) }} min
+            • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
         {% endif %}
-        • Override Timeout: {{ adaptive_override_timeout }}h
+            • Override Timeout: {{ adaptive_override_timeout }}h
         {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-        • Override Helper: {{ states(adaptive_override_helper) }}
+            • Override Helper: {{ states(adaptive_override_helper) }}
         {% endif %}
         {% if adaptive_override_timeout > 0 %}
         {% set last_change = states(helper_change) %}
         {% if last_change not in ['unknown', 'unavailable', ''] %}
         {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
-        • Time Since Change: {{ time_since_change | round(1) }}h
-        • Override Active: {{ time_since_change < adaptive_override_timeout }}
+            • Time Since Change: {{ time_since_change | round(1) }}h
+            • Override Active: {{ time_since_change < adaptive_override_timeout }}
         {% endif %}
         {% endif %}
       level: warning
