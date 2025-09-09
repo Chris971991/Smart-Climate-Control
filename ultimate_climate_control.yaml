@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.1
+  name: Ultimate Smart Climate Control - v2.8.3
 
   description: |
-    **Ultimate Smart Climate Control v2.8.1**
+    **Ultimate Smart Climate Control v2.8.3**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,12 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.8.3 Features:**
+    • **Fixed Temperature Stability Auto-Off** - Now works with aggressiveness system, allows auto-off within buffer zone
+    
+    **v2.8.2 Features:**
+    • **Reverted Incorrect Changes** - Fixed misunderstanding of aggressiveness system
+    
     **v2.8.1 Features:**
     • **Fixed Presence Validation Formatting** - Presence sensor summary now uses clean sectioned format instead of cramped single line
     
@@ -3668,9 +3674,11 @@ action:
             value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] }}"
           - condition: template
             value_template: "{{ time_since_change > offtime_min }}"
-          # CRITICAL: Only turn off if temperature is actually in comfort zone
+          # CRITICAL: Allow stability auto-off within reasonable range (comfort zone + aggressiveness buffer)
           - condition: template
-            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+            value_template: >
+              {% set buffer = aggressiveness | float %}
+              {{ current_temp >= (comfort_min_temp - buffer) and current_temp <= (comfort_max_temp + buffer) }}
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -3679,7 +3687,7 @@ action:
               message: >
                 🎯 Smart Feature: Temperature Stable & Comfortable
                 🌡️ Temperature steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
-                ✅ Within comfort zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C) - switching to {{ stability_behavior|upper }} mode to save energy
+                ✅ Within acceptable range ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C + {{ aggressiveness }}°C buffer) - switching to {{ stability_behavior|upper }} mode to save energy
                 
                 📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
               level: warning
