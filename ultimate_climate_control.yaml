@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.5.1
+  name: Ultimate Smart Climate Control - v2.6.0
 
   description: |
-    **Ultimate Smart Climate Control v2.5.1**
+    **Ultimate Smart Climate Control v2.6.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.6.0 Features:**
+    • **Multi-Sensor Presence Validation** - Prevents false triggers from adjacent rooms
+    • **5 Validation Modes** - ANY, ALL, SMART, MAJORITY, BLE_PLUS for flexible detection
+    • **Enhanced Debug Logging** - Detailed presence sensor analysis for troubleshooting
+    • **Smart BLE+Motion** - Intelligent validation when both sensor types are available
 
     **v2.3 Features:**
     • **Manual Override Protection** - Respects user manual changes for configurable time
@@ -687,6 +693,39 @@ blueprint:
               domain: 
                 - binary_sensor
                 - sensor
+        
+        presence_validation_mode:
+          name: Presence Validation Mode
+          description: |
+            **How multiple presence sensors work together** to detect room occupancy:
+
+            • **ANY (Default):** Trigger if ANY sensor detects presence (most responsive)
+            • **ALL:** Require ALL sensors to detect presence (most accurate, may miss presence)
+            • **SMART:** Require BLE + Motion when both exist, otherwise ANY (balanced)
+            • **MAJORITY:** Require majority of sensors to agree (3+ sensors recommended)
+            • **BLE_PLUS:** Require BLE + at least one other sensor (prevents false BLE triggers)
+
+            **Recommendations:**
+            • **Single sensor:** Use ANY mode
+            • **BLE + PIR:** Use SMART or BLE_PLUS mode to prevent kitchen false triggers
+            • **Multiple PIR:** Use MAJORITY mode for best accuracy
+            • **High accuracy needed:** Use ALL mode but may miss brief presence
+
+            **Note:** SMART mode intelligently validates BLE with motion sensors when available.
+          default: "any"
+          selector:
+            select:
+              options:
+                - label: "ANY - Any sensor triggers presence"
+                  value: "any"
+                - label: "ALL - All sensors must agree"
+                  value: "all"
+                - label: "SMART - BLE + Motion validation"
+                  value: "smart"
+                - label: "MAJORITY - Most sensors must agree"
+                  value: "majority"
+                - label: "BLE_PLUS - BLE + one other sensor"
+                  value: "ble_plus"
         
         # Room name is now configured at the top as a required field
         
@@ -1850,6 +1889,7 @@ variables:
   room_name: !input room_name
   room_ble_name: !input room_name
   smart_behavior: !input smart_mode_behavior
+  presence_validation: !input presence_validation_mode
   temp_stability_enabled: !input temp_stability_enabled
   stability_tolerance: !input stability_tolerance
   stability_duration: !input stability_duration
@@ -2337,18 +2377,92 @@ action:
         {% endif %}
       
       room_presence_detected: >
-        {% set presence = namespace(value=false) %}
-        {% for sensor in room_sensors %}
-          {% set sensor_state = states(sensor) | lower %}
-          {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
-            {% set presence.value = true %}
-          {% elif room_ble_name and sensor_state == room_ble_name | lower %}
-            {% set presence.value = true %}
-          {% elif sensor_state in ['home', 'present'] %}
-            {% set presence.value = true %}
+        {% set validation_mode = presence_validation | default('any') | lower %}
+        {% set sensor_count = room_sensors | length %}
+        
+        {# If no sensors configured, always return false #}
+        {% if sensor_count == 0 %}
+          false
+        {% else %}
+          {# Categorize sensors and check their states #}
+          {% set sensors_triggered = namespace(count=0) %}
+          {% set ble_detected = namespace(value=false) %}
+          {% set motion_detected = namespace(value=false) %}
+          {% set other_detected = namespace(value=false) %}
+          {% set motion_sensor_count = namespace(count=0) %}
+          {% set ble_sensor_count = namespace(count=0) %}
+          
+          {% for sensor in room_sensors %}
+            {% set sensor_state = states(sensor) | lower %}
+            {% set is_triggered = false %}
+            
+            {# Check if this is a BLE/area sensor #}
+            {% if 'sensor.' in sensor and room_ble_name %}
+              {% set ble_sensor_count.count = ble_sensor_count.count + 1 %}
+              {% if sensor_state == room_ble_name | lower %}
+                {% set ble_detected.value = true %}
+                {% set is_triggered = true %}
+              {% endif %}
+            
+            {# Check if this is a motion/binary sensor #}
+            {% elif 'binary_sensor.' in sensor %}
+              {% set motion_sensor_count.count = motion_sensor_count.count + 1 %}
+              {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
+                {% set motion_detected.value = true %}
+                {% set is_triggered = true %}
+              {% endif %}
+            
+            {# Check other sensor types #}
+            {% elif is_state(sensor, 'on') or sensor_state in ['home', 'present', 'detected', 'occupied'] %}
+              {% set other_detected.value = true %}
+              {% set is_triggered = true %}
+            {% endif %}
+            
+            {# Count triggered sensors #}
+            {% if is_triggered %}
+              {% set sensors_triggered.count = sensors_triggered.count + 1 %}
+            {% endif %}
+          {% endfor %}
+          
+          {# Apply validation mode logic #}
+          {% if validation_mode == 'all' %}
+            {# ALL mode - all sensors must be triggered #}
+            {{ sensors_triggered.count == sensor_count }}
+            
+          {% elif validation_mode == 'majority' %}
+            {# MAJORITY mode - more than half must be triggered #}
+            {{ sensors_triggered.count > (sensor_count / 2) }}
+            
+          {% elif validation_mode == 'smart' %}
+            {# SMART mode - intelligent BLE + motion validation #}
+            {% if ble_sensor_count.count > 0 and motion_sensor_count.count > 0 %}
+              {# Both BLE and motion sensors exist - require both #}
+              {{ ble_detected.value and motion_detected.value }}
+            {% elif ble_sensor_count.count > 0 %}
+              {# Only BLE sensors - use BLE detection #}
+              {{ ble_detected.value }}
+            {% elif motion_sensor_count.count > 0 %}
+              {# Only motion sensors - use motion detection #}
+              {{ motion_detected.value }}
+            {% else %}
+              {# Other sensors only - any triggered #}
+              {{ other_detected.value }}
+            {% endif %}
+            
+          {% elif validation_mode == 'ble_plus' %}
+            {# BLE_PLUS mode - require BLE + at least one other sensor #}
+            {% if ble_sensor_count.count > 0 %}
+              {{ ble_detected.value and (motion_detected.value or other_detected.value) }}
+            {% else %}
+              {# No BLE sensors - fallback to ANY mode #}
+              {{ sensors_triggered.count > 0 }}
+            {% endif %}
+            
+          {% else %}
+            {# ANY mode (default) - any sensor triggered #}
+            {{ sensors_triggered.count > 0 }}
           {% endif %}
-        {% endfor %}
-        {{ presence.value }}
+        {% endif %}
       
       last_presence_time: >
         {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
@@ -2529,6 +2643,70 @@ action:
       should_deescalate: >
         {{ deescalation_level > 0 }}
   
+  # Debug: Log presence validation details
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and room_sensors | length > 0 }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} PRESENCE VALIDATION DEBUG
+            
+            📊 Sensor Analysis:
+            {% set validation_mode = presence_validation | default('any') | lower %}
+            {% set sensors_triggered = namespace(count=0, list=[]) %}
+            {% set ble_detected = namespace(value=false, sensors=[]) %}
+            {% set motion_detected = namespace(value=false, sensors=[]) %}
+            {% set other_detected = namespace(value=false, sensors=[]) %}
+            
+            {% for sensor in room_sensors %}
+              {% set sensor_state = states(sensor) | lower %}
+              {% set is_triggered = false %}
+              
+              {% if 'sensor.' in sensor and room_ble_name %}
+                {% if sensor_state == room_ble_name | lower %}
+                  {% set ble_detected.value = true %}
+                  {% set ble_detected.sensors = ble_detected.sensors + [sensor] %}
+                  {% set is_triggered = true %}
+                {% endif %}
+                • BLE: {{ sensor }} = "{{ sensor_state }}" ({{ 'TRIGGERED' if is_triggered else 'not detected' }})
+              {% elif 'binary_sensor.' in sensor %}
+                {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
+                  {% set motion_detected.value = true %}
+                  {% set motion_detected.sensors = motion_detected.sensors + [sensor] %}
+                  {% set is_triggered = true %}
+                {% endif %}
+                • Motion: {{ sensor }} = {{ states(sensor) }} ({{ 'TRIGGERED' if is_triggered else 'clear' }})
+              {% else %}
+                {% if is_state(sensor, 'on') or sensor_state in ['home', 'present', 'detected', 'occupied'] %}
+                  {% set other_detected.value = true %}
+                  {% set other_detected.sensors = other_detected.sensors + [sensor] %}
+                  {% set is_triggered = true %}
+                {% endif %}
+                • Other: {{ sensor }} = {{ states(sensor) }} ({{ 'TRIGGERED' if is_triggered else 'inactive' }})
+              {% endif %}
+              
+              {% if is_triggered %}
+                {% set sensors_triggered.count = sensors_triggered.count + 1 %}
+                {% set sensors_triggered.list = sensors_triggered.list + [sensor] %}
+              {% endif %}
+            {% endfor %}
+            
+            🎯 Validation Mode: {{ validation_mode | upper }}
+            • Total Sensors: {{ room_sensors | length }}
+            • Triggered: {{ sensors_triggered.count }} ({{ sensors_triggered.list | join(', ') if sensors_triggered.list else 'none' }})
+            • BLE Detected: {{ ble_detected.value }} ({{ ble_detected.sensors | join(', ') if ble_detected.sensors else 'none' }})
+            • Motion Detected: {{ motion_detected.value }} ({{ motion_detected.sensors | join(', ') if motion_detected.sensors else 'none' }})
+            • Other Detected: {{ other_detected.value }} ({{ other_detected.sensors | join(', ') if other_detected.sensors else 'none' }})
+            
+            ✅ Room Presence Result: {{ room_presence_detected }}
+            {% if validation_mode == 'smart' and ble_detected.sensors | length > 0 and motion_detected.sensors | length == 0 %}
+            ⚠️ BLE detected but no motion - likely false trigger from adjacent room
+            {% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.presence"
+
   # Debug: Log current conditions
   - if:
       - condition: template
@@ -2541,6 +2719,7 @@ action:
             
             🌡️ Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
             🏠 People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
+            👤 Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
             ⚙️ Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
             🎛️ Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
             
