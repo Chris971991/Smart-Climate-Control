@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.7
+  name: Ultimate Smart Climate Control - v2.8.8
 
   description: |
-    **Ultimate Smart Climate Control v2.8.7**
+    **Ultimate Smart Climate Control v2.8.8**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.8 Debug Enhancement:**
+    • **Added Choose Block Entry Debug** - Added logging to track if conditions reach heating evaluation in choose block
 
     **v2.8.7 Critical Bug Fix:**
     • **Fixed Adaptive Control Reactivation** - Added missing logic to exit adaptive_off mode when room becomes occupied and heating/cooling is needed
