@@ -1,5 +1,5 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.8
+  name: Ultimate Smart Climate Control - v2.8.9
 
   description: |
     **Ultimate Smart Climate Control v2.8.8**
@@ -2918,6 +2918,22 @@ action:
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - choose:
+      # Debug heating conditions first
+      - conditions:
+          - condition: template
+            value_template: "{{ debug_enabled and current_temp <= heating_low_temp }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: >
+                🔍 {{ room_name | upper }} HEATING DEBUG IN CHOOSE: 
+                  should_activate={{ should_activate }} 
+                  temp_check={{ current_temp <= heating_low_temp }} 
+                  time_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
+                  Combined={{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
