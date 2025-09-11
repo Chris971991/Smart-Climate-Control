@@ -5373,6 +5373,30 @@ action:
             data:
               datetime: "{{ now() }}"
 
+  # Debug: Show which conditions were evaluated but not met
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 {{ room_name | upper }} DEBUG: Choose block completed - no conditions matched
+        
+        📊 Final Summary:
+            • should_activate: {{ should_activate }}
+            • current_temp: {{ current_temp }}°C
+            • Control mode: {{ control_mode }}
+            • AC state: {{ actual_ac_state }}
+            • Time since change: {{ time_since_change | round(1) }}min
+            • Room presence: {{ room_presence_detected }}
+        
+        🌡️ Thresholds that were checked:
+            • Cooling: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
+            • Heating Low: {{ current_temp }} <= {{ heating_low_temp }} = {{ current_temp <= heating_low_temp }}
+            • Heating Medium: {{ current_temp }} <= {{ heating_medium_temp }} AND > {{ heating_low_temp }} = {{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}
+            • Escalation: {{ should_escalate }}
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
   # Adaptive Control Status Debug Log  
   - service: system_log.write
     data:
