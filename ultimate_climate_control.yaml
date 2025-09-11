@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.11
+  name: Ultimate Smart Climate Control - v2.8.14
 
   description: |
-    **Ultimate Smart Climate Control v2.8.11**
+    **Ultimate Smart Climate Control v2.8.14**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,38 +32,14 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.8.14 Enhancement:**
+    • **Improved Debug Clarity** - Changed "Time Since Change" to "Time Since Manual Override" with context indicator to clarify what this timing actually tracks
+
+    **v2.8.13 Revert:**
+    • **Reverted v2.8.12 Changes** - Removed unnecessary helper_change updates as the "Time Since Change" discrepancy was actually normal behavior indicating proper operation
+
     **v2.8.11 Critical Bug Fix:**
     • **Fixed Original Heating Conditions** - Corrected YAML structure where heating conditions were split into separate templates instead of combined, preventing proper evaluation
-
-    **v2.8.8 Debug Enhancement:**
-    • **Added Choose Block Entry Debug** - Added logging to track if conditions reach heating evaluation in choose block
-
-    **v2.8.7 Critical Bug Fix:**
-    • **Fixed Adaptive Control Reactivation** - Added missing logic to exit adaptive_off mode when room becomes occupied and heating/cooling is needed
-
-    **v2.8.6 Debug Enhancement:**
-    • **Added Heating Debug Output** - Added Part 3 debug section to show heating condition evaluations for troubleshooting
-
-    **v2.8.5 Bug Fix:**
-    • **Fixed Inverted Heating Thresholds** - Corrected logic where heating_low and heating_medium were backwards, preventing heating from activating properly
-
-    **v2.8.3 Features:**
-    • **Fixed Temperature Stability Auto-Off** - Now works with aggressiveness system, allows auto-off within buffer zone
-    
-    **v2.8.2 Features:**
-    • **Reverted Incorrect Changes** - Fixed misunderstanding of aggressiveness system
-    
-    **v2.8.1 Features:**
-    • **Fixed Presence Validation Formatting** - Presence sensor summary now uses clean sectioned format instead of cramped single line
-    
-    **v2.8.0 Features:**
-    • **Enhanced Status Formatting** - Climate status messages now use clean sectioned formatting with proper line breaks
-    
-    **v2.7.9 Features:**
-    • **Standardized Debug Prefixes** - All debug messages now include room name prefix for consistency
-    
-    **v2.7.8 Features:**
-    • **Enhanced Debug Formatting** - All debug logs now use clean line-break formatting for improved readability
 
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
@@ -5478,7 +5454,7 @@ action:
         {% set last_change = states(helper_change) %}
         {% if last_change not in ['unknown', 'unavailable', ''] %}
         {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
-            • Time Since Change: {{ time_since_change | round(1) }}h
+            • Time Since Manual Override: {{ time_since_change | round(1) }}h ({{ 'normal automatic operation' if time_since_change >= 24 else 'recent manual change' }})
             • Override Active: {{ time_since_change < adaptive_override_timeout }}
         {% endif %}
         {% endif %}
