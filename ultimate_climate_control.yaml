@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.5
+  name: Ultimate Smart Climate Control - v2.8.6
 
   description: |
-    **Ultimate Smart Climate Control v2.8.5**
+    **Ultimate Smart Climate Control v2.8.6**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.6 Debug Enhancement:**
+    • **Added Heating Debug Output** - Added Part 3 debug section to show heating condition evaluations for troubleshooting
 
     **v2.8.5 Bug Fix:**
     • **Fixed Inverted Heating Thresholds** - Corrected logic where heating_low and heating_medium were backwards, preventing heating from activating properly
@@ -2826,6 +2829,27 @@ action:
             • mode_check: {{ last_mode != 'cooling' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 {{ room_name | upper }} DEBUG Part 3: Heating checks
+        
+        🔥 Heating Logic:
+            • heating_medium: {{ heating_medium_temp }}°C
+            • heating_low: {{ heating_low_temp }}°C
+            • temp <= medium: {{ current_temp <= heating_medium_temp }}
+            • temp <= low: {{ current_temp <= heating_low_temp }}
+            • temp > low: {{ current_temp > heating_low_temp }}
+            • time_check: {{ time_since_change > runtime_min }}
+            • mode_check: {{ last_mode != 'heating' }}
+            • actual_ac_off: {{ actual_ac_state == 'off' }}
+            • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
