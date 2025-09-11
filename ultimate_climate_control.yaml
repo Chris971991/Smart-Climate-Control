@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.10
+  name: Ultimate Smart Climate Control - v2.8.11
 
   description: |
-    **Ultimate Smart Climate Control v2.8.10**
+    **Ultimate Smart Climate Control v2.8.11**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.11 Critical Bug Fix:**
+    • **Fixed Original Heating Conditions** - Corrected YAML structure where heating conditions were split into separate templates instead of combined, preventing proper evaluation
 
     **v2.8.8 Debug Enhancement:**
     • **Added Choose Block Entry Debug** - Added logging to track if conditions reach heating evaluation in choose block
@@ -2855,9 +2858,7 @@ action:
             • mode_check: {{ last_mode != 'heating' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
-            • LOW detailed: should_activate={{ should_activate }}, temp_check={{ current_temp <= heating_low_temp }}, time_OR_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
             • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
-            • MEDIUM detailed: should_activate={{ should_activate }}, temp_check={{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}, time_OR_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -2908,45 +2909,7 @@ action:
         data:
           datetime: "{{ now() }}"
 
-  # Debug: About to enter choose block
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: "🔍 {{ room_name | upper }} ENTERING CHOOSE BLOCK - About to evaluate heating/cooling conditions"
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
   - choose:
-      # WORKING HEATING CONDITION - bypass the broken one
-      - conditions:
-          - condition: template
-            value_template: "{{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
-        sequence:
-          - service: system_log.write
-            data:
-              message: "🔥 {{ room_name | upper }} HEATING ACTIVATED VIA WORKING CONDITION!"
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-          
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: heat
-          
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ heating_target_temp }}"
-          
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "heating"
-
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
@@ -4955,29 +4918,10 @@ action:
             data:
               datetime: "{{ now() }}"
       
-      # Low heating mode - Debug each condition
+      # Low heating mode
       - conditions:
           - condition: template
-            value_template: "{{ debug_enabled }}"
-        sequence:
-          - service: system_log.write
-            data:
-              message: >
-                🔍 {{ room_name | upper }} LOW HEATING DEBUG: Testing individual conditions...
-                  1. should_activate: {{ should_activate }} ({{ 'PASS' if should_activate else 'FAIL' }})
-                  2. temp check: {{ current_temp }} <= {{ heating_low_temp }} = {{ current_temp <= heating_low_temp }} ({{ 'PASS' if current_temp <= heating_low_temp else 'FAIL' }})
-                  3. time/mode: {{ time_since_change | round(1) }}min > {{ runtime_min }}min OR "{{ last_mode }}" != "heating" = {{ time_since_change > runtime_min or last_mode != 'heating' }} ({{ 'PASS' if time_since_change > runtime_min or last_mode != 'heating' else 'FAIL' }})
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-      # Low heating mode - Actual condition
-      - conditions:
-          - condition: template
-            value_template: "{{ should_activate }}"
-          - condition: template
-            value_template: "{{ current_temp <= heating_low_temp }}"
-          - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: "{{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
         sequence:
           - service: system_log.write
             data:
@@ -5131,11 +5075,7 @@ action:
       # Medium heating mode
       - conditions:
           - condition: template
-            value_template: "{{ should_activate }}"
-          - condition: template
-            value_template: "{{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}"
-          - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
