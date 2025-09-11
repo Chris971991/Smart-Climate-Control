@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.6
+  name: Ultimate Smart Climate Control - v2.8.7
 
   description: |
-    **Ultimate Smart Climate Control v2.8.6**
+    **Ultimate Smart Climate Control v2.8.7**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.7 Critical Bug Fix:**
+    • **Fixed Adaptive Control Reactivation** - Added missing logic to exit adaptive_off mode when room becomes occupied and heating/cooling is needed
 
     **v2.8.6 Debug Enhancement:**
     • **Added Heating Debug Output** - Added Part 3 debug section to show heating condition evaluations for troubleshooting
@@ -2852,6 +2855,44 @@ action:
             • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  # ADAPTIVE CONTROL REACTIVATION: Clear adaptive_off when room is occupied and heating/cooling needed
+  - if:
+      - condition: template
+        value_template: "{{ last_mode == 'adaptive_off' and adaptive_enabled and control_mode == 'Smart' }}"
+      - condition: template
+        value_template: "{{ room_presence_detected }}"
+      - condition: template
+        value_template: >
+          {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+            {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
+            {{ presence_time >= adaptive_occupied_delay }}
+          {% else %}
+            false
+          {% endif %}
+      - condition: template
+        value_template: "{{ current_temp <= heating_medium_temp or current_temp >= cooling_medium_temp }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔄 {{ room_name | upper }} ADAPTIVE REACTIVATION
+            
+            ✅ Conditions Met:
+                • Was in adaptive_off mode
+                • Room occupied for {{ ((as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60) | round(1) }}+ minutes
+                • Temperature {{ current_temp }}°C requires action ({{ 'heating' if current_temp <= heating_medium_temp else 'cooling' }})
+            
+            🎯 Resuming normal Smart mode climate control
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+      
+      # Clear adaptive_off mode - allow normal logic to proceed
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
 
   - choose:
       # PRIORITY: Check for high temperature first when AC is off
