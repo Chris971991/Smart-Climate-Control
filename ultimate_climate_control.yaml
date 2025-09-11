@@ -2905,6 +2905,15 @@ action:
         data:
           datetime: "{{ now() }}"
 
+  # Debug: About to enter choose block
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: "🔍 {{ room_name | upper }} ENTERING CHOOSE BLOCK - About to evaluate heating/cooling conditions"
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
   - choose:
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
