@@ -2852,7 +2852,9 @@ action:
             • mode_check: {{ last_mode != 'heating' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • LOW detailed: should_activate={{ should_activate }}, temp_check={{ current_temp <= heating_low_temp }}, time_OR_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
             • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • MEDIUM detailed: should_activate={{ should_activate }}, temp_check={{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}, time_OR_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
