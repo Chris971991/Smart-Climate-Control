@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.4
+  name: Ultimate Smart Climate Control - v2.8.5
 
   description: |
-    **Ultimate Smart Climate Control v2.8.4**
+    **Ultimate Smart Climate Control v2.8.5**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.5 Bug Fix:**
+    • **Fixed Inverted Heating Thresholds** - Corrected logic where heating_low and heating_medium were backwards, preventing heating from activating properly
 
     **v2.8.3 Features:**
     • **Fixed Temperature Stability Auto-Off** - Now works with aggressiveness system, allows auto-off within buffer zone
@@ -1861,8 +1864,8 @@ variables:
   # Auto-calculate base thresholds based on aggressiveness (smooth graduated response)
   base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else base_comfort_max | round(1) }}"
   base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + aggressiveness/2) | round(1) }}"
-  base_heating_medium: "{{ heating_medium_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
-  base_heating_low: "{{ heating_low_input if advanced_enabled else base_comfort_min | round(1) }}"
+  base_heating_medium: "{{ heating_medium_input if advanced_enabled else base_comfort_min | round(1) }}"
+  base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
