@@ -1,5 +1,5 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.9
+  name: Ultimate Smart Climate Control - v2.8.10
 
   description: |
     **Ultimate Smart Climate Control v2.8.9**
@@ -2918,21 +2918,34 @@ action:
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - choose:
-      # Debug heating conditions first
+      # WORKING HEATING CONDITION - bypass the broken one
       - conditions:
           - condition: template
-            value_template: "{{ debug_enabled and current_temp <= heating_low_temp }}"
+            value_template: "{{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
         sequence:
           - service: system_log.write
             data:
-              message: >
-                🔍 {{ room_name | upper }} HEATING DEBUG IN CHOOSE: 
-                  should_activate={{ should_activate }} 
-                  temp_check={{ current_temp <= heating_low_temp }} 
-                  time_mode={{ time_since_change > runtime_min or last_mode != 'heating' }}
-                  Combined={{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+              message: "🔥 {{ room_name | upper }} HEATING ACTIVATED VIA WORKING CONDITION!"
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: heat
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ heating_target_temp }}"
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating"
 
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
