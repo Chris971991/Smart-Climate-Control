@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.14
+  name: Ultimate Smart Climate Control - v2.8.15
 
   description: |
-    **Ultimate Smart Climate Control v2.8.14**
+    **Ultimate Smart Climate Control v2.8.15**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.15 Enhancement:**
+    • **Enhanced Debug Part 3** - Added cooling logic debug alongside heating logic for complete temperature control condition visibility in one section
 
     **v2.8.14 Enhancement:**
     • **Improved Debug Clarity** - Changed "Time Since Change" to "Time Since Manual Override" with context indicator to clarify what this timing actually tracks
@@ -2822,7 +2825,7 @@ action:
   - service: system_log.write
     data:
       message: >
-        🔍 {{ room_name | upper }} DEBUG Part 3: Heating checks
+        🔍 {{ room_name | upper }} DEBUG Part 3: Heating & Cooling checks
         
         🔥 Heating Logic:
             • heating_medium: {{ heating_medium_temp }}°C
@@ -2835,6 +2838,17 @@ action:
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
             • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+        
+        ❄️ Cooling Logic:
+            • cooling_medium: {{ cooling_medium_temp }}°C
+            • cooling_high: {{ cooling_high_temp }}°C
+            • temp >= medium: {{ current_temp >= cooling_medium_temp }}
+            • temp >= high: {{ current_temp >= cooling_high_temp }}
+            • time_check: {{ time_since_change > runtime_min }}
+            • mode_check: {{ last_mode != 'cooling' }}
+            • actual_ac_off: {{ actual_ac_state == 'off' }}
+            • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
+            • MEDIUM cooling conditions: {{ should_activate and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
