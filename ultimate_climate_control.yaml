@@ -5383,11 +5383,14 @@ action:
         
         📊 Final Summary:
             • should_activate: {{ should_activate }}
+            • smart_presence_active: {{ smart_presence_active }}
             • current_temp: {{ current_temp }}°C
             • Control mode: {{ control_mode }}
             • AC state: {{ actual_ac_state }}
             • Time since change: {{ time_since_change | round(1) }}min
             • Room presence: {{ room_presence_detected }}
+            • smart_behavior: {{ smart_behavior }}
+            • extreme_temp_detected: {{ extreme_temp_detected }}
         
         🌡️ Thresholds that were checked:
             • Cooling: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
