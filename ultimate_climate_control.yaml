@@ -4914,7 +4914,22 @@ action:
             data:
               datetime: "{{ now() }}"
       
-      # Low heating mode
+      # Low heating mode - Debug each condition
+      - conditions:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: >
+                🔍 {{ room_name | upper }} LOW HEATING DEBUG: Testing individual conditions...
+                  1. should_activate: {{ should_activate }} ({{ 'PASS' if should_activate else 'FAIL' }})
+                  2. temp check: {{ current_temp }} <= {{ heating_low_temp }} = {{ current_temp <= heating_low_temp }} ({{ 'PASS' if current_temp <= heating_low_temp else 'FAIL' }})
+                  3. time/mode: {{ time_since_change | round(1) }}min > {{ runtime_min }}min OR "{{ last_mode }}" != "heating" = {{ time_since_change > runtime_min or last_mode != 'heating' }} ({{ 'PASS' if time_since_change > runtime_min or last_mode != 'heating' else 'FAIL' }})
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Low heating mode - Actual condition
       - conditions:
           - condition: template
             value_template: "{{ should_activate }}"
