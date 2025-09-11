@@ -2893,6 +2893,15 @@ action:
           entity_id: !input helper_last_mode
         data:
           value: "off"
+      
+      # Update mode start time to reset time_since_change
+      - condition: template
+        value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_mode_time }}"
+        data:
+          datetime: "{{ now() }}"
 
   - choose:
       # PRIORITY: Check for high temperature first when AC is off
