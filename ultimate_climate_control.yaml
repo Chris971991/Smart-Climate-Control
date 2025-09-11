@@ -2896,7 +2896,7 @@ action:
         data:
           value: "off"
       
-      # Update mode start time to reset time_since_change
+      # Reset mode start time to allow immediate evaluation in next cycle
       - condition: template
         value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
       - service: input_datetime.set_datetime
@@ -4923,6 +4923,11 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
+          - service: system_log.write
+            data:
+              message: "🔥 {{ room_name | upper }} LOW HEATING ACTIVATED - All conditions met!"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
