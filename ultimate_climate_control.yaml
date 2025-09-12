@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.23
+  name: Ultimate Smart Climate Control - v2.8.24
 
   description: |
-    **Ultimate Smart Climate Control v2.8.23**
+    **Ultimate Smart Climate Control v2.8.24**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,14 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.8.24 Adjacent Room BLE Detection for Open-Plan Spaces:**
+    • **🏠 NEW FEATURE** - Adjacent room detection for open-plan living spaces (Kitchen/Living/Dining areas)
+    • **🎯 SMART BLE** - AC activates when BLE detects presence in main room OR any configured adjacent rooms
+    • **📱 FLEXIBLE CONFIG** - Simply add comma-separated adjacent room names (e.g., "Kitchen, Dining")
+    • **⚡ MOTION AWARE** - For SMART/BLE_PLUS modes, remember to add motion sensors from adjacent rooms too
+    • **🔍 DEBUG ENHANCED** - Shows which room triggered activation (main or adjacent) in debug logs
+    • **✨ USE CASE** - Perfect for open-plan areas where one AC covers multiple connected spaces
+
     **v2.8.23 Anti-Short Cycling & Target-Based Control:**
     • **🎯 IMPLEMENTED** - Target-based hysteresis logic prevents AC short cycling by continuing operation until comfort zone center is reached
     • **🔄 ENHANCED** - Once cooling/heating starts, system continues until target temperature (22°C) instead of stopping at threshold drop
@@ -39,14 +47,6 @@ blueprint:
     • **🔍 UPDATED** - Debug logging shows hysteresis decisions ("continue until target" vs "start condition")
     • **🛡️ OPTIMIZED** - Prevents rapid on/off cycling that wastes energy and reduces equipment life
     • **⚙️ VALIDATED** - Comprehensive testing shows 1066 template expressions and 961 conditional blocks working correctly
-
-    **v2.8.22 Critical Bug Fixes & Reliability Improvements:**
-    • **🎯 FULLY IMPLEMENTED** - Complete LOW/MEDIUM/HIGH system for both heating and cooling
-    • **🔥 NEW Heating Structure** - Completely restructured with proper LOW (19.9°C, gentle), MEDIUM (19.0°C, balanced), HIGH (18.0°C, maximum) 
-    • **❄️ Enhanced Cooling Logic** - LOW (24.1°C, gentle), MEDIUM (25.0°C, balanced), HIGH (26.0°C, maximum)
-    • **🌡️ Perfect Escalation** - Intuitive temperature-based escalation with appropriate fan speeds
-    • **🔍 Complete Debug Output** - All 6 thresholds shown with proper condition evaluations
-    • **⚙️ Dynamic Compatibility** - Full integration with existing dynamic adaptation system
 
     **v2.8.20 Major Enhancement (PARTIAL):**
     • **Three-Tier System Implementation** - Added consistent LOW/MEDIUM/HIGH levels for both heating and cooling
@@ -780,6 +780,39 @@ blueprint:
                   value: "ble_plus"
         
         # Room name is now configured at the top as a required field
+        
+        adjacent_room_names:
+          name: Adjacent Room Names (Open-Plan Spaces)
+          description: |
+            **For open-plan spaces**, specify adjacent room names that should also trigger this AC.
+            
+            **Use case:** Your Living Room AC covers an open Kitchen/Living/Dining area, but BLE 
+            sensors report specific room names. This allows the AC to activate when you're detected
+            in ANY of these connected spaces.
+            
+            **Format:** Comma-separated room names (e.g., "Kitchen, Dining")
+            
+            **Example Configuration:**
+            • **Room Name:** Living Room (main room from top of config)
+            • **Adjacent Rooms:** Kitchen, Dining
+            • **Result:** AC activates when BLE detects Living Room, Kitchen, OR Dining
+            
+            **⚠️ IMPORTANT for SMART/BLE_PLUS modes:**
+            When using validation modes that require motion + BLE, you MUST also add the motion 
+            sensors from adjacent rooms to the "Room Presence Sensors" list above.
+            
+            **Example for SMART mode:**
+            • **Adjacent Room Names:** Kitchen, Dining
+            • **Room Presence Sensors must include:**
+              - `sensor.phone_ble_area` (BLE sensor)
+              - `binary_sensor.living_room_motion` (main room)
+              - `binary_sensor.kitchen_motion` (adjacent)
+              - `binary_sensor.dining_motion` (adjacent)
+            
+            **Leave empty if not using open-plan space detection.**
+          default: ""
+          selector:
+            text:
         
         smart_mode_behavior:
           name: Smart Mode Room Absence Behavior
@@ -1966,6 +1999,18 @@ variables:
   room_sensors: !input room_presence_sensors
   room_name: !input room_name
   room_ble_name: !input room_name
+  adjacent_rooms_input: !input adjacent_room_names
+  # Parse adjacent room names into a list for BLE detection
+  adjacent_room_list: >
+    {% if adjacent_rooms_input and adjacent_rooms_input != '' %}
+      {% set rooms = [] %}
+      {% for room in adjacent_rooms_input.split(',') %}
+        {% set rooms = rooms + [room.strip()] %}
+      {% endfor %}
+      {{ rooms }}
+    {% else %}
+      []
+    {% endif %}
   smart_behavior: !input smart_mode_behavior
   presence_validation: !input presence_validation_mode
   temp_stability_enabled: !input temp_stability_enabled
@@ -2516,6 +2561,14 @@ action:
               {% if sensor_state == room_ble_name | lower %}
                 {% set ble_detected.value = true %}
                 {% set is_triggered = true %}
+              {# Check if BLE detected in adjacent rooms #}
+              {% elif adjacent_room_list | length > 0 %}
+                {% for adjacent_room in adjacent_room_list %}
+                  {% if sensor_state == adjacent_room | lower %}
+                    {% set ble_detected.value = true %}
+                    {% set is_triggered = true %}
+                  {% endif %}
+                {% endfor %}
               {% endif %}
             
             {# Check if this is a motion/binary sensor #}
@@ -2791,12 +2844,23 @@ action:
               {% set is_triggered = false %}
               
               {% if sensor.startswith('sensor.') and room_ble_name %}
+                {% set detected_room = '' %}
                 {% if sensor_state == room_ble_name | lower %}
                   {% set ble_detected.value = true %}
                   {% set ble_detected.sensors = ble_detected.sensors + [sensor] %}
                   {% set is_triggered = true %}
+                  {% set detected_room = room_ble_name %}
+                {% elif adjacent_room_list | length > 0 %}
+                  {% for adjacent_room in adjacent_room_list %}
+                    {% if sensor_state == adjacent_room | lower %}
+                      {% set ble_detected.value = true %}
+                      {% set ble_detected.sensors = ble_detected.sensors + [sensor] %}
+                      {% set is_triggered = true %}
+                      {% set detected_room = adjacent_room ~ ' (adjacent)' %}
+                    {% endif %}
+                  {% endfor %}
                 {% endif %}
-                • BLE: {{ sensor }} = "{{ sensor_state }}" ({{ 'TRIGGERED' if is_triggered else 'not detected' }})
+                • BLE: {{ sensor }} = "{{ sensor_state }}" ({{ 'TRIGGERED - ' ~ detected_room if is_triggered else 'not detected' }})
               {% elif sensor.startswith('binary_sensor.') %}
                 {% if is_state(sensor, 'on') or is_state(sensor, 'detected') or is_state(sensor, 'occupied') %}
                   {% set motion_detected.value = true %}
