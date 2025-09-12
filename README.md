@@ -108,17 +108,18 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 
 #### Basic Helpers (Required for ALL rooms):
 ```yaml
-# Replace "living_room" with your room name (see naming guide below)
+# ⚠️ REPLACE [room_name] with your actual room name (see naming guide below)
+# Example: [room_name] = living_room, bedroom, office, etc.
 
 1. Input Text Helper:
    Name: climate_last_mode_[room_name]
-   Entity ID: input_text.climate_last_mode_living_room
+   Entity ID: input_text.climate_last_mode_[room_name]
    Icon: mdi:air-conditioner
    Purpose: Tracks the last active climate mode
 
 2. Input DateTime Helper:
    Name: climate_last_change_[room_name] 
-   Entity ID: input_datetime.climate_last_change_living_room
+   Entity ID: input_datetime.climate_last_change_[room_name]
    Has Date: ✅ YES (Required)
    Has Time: ✅ YES (Required)
    Icon: mdi:clock-outline
@@ -127,16 +128,18 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 
 #### Smart/Adaptive Mode Helpers (Required for Smart/Adaptive modes):
 ```yaml
+# ⚠️ REPLACE [room_name] with your actual room name
+
 3. Input Select Helper:
    Name: climate_control_mode_[room_name]
-   Entity ID: input_select.climate_control_mode_living_room
+   Entity ID: input_select.climate_control_mode_[room_name]
    Options: ["Auto", "Manual", "Smart"] (exactly as shown)
    Icon: mdi:tune-vertical
    Purpose: Controls which automation mode is active
 
 4. Input DateTime Helper:
    Name: presence_last_detected_[room_name]
-   Entity ID: input_datetime.presence_last_detected_living_room
+   Entity ID: input_datetime.presence_last_detected_[room_name]
    Has Date: ✅ YES (Required)
    Has Time: ✅ YES (Required)  
    Icon: mdi:account-clock
@@ -144,56 +147,60 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 
 5. Input Boolean Helper:
    Name: climate_proximity_override_[room_name]
-   Entity ID: input_boolean.climate_proximity_override_living_room
+   Entity ID: input_boolean.climate_proximity_override_[room_name]
    Icon: mdi:toggle-switch
    Purpose: Emergency override to bypass all automation
 ```
 
 #### Advanced Feature Helpers (Optional but Recommended):
 ```yaml
+# ⚠️ REPLACE [room_name] with your actual room name
 # Dynamic Adaptation & Effectiveness Tracking
+
 6. Input Number Helper:
    Name: climate_temp_history_[room_name]
-   Entity ID: input_number.climate_temp_history_living_room
+   Entity ID: input_number.climate_temp_history_[room_name]
    Min: 0, Max: 50, Step: 0.1
    Unit: °C
    Purpose: Stores previous temperature for trend analysis
 
 7. Input Number Helper:
    Name: climate_effectiveness_score_[room_name] 
-   Entity ID: input_number.climate_effectiveness_score_living_room
+   Entity ID: input_number.climate_effectiveness_score_[room_name]
    Min: 0, Max: 100, Step: 0.1
    Unit: %
    Purpose: Tracks how well the current mode is working (0-100%)
 
 8. Input Text Helper:
    Name: climate_trend_direction_[room_name]
-   Entity ID: input_text.climate_trend_direction_living_room
+   Entity ID: input_text.climate_trend_direction_[room_name]
    Purpose: Tracks if temperature is rising/falling/stable
 
 9. Input DateTime Helper:
    Name: climate_mode_start_time_[room_name]
-   Entity ID: input_datetime.climate_mode_start_time_living_room  
+   Entity ID: input_datetime.climate_mode_start_time_[room_name]  
    Has Date: ✅ YES, Has Time: ✅ YES
    Purpose: Tracks when current climate mode started
 
 10. Input DateTime Helper:
     Name: temp_stable_since_[room_name]
-    Entity ID: input_datetime.temp_stable_since_living_room
+    Entity ID: input_datetime.temp_stable_since_[room_name]
     Has Date: ✅ YES, Has Time: ✅ YES
     Purpose: Tracks when temperature became stable (for auto-off feature)
 
 11. Input Text Helper:
     Name: climate_last_transition_[room_name]
-    Entity ID: input_text.climate_last_transition_living_room
+    Entity ID: input_text.climate_last_transition_[room_name]
     Purpose: Prevents rapid switching between heating/cooling (hysteresis)
 ```
 
 #### Adaptive Control Helpers (Optional - for automatic mode switching):
 ```yaml
+# ⚠️ REPLACE [room_name] with your actual room name
+
 12. Input Boolean Helper (Optional):
     Name: climate_adaptive_override_[room_name]
-    Entity ID: input_boolean.climate_adaptive_override_living_room
+    Entity ID: input_boolean.climate_adaptive_override_[room_name]
     Purpose: Manually disable adaptive control when needed
 ```
 
@@ -207,10 +214,10 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 #### Naming Rules:
 ```yaml
 ✅ GOOD Examples:
-- "Living Room" → input_text.climate_last_mode_living_room
-- "Master Bedroom" → input_text.climate_last_mode_master_bedroom  
-- "Office" → input_text.climate_last_mode_office
-- "Kids Room" → input_text.climate_last_mode_kids_room
+- "Living Room" → [room_name] = living_room
+- "Master Bedroom" → [room_name] = master_bedroom  
+- "Office" → [room_name] = office
+- "Kids Room" → [room_name] = kids_room
 
 ❌ AVOID:
 - Special characters: !@#$%^&*()
@@ -220,12 +227,17 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 
 #### Helper Entity Naming Convention:
 ```
-input_[type].climate_[function]_[room_name_with_underscores]
+input_[type].climate_[function]_[room_name]
 
 Examples:
-Room: "Living Room" → living_room
-Room: "Master Bedroom" → master_bedroom
-Room: "Home Office" → home_office
+Room: "Living Room" → [room_name] = living_room
+Room: "Master Bedroom" → [room_name] = master_bedroom
+Room: "Home Office" → [room_name] = home_office
+
+Final Entity IDs:
+- input_text.climate_last_mode_living_room
+- input_text.climate_last_mode_master_bedroom  
+- input_text.climate_last_mode_home_office
 ```
 
 #### BLE Sensor Matching:
@@ -233,10 +245,12 @@ If using BLE presence detection, check your sensor state in Developer Tools:
 ```yaml
 # Example: If your BLE sensor reports "Living Room"
 Room Name in Blueprint: "Living Room" (exact match required)
+[room_name] = living_room
 Helper entities: input_text.climate_last_mode_living_room
 
 # Example: If your BLE sensor reports "office"  
 Room Name in Blueprint: "office" (exact match required)
+[room_name] = office
 Helper entities: input_text.climate_last_mode_office
 ```
 
