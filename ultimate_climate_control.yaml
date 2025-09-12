@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.18
+  name: Ultimate Smart Climate Control - v2.8.19
 
   description: |
-    **Ultimate Smart Climate Control v2.8.18**
+    **Ultimate Smart Climate Control v2.8.19**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.19 Logic Correction:**
+    • **Fixed Heating Threshold Logic** - Swapped heating low/medium thresholds so naming matches behavior: "low" heating (19.9°C, gentle) activates closer to comfort zone, "medium" heating (19.0°C, aggressive) activates when much colder
 
     **v2.8.18 Critical Threshold Fix:**
     • **Fixed Heating/Cooling Threshold Overlap** - Adjusted heating medium threshold to be 0.1°C below comfort zone minimum and cooling medium to be 0.1°C above comfort zone maximum, preventing boundary overlaps that caused incorrect behavior at exact comfort zone edges
@@ -408,22 +411,22 @@ blueprint:
               step: 0.5
               unit_of_measurement: "°C"
         
-        cooling_high_temp:
-          name: High Cooling Threshold (Advanced)
+        cooling_low_temp:
+          name: Low Cooling Threshold (Advanced)
           description: |
-            Override **maximum cooling trigger temperature**.
+            Override **low cooling trigger temperature**.
 
-            • **Temperature that triggers high-power cooling mode**
-            • When room exceeds this, system uses maximum fan speed
-            • Should be significantly higher than comfort maximum
+            • **Temperature that triggers gentle cooling mode**
+            • When room just exceeds comfort zone, uses minimum fan speed
+            • Should be just above comfort maximum (e.g., 24.1°C)
 
-            **Purpose:** For emergency cooling when room gets very hot.
-          default: 26
+            **Purpose:** Gentle cooling when slightly warm.
+          default: 24.1
           selector:
             number:
               min: 20
               max: 35
-              step: 0.5
+              step: 0.1
               unit_of_measurement: "°C"
         
         cooling_medium_temp:
@@ -431,12 +434,30 @@ blueprint:
           description: |
             Override **medium cooling trigger temperature**.
 
-            • **Temperature that triggers medium-power cooling mode**
-            • When room exceeds this, system uses moderate fan speed
-            • Should be between comfort max and high cooling trigger
+            • **Temperature that triggers moderate cooling mode**
+            • When room is moderately warm, uses medium fan speed
+            • Should be 1°C above comfort maximum (e.g., 25°C)
 
             **Purpose:** Balanced cooling for moderately warm conditions.
-          default: 24
+          default: 25
+          selector:
+            number:
+              min: 20
+              max: 35
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        cooling_high_temp:
+          name: High Cooling Threshold (Advanced)
+          description: |
+            Override **high cooling trigger temperature**.
+
+            • **Temperature that triggers maximum cooling mode**
+            • When room is very hot, uses maximum fan speed
+            • Should be 2°C above comfort maximum (e.g., 26°C)
+
+            **Purpose:** Emergency cooling when room gets very hot.
+          default: 26
           selector:
             number:
               min: 20
@@ -447,19 +468,19 @@ blueprint:
         heating_low_temp:
           name: Low Heating Threshold (Advanced)
           description: |
-            Override **maximum heating trigger temperature**.
+            Override **low heating trigger temperature**.
 
-            • **Temperature that triggers high-power heating mode**
-            • When room falls below this, system uses maximum fan speed
-            • Should be significantly lower than comfort minimum
+            • **Temperature that triggers gentle heating mode**
+            • When room just falls below comfort zone, uses minimum fan speed
+            • Should be just below comfort minimum (e.g., 19.9°C)
 
-            **Purpose:** For emergency heating when room gets very cold.
-          default: 18
+            **Purpose:** Gentle heating when slightly cool.
+          default: 19.9
           selector:
             number:
               min: 10
               max: 25
-              step: 0.5
+              step: 0.1
               unit_of_measurement: "°C"
         
         heating_medium_temp:
@@ -467,12 +488,30 @@ blueprint:
           description: |
             Override **medium heating trigger temperature**.
 
-            • **Temperature that triggers medium-power heating mode**
-            • When room falls below this, system uses moderate fan speed
-            • Should be between comfort min and low heating trigger
+            • **Temperature that triggers moderate heating mode**
+            • When room is moderately cool, uses medium fan speed
+            • Should be 1°C below comfort minimum (e.g., 19°C)
 
             **Purpose:** Balanced heating for moderately cool conditions.
-          default: 20
+          default: 19
+          selector:
+            number:
+              min: 10
+              max: 25
+              step: 0.5
+              unit_of_measurement: "°C"
+        
+        heating_high_temp:
+          name: High Heating Threshold (Advanced)
+          description: |
+            Override **high heating trigger temperature**.
+
+            • **Temperature that triggers maximum heating mode**
+            • When room is very cold, uses maximum fan speed
+            • Should be 2°C below comfort minimum (e.g., 18°C)
+
+            **Purpose:** Emergency heating when room gets very cold.
+          default: 18
           selector:
             number:
               min: 10
@@ -1847,10 +1886,12 @@ variables:
   comfort_max_input: !input comfort_max_temp
   cooling_target_input: !input cooling_target_temp
   heating_target_input: !input heating_target_temp
+  cooling_low_input: !input cooling_low_temp
   cooling_medium_input: !input cooling_medium_temp
   cooling_high_input: !input cooling_high_temp
-  heating_medium_input: !input heating_medium_temp
   heating_low_input: !input heating_low_temp
+  heating_medium_input: !input heating_medium_temp
+  heating_high_input: !input heating_high_temp
   
   # Calculate comfort zones based on base target (before weather adjustment)
   base_comfort_min: "{{ comfort_min_input if advanced_enabled else (target_temp - comfort_width) | float }}"
@@ -1859,10 +1900,14 @@ variables:
   base_heating_target: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
   
   # Auto-calculate base thresholds based on aggressiveness (smooth graduated response)
-  base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else (base_comfort_max + 0.1) | round(1) }}"
-  base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + aggressiveness/2) | round(1) }}"
-  base_heating_medium: "{{ heating_medium_input if advanced_enabled else (base_comfort_min - 0.1) | round(1) }}"
-  base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
+  # Cooling thresholds (escalate as temperature rises)
+  base_cooling_low: "{{ cooling_low_input if advanced_enabled else (base_comfort_max + 0.1) | round(1) }}"
+  base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else (base_comfort_max + 1.0) | round(1) }}"
+  base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + 2.0) | round(1) }}"
+  # Heating thresholds (escalate as temperature drops)
+  base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - 0.1) | round(1) }}"
+  base_heating_medium: "{{ heating_medium_input if advanced_enabled else (base_comfort_min - 1.0) | round(1) }}"
+  base_heating_high: "{{ heating_high_input if advanced_enabled else (base_comfort_min - 2.0) | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
@@ -2153,6 +2198,10 @@ action:
         {% set adjustment = weather_adjusted_target - target_temp %}
         {{ (base_heating_target + adjustment) | round(1) }}
       
+      cooling_low_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_cooling_low + adjustment) | round(1) }}
+      
       cooling_medium_temp: >
         {% set adjustment = weather_adjusted_target - target_temp %}
         {{ (base_cooling_medium + adjustment) | round(1) }}
@@ -2161,13 +2210,17 @@ action:
         {% set adjustment = weather_adjusted_target - target_temp %}
         {{ (base_cooling_high + adjustment) | round(1) }}
       
+      heating_low_temp: >
+        {% set adjustment = weather_adjusted_target - target_temp %}
+        {{ (base_heating_low + adjustment) | round(1) }}
+      
       heating_medium_temp: >
         {% set adjustment = weather_adjusted_target - target_temp %}
         {{ (base_heating_medium + adjustment) | round(1) }}
       
-      heating_low_temp: >
+      heating_high_temp: >
         {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_heating_low + adjustment) | round(1) }}
+        {{ (base_heating_high + adjustment) | round(1) }}
       
       # Check window sensors
       window_open: >
@@ -2763,8 +2816,8 @@ action:
             
             📋 Technical Details:
                 • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
-                • Cooling Triggers: {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
-                • Heating Triggers: {{ heating_medium_temp }}°C (medium), {{ heating_low_temp }}°C (low)
+                • Cooling Triggers: {{ cooling_low_temp }}°C (low), {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
+                • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
             {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
                 • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
             {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3{% endif %}
@@ -2834,29 +2887,34 @@ action:
         🔍 {{ room_name | upper }} DEBUG Part 3: Heating & Cooling checks
         
         🔥 Heating Logic:
-            • heating_medium: {{ heating_medium_temp }}°C
             • heating_low: {{ heating_low_temp }}°C
-            • temp <= medium: {{ current_temp <= heating_medium_temp }}
+            • heating_medium: {{ heating_medium_temp }}°C
+            • heating_high: {{ heating_high_temp }}°C
             • temp <= low: {{ current_temp <= heating_low_temp }}
-            • temp > low: {{ current_temp > heating_low_temp }}
+            • temp <= medium: {{ current_temp <= heating_medium_temp }}
+            • temp <= high: {{ current_temp <= heating_high_temp }}
             • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
             • mode_check: {{ last_mode != 'heating' }} (last_mode: {{ last_mode }})
             • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'heating' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
-            • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
+            • HIGH heating conditions: {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
         
         ❄️ Cooling Logic:
+            • cooling_low: {{ cooling_low_temp }}°C
             • cooling_medium: {{ cooling_medium_temp }}°C
             • cooling_high: {{ cooling_high_temp }}°C
+            • temp >= low: {{ current_temp >= cooling_low_temp }}
             • temp >= medium: {{ current_temp >= cooling_medium_temp }}
             • temp >= high: {{ current_temp >= cooling_high_temp }}
             • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
             • mode_check: {{ last_mode != 'cooling' }} (last_mode: {{ last_mode }})
             • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'cooling' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
+            • LOW cooling conditions: {{ should_activate and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
             • MEDIUM cooling conditions: {{ should_activate and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
+            • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -3398,8 +3456,151 @@ action:
                 Pre-conditioning started - approaching home.
                 Current: {{ current_temp }}°C
       
+      # Low cooling - Gentle cooling mode when temperature just exceeds comfort zone
+      # Activates at cooling_low_temp (e.g., 24.1°C) for minimal cooling
+      # Uses low fan speed for maximum efficiency with minimal power consumption
+      - conditions:
+          - condition: template
+            value_template: "{{ should_activate }}"
+          - condition: template
+            value_template: "{{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}"
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🌡️ {{ room_name | upper }} LOW COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_low_temp }}°C (low threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    
+                    # Smart cooling mode selection
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For cooling, try cooling-capable modes #}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif 'auto' in modes %}
+                        auto
+                      {% elif 'Auto' in modes %}
+                        Auto
+                      {% elif 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        {{ modes[0] if modes else 'off' }}
+                      {% endif %}
+                
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART LOW COOL MODE: {{ repeat.item }}
+                      • Available: {{ available_modes | join(', ') }}
+                      • Selected: {{ selected_hvac_mode }}
+                      • Reason: Low cooling mode for gentle temperature control
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ cooling_target_temp }}"
+          
+          # Use low fan speed for gentle cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    
+                    # Smart low fan mode selection
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      
+                      {# Try low speed equivalents in order of preference #}
+                      {% if 'low' in fans %}
+                        low
+                      {% elif 'Low' in fans %}
+                        Low
+                      {% elif '1' in fans %}
+                        1
+                      {% elif 'Level 1' in fans %}
+                        Level 1
+                      {% elif 'quiet' in fans %}
+                        quiet
+                      {% elif 'Quiet' in fans %}
+                        Quiet
+                      {% elif 'eco' in fans %}
+                        eco
+                      {% elif 'Eco' in fans %}
+                        Eco
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {# Fallback to available options #}
+                      {% elif '2' in fans %}
+                        2
+                      {% elif 'Level 2' in fans %}
+                        Level 2
+                      {% else %}
+                        {{ fans[0] if fans else 'Auto' }}
+                      {% endif %}
+                
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART LOW FAN: {{ repeat.item }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Reason: Low fan speed for gentle cooling
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
+      
       # Medium cooling - Normal cooling mode when temperature exceeds comfort zone
-      # Activates at cooling_medium_temp (e.g., 24.5°C) for balanced cooling
+      # Activates at cooling_medium_temp (e.g., 25°C) for balanced cooling
       # Uses medium fan speed for efficient cooling without excessive power consumption
       - conditions:
           - condition: template
