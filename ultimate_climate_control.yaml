@@ -3110,6 +3110,27 @@ action:
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - choose:
+      # TEST: Simple heating condition with hardcoded values
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp <= 18.0 }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🔥 {{ room_name | upper }} TEST HEATING TRIGGERED - Current temp {{ current_temp }}°C is <= 18.0°C"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "heat"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: 22
+
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
