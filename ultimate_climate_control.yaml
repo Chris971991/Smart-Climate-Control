@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.9.9
+  name: Ultimate Smart Climate Control - v2.10.0
 
   description: |
-    **Ultimate Smart Climate Control v2.9.9**
+    **Ultimate Smart Climate Control v2.10.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -47,6 +47,15 @@ blueprint:
     • **📝 IMPROVED** - Better examples for adjacent room names with spaces (e.g., "Master Bedroom, Guest Room")
     • **📋 CLARIFIED** - Multiple format examples: simple, with spaces, and mixed scenarios
     • **🔧 ENHANCED** - Updated SMART mode example to show proper motion sensor naming for rooms with spaces
+
+    **v2.10.0 Smart Hysteresis Logic Restored:**
+    • **🔧 CRITICAL FIX** - Restored sophisticated "continue until target" hysteresis control that was failing due to template variable timing issues
+    • **🎯 SMART LOGIC** - All 6 temperature conditions now use direct helper entity reads instead of cached variables to prevent evaluation errors
+    • **📊 START/CONTINUE** - System intelligently differentiates between starting new cycles vs continuing existing ones until target reached
+    • **🛡️ ANTI-CYCLING** - Prevents short-cycling: start at threshold (e.g., 18°C), continue until comfortable target (22°C)
+    • **⚡ ENERGY EFFICIENT** - Longer, more efficient cycles vs rapid on/off switching that wastes energy and stresses equipment
+    • **🔍 ENHANCED DEBUG** - Detailed logging shows whether condition is in "START MODE" or "CONTINUE MODE" with remaining temperature to target
+    • **⚙️ TEMPLATE SAFETY** - Fixed variable scope issues that prevented complex conditions from executing properly
 
     **v2.9.0 Adjacent Room BLE Detection for Open-Plan Spaces:**
     • **🏠 NEW FEATURE** - Adjacent room detection for open-plan living spaces (Kitchen/Living/Dining areas)
@@ -3101,14 +3110,33 @@ action:
           datetime: "{{ now() }}"
 
   - choose:
-      # HIGH HEATING: Fixed simple condition
+      # HIGH HEATING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp <= heating_high_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'heating_high' %}
+                {# Already heating high - continue until target reached #}
+                {{ current_temp < target_temp }}
+              {% else %}
+                {# Not heating high - start if threshold exceeded and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp <= heating_high_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_high_temp }}°C (high threshold)"
+              message: >
+                {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+                🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED
+                {% if current_mode == 'heating_high' %}
+                📊 CONTINUE MODE: Already heating high, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting HIGH heating 
+                • Trigger: {{ current_temp }}°C ≤ {{ heating_high_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to heat)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -3132,10 +3160,18 @@ action:
             data:
               datetime: "{{ now() }}"
 
-      # MEDIUM HEATING: Fixed simple condition  
+      # MEDIUM HEATING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp <= heating_medium_temp and current_temp > heating_high_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'heating_medium' %}
+                {# Already heating medium - continue until target reached or escalation needed #}
+                {{ current_temp < target_temp and current_temp > heating_high_temp }}
+              {% else %}
+                {# Not heating medium - start if in medium range and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -3163,10 +3199,18 @@ action:
             data:
               datetime: "{{ now() }}"
 
-      # LOW HEATING: Fixed simple condition
+      # LOW HEATING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp <= heating_low_temp and current_temp > heating_medium_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'heating_low' %}
+                {# Already heating low - continue until target reached or escalation needed #}
+                {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+              {% else %}
+                {# Not heating low - start if in low range and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -3194,10 +3238,18 @@ action:
             data:
               datetime: "{{ now() }}"
 
-      # HIGH COOLING: Fixed simple condition
+      # HIGH COOLING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp >= cooling_high_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'cooling_high' %}
+                {# Already cooling high - continue until target reached #}
+                {{ current_temp > target_temp }}
+              {% else %}
+                {# Not cooling high - start if threshold exceeded and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp >= cooling_high_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -3225,10 +3277,18 @@ action:
             data:
               datetime: "{{ now() }}"
 
-      # MEDIUM COOLING: Fixed simple condition
+      # MEDIUM COOLING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'cooling_medium' %}
+                {# Already cooling medium - continue until target reached or escalation needed #}
+                {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+              {% else %}
+                {# Not cooling medium - start if in medium range and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -3256,10 +3316,18 @@ action:
             data:
               datetime: "{{ now() }}"
 
-      # LOW COOLING: Fixed simple condition
+      # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
-            value_template: "{{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and should_activate and room_presence_detected }}"
+            value_template: >
+              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% if current_mode == 'cooling_low' %}
+                {# Already cooling low - continue until target reached or escalation needed #}
+                {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+              {% else %}
+                {# Not cooling low - start if in low range and conditions met #}
+                {{ should_activate and room_presence_detected and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
