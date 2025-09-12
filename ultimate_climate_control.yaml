@@ -179,7 +179,9 @@ blueprint:
         **Create a unique helper for each room/automation instance:**
 
         • `input_text.climate_last_mode_living_room`
+
         • `input_text.climate_last_mode_bedroom`
+
         • `input_text.climate_last_mode_office`
 
         **Important:** This helper stores state information for proper automation behavior.
@@ -195,7 +197,9 @@ blueprint:
         **Create a unique helper for each room/automation instance:**
 
         • `input_datetime.climate_last_change_living_room`
+
         • `input_datetime.climate_last_change_bedroom`
+
         • `input_datetime.climate_last_change_office`
 
         **Used for:** Timing calculations and manual override protection.
@@ -781,9 +785,11 @@ blueprint:
             **⚠️ CRITICAL: Check Your BLE Sensor Format First!**
             Before configuring, check **Developer Tools → States** to see exactly how your BLE sensor reports room names:
             
-            • **If sensor shows:** "living room" → **Enter:** Living Room
-            • **If sensor shows:** "living_room" (with underscores) → **Enter:** living_room  
-            • **If sensor shows:** "livingroom" → **Enter:** livingroom
+            • **If sensor shows:** `living room` → **Enter:** `Living Room`
+
+            • **If sensor shows:** `living_room` (with underscores) → **Enter:** `living_room`
+
+            • **If sensor shows:** `livingroom` → **Enter:** `livingroom`
             
             **Format must match exactly** (case-insensitive but spaces/underscores matter).
             
@@ -804,10 +810,13 @@ blueprint:
             **Example for SMART mode (spaces format):**
             • **Adjacent Room Names:** Kitchen, Family Room  (match BLE sensor format)
             • **Room Presence Sensors must include:**
-              - sensor.phone_ble_area (BLE sensor)
-              - binary_sensor.living_room_motion (main room)
-              - binary_sensor.kitchen_motion (adjacent room motion)
-              - binary_sensor.family_room_motion (adjacent room motion)
+              - `sensor.phone_ble_area` (BLE sensor)
+
+              - `binary_sensor.living_room_motion` (main room)
+
+              - `binary_sensor.kitchen_motion` (adjacent room motion)
+              
+              - `binary_sensor.family_room_motion` (adjacent room motion)
             
             **Leave empty if not using open-plan space detection.**
           default: ""
@@ -1895,7 +1904,9 @@ blueprint:
             **Example helper names:**
 
             • `input_boolean.climate_adaptive_override_office`
+
             • `input_boolean.ac_manual_override_bedroom`
+
             • `input_boolean.disable_adaptive_living_room`
 
             **Use this for:** Permanent manual control periods or when you want full override control via dashboard toggles.
@@ -3112,6 +3123,28 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_max_fan = fan_speed_max %}
+                {% if desired_max_fan in available_fans %}
+                  {{ desired_max_fan }}
+                {% elif '5' in available_fans %}
+                  5
+                {% elif 'Level 5' in available_fans %}
+                  Level 5
+                {% elif 'high' in available_fans %}
+                  high
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[-1] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3151,6 +3184,28 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_medium_fan = fan_speed_medium %}
+                {% if desired_medium_fan in available_fans %}
+                  {{ desired_medium_fan }}
+                {% elif '3' in available_fans %}
+                  3
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
+                {% elif 'medium' in available_fans %}
+                  medium
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[0] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3190,6 +3245,31 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% if 'low' in available_fans %}
+                  low
+                {% elif 'Low' in available_fans %}
+                  Low
+                {% elif '1' in available_fans %}
+                  1
+                {% elif 'Level 1' in available_fans %}
+                  Level 1
+                {% elif 'quiet' in available_fans %}
+                  quiet
+                {% elif 'Quiet' in available_fans %}
+                  Quiet
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[0] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3229,6 +3309,28 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_max_fan = fan_speed_max %}
+                {% if desired_max_fan in available_fans %}
+                  {{ desired_max_fan }}
+                {% elif '5' in available_fans %}
+                  5
+                {% elif 'Level 5' in available_fans %}
+                  Level 5
+                {% elif 'high' in available_fans %}
+                  high
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[-1] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3268,6 +3370,28 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% set desired_medium_fan = fan_speed_medium %}
+                {% if desired_medium_fan in available_fans %}
+                  {{ desired_medium_fan }}
+                {% elif '3' in available_fans %}
+                  3
+                {% elif 'Level 3' in available_fans %}
+                  Level 3
+                {% elif 'medium' in available_fans %}
+                  medium
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[0] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3307,6 +3431,31 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: >
+                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
+                {% if 'low' in available_fans %}
+                  low
+                {% elif 'Low' in available_fans %}
+                  Low
+                {% elif '1' in available_fans %}
+                  1
+                {% elif 'Level 1' in available_fans %}
+                  Level 1
+                {% elif 'quiet' in available_fans %}
+                  quiet
+                {% elif 'Quiet' in available_fans %}
+                  Quiet
+                {% elif 'Auto' in available_fans %}
+                  Auto
+                {% elif 'auto' in available_fans %}
+                  auto
+                {% else %}
+                  {{ available_fans[0] if available_fans else 'Auto' }}
+                {% endif %}
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
