@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.9.1
+  name: Ultimate Smart Climate Control - v2.9.2
 
   description: |
-    **Ultimate Smart Climate Control v2.9.1**
+    **Ultimate Smart Climate Control v2.9.2**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.9.2 Critical BLE Sensor Format Clarification:**
+    • **⚠️ CRITICAL** - Added warning to check BLE sensor format in Developer Tools before configuring
+    • **📋 FORMAT GUIDE** - Clear examples for spaces (`living room`) vs underscores (`living_room`) vs no spaces (`livingroom`)
+    • **🔧 TROUBLESHOOTING** - Prevents configuration errors where adjacent room detection fails due to format mismatches
+    • **✅ VERIFICATION** - Users now know to match exact BLE sensor output format (case-insensitive)
 
     **v2.9.1 Documentation & Example Improvements:**
     • **📝 IMPROVED** - Better examples for adjacent room names with spaces (e.g., "Master Bedroom, Guest Room")
@@ -795,29 +801,36 @@ blueprint:
             sensors report specific room names. This allows the AC to activate when you're detected
             in ANY of these connected spaces.
             
-            **Format:** Comma-separated room names - spaces in names are fine!
+            **⚠️ CRITICAL: Check Your BLE Sensor Format First!**
+            Before configuring, check **Developer Tools → States** to see exactly how your BLE sensor reports room names:
             
-            **Examples:**
-            • Simple: `Kitchen, Dining`
-            • With spaces: `Master Bedroom, Guest Room, Home Office`
-            • Mixed: `Kitchen, Living Room, Dining`
+            • **If sensor shows:** `"living room"` → **Enter:** `Living Room`
+            • **If sensor shows:** `"living_room"` → **Enter:** `living_room`  
+            • **If sensor shows:** `"livingroom"` → **Enter:** `livingroom`
             
-            **Example Configuration:**
+            **Format must match exactly** (case-insensitive but spaces/underscores matter).
+            
+            **Examples based on your BLE sensor format:**
+            • **Spaces format:** `Kitchen, Dining Room, Living Room`
+            • **Underscore format:** `kitchen, dining_room, living_room`
+            • **No spaces format:** `kitchen, diningroom, livingroom`
+            
+            **Example Configuration (assuming spaces format):**
             • **Room Name:** Living Room (main room from top of config)
-            • **Adjacent Rooms:** `Kitchen, Dining, Family Room`
-            • **Result:** AC activates when BLE detects Living Room, Kitchen, Dining, OR Family Room
+            • **Adjacent Rooms:** `Kitchen, Dining Room, Family Room`
+            • **Result:** AC activates when BLE detects Living Room, Kitchen, Dining Room, OR Family Room
             
             **⚠️ IMPORTANT for SMART/BLE_PLUS modes:**
             When using validation modes that require motion + BLE, you MUST also add the motion 
             sensors from adjacent rooms to the "Room Presence Sensors" list above.
             
-            **Example for SMART mode:**
-            • **Adjacent Room Names:** `Kitchen, Family Room`
+            **Example for SMART mode (spaces format):**
+            • **Adjacent Room Names:** `Kitchen, Family Room`  (match BLE sensor format)
             • **Room Presence Sensors must include:**
               - `sensor.phone_ble_area` (BLE sensor)
               - `binary_sensor.living_room_motion` (main room)
-              - `binary_sensor.kitchen_motion` (adjacent)
-              - `binary_sensor.family_room_motion` (adjacent)
+              - `binary_sensor.kitchen_motion` (adjacent room motion)
+              - `binary_sensor.family_room_motion` (adjacent room motion)
             
             **Leave empty if not using open-plan space detection.**
           default: ""
