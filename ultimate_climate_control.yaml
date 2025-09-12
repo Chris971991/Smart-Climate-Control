@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.19
+  name: Ultimate Smart Climate Control - v2.8.20
 
   description: |
-    **Ultimate Smart Climate Control v2.8.19**
+    **Ultimate Smart Climate Control v2.8.20**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,13 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.20 Major Enhancement (PARTIAL):**
+    • **Three-Tier System Implementation** - Added consistent LOW/MEDIUM/HIGH levels for both heating and cooling
+    • **New Cooling LOW Mode** - Gentle cooling at 24.1°C with minimal fan speed for maximum efficiency  
+    • **Enhanced Thresholds** - All 6 temperature thresholds now properly defined with weather compensation
+    • **Improved Debug Output** - Shows all 6 thresholds and detailed condition evaluations
+    • **NOTE**: Heating restructure still in progress - will complete in next version
 
     **v2.8.19 Logic Correction:**
     • **Fixed Heating Threshold Logic** - Swapped heating low/medium thresholds so naming matches behavior: "low" heating (19.9°C, gentle) activates closer to comfort zone, "medium" heating (19.0°C, aggressive) activates when much colder
