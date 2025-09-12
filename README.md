@@ -1,15 +1,25 @@
 # Ultimate Smart Climate Control Blueprint
 
 ## Overview
-A highly customizable Home Assistant blueprint for intelligent climate control with power efficiency optimization, proximity-based pre-conditioning, and multi-zone support.
+A highly advanced Home Assistant blueprint for intelligent climate control with **3-tier temperature escalation**, power efficiency optimization, proximity-based pre-conditioning, and multi-zone support. Features intuitive LOW/MEDIUM/HIGH heating and cooling with graduated fan speeds for optimal comfort and efficiency.
 
 ## Key Features
+
+### 🌡️ **NEW! 3-Tier Temperature System (v2.8.21)**
+- **Intelligent Escalation**: LOW → MEDIUM → HIGH heating and cooling
+- **Graduated Fan Speeds**: Gentle → Balanced → Maximum power
+- **Perfect Boundary Logic**: No overlaps, smooth transitions
+- **Single Degree Precision**: Responds at exactly 1°C intervals
+- **Example (22°C target, ±2°C comfort)**: 
+  - Cooling: 24.1°C (LOW) → 25°C (MEDIUM) → 26°C (HIGH)
+  - Heating: 19.9°C (LOW) → 19°C (MEDIUM) → 18°C (HIGH)
 
 ### 🎯 Full Customization
 - **Multi-unit support**: Control 1 or multiple A/C units simultaneously
 - **Flexible presence detection**: Use persons, devices, or both
-- **Adjustable temperature thresholds**: Set your own comfort zones
-- **Custom fan speeds**: Configure speeds for each operating mode
+- **6 Temperature Thresholds**: Complete LOW/MEDIUM/HIGH for heating and cooling
+- **Smart Fan Speeds**: Auto-selects appropriate speeds for each intensity level
+- **Weather Compensation**: All thresholds adjust with weather conditions
 - **Notification options**: Choose what and when to be notified
 
 ### 🧠 Smart Mode Control (NEW!)
@@ -93,7 +103,7 @@ A highly customizable Home Assistant blueprint for intelligent climate control w
 6. **Create Automation**:
    - Go to Settings → Automations
    - Click "Create Automation"
-   - Choose "Ultimate Smart Climate Control - v1.0"
+   - Choose "Ultimate Smart Climate Control - v2.8.21"
    - Configure all options to your preference
 
 7. **Add Dashboard Scripts** (Optional):
@@ -140,16 +150,20 @@ Select one or more A/C units to control. The blueprint will:
 - **Presence Devices**: Add PCs, TVs, or other indicators
 - **Proximity Sensors**: Configure distance tracking
 
-### Temperature Thresholds
+### 3-Tier Temperature Thresholds
 
-#### Cooling Thresholds
-- **High Cooling** (26°C): Maximum cooling activated
-- **Medium Cooling** (24°C): Moderate cooling starts
-- **Comfort Zone** (21-23°C): Eco mode or off
+#### Cooling Escalation (🌡️ NEW SYSTEM)
+- **LOW Cooling** (e.g., 24.1°C): Gentle cooling with minimal fan, maximum efficiency
+- **MEDIUM Cooling** (e.g., 25.0°C): Balanced cooling with medium fan speeds  
+- **HIGH Cooling** (e.g., 26.0°C): Maximum cooling with high fan, emergency mode
+- **Comfort Zone** (20.0-24.0°C): Eco mode or off
 
-#### Heating Thresholds  
-- **Low Heating** (18°C): Maximum heating activated
-- **Medium Heating** (20°C): Moderate heating starts
+#### Heating Escalation (🔥 COMPLETELY RESTRUCTURED)
+- **LOW Heating** (e.g., 19.9°C): Gentle heating with minimal fan, maximum efficiency
+- **MEDIUM Heating** (e.g., 19.0°C): Balanced heating with medium fan speeds
+- **HIGH Heating** (e.g., 18.0°C): Maximum heating with high fan, emergency mode
+
+> **Note**: All thresholds automatically adjust based on your target temperature and comfort zone settings. Advanced users can override individual thresholds.
 
 ### Power Efficiency Settings
 
@@ -255,12 +269,19 @@ Debug logs show:
 - Enable gradual adjustment
 - Widen comfort zone
 - Check debug logs for rapid mode changes
+- Look for "runtime_lockout: ACTIVE" messages
 
 ### Not Cooling/Heating Fast Enough
-- Decrease gradual adjustment offset
-- Increase fan speeds
-- Narrow temperature thresholds
-- Check debug logs to see if conditions are being met
+- Check if temperature is within the 3-tier escalation ranges
+- Verify debug logs show correct threshold conditions
+- Look for "LOW/MEDIUM/HIGH conditions: True" messages
+- Ensure fan speeds are configured for your A/C unit
+
+### Understanding the New 3-Tier System (v2.8.21)
+- **Debug logs show all 6 thresholds**: cooling_low, cooling_medium, cooling_high, heating_low, heating_medium, heating_high
+- **"Choose block completed - no conditions matched"**: Temperature is in comfort zone (working correctly)
+- **Threshold calculations**: Based on target temperature ± comfort zone ± aggressiveness
+- **Fan speed selection**: Automatic based on A/C capabilities and intensity level
 
 ### High Energy Usage
 - Enable eco mode
@@ -298,4 +319,28 @@ For issues or suggestions, please check the Home Assistant community forums or c
 
 ## Version History
 
-- **v1.0**: Initial release with full customization and power efficiency features
+### **v2.8.21** (Latest) - Complete 3-Tier System
+- **🎯 FULLY IMPLEMENTED** - Complete LOW/MEDIUM/HIGH system for both heating and cooling
+- **🔥 NEW Heating Structure** - Completely restructured with proper LOW (19.9°C, gentle), MEDIUM (19.0°C, balanced), HIGH (18.0°C, maximum) 
+- **❄️ Enhanced Cooling Logic** - LOW (24.1°C, gentle), MEDIUM (25.0°C, balanced), HIGH (26.0°C, maximum)
+- **🌡️ Perfect Escalation** - Intuitive temperature-based escalation with appropriate fan speeds
+- **🔍 Complete Debug Output** - All 6 thresholds shown with proper condition evaluations
+- **⚙️ Dynamic Compatibility** - Full integration with existing dynamic adaptation system
+
+### **v2.8.20** - Three-Tier Foundation  
+- **Three-Tier System Implementation** - Added consistent LOW/MEDIUM/HIGH levels for both heating and cooling
+- **New Cooling LOW Mode** - Gentle cooling at 24.1°C with minimal fan speed for maximum efficiency  
+- **Enhanced Thresholds** - All 6 temperature thresholds now properly defined with weather compensation
+- **Improved Debug Output** - Shows all 6 thresholds and detailed condition evaluations
+
+### **v2.8.19** - Logic Corrections
+- **Fixed Heating Threshold Logic** - Swapped heating low/medium thresholds so naming matches behavior
+
+### **v2.8.18** - Critical Boundary Fix
+- **Fixed Heating/Cooling Threshold Overlap** - Prevented boundary overlaps at exact comfort zone edges
+
+### Previous Versions (v2.8.16 and earlier)
+- Enhanced runtime lockout debug, dynamic adaptation, stability detection, presence validation, proximity-based control, weather compensation, and core climate control features
+
+### **v1.0** - Original Release
+- Initial release with full customization and power efficiency features
