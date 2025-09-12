@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.10.1
+  name: Ultimate Smart Climate Control - v2.10.2
 
   description: |
-    **Ultimate Smart Climate Control v2.10.1**
+    **Ultimate Smart Climate Control v2.10.2**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,15 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.10.2 Heating & Cooling Mode Toggles:**
+    • **🔥❄️ NEW FEATURE** - Added individual toggle switches for heating and cooling modes
+    • **🎯 GRANULAR CONTROL** - Users can now disable heating (cooling-only) or cooling (heating-only) independently
+    • **🔧 USE CASES** - Perfect for seasonal control, energy management, personal preferences, and climate-specific setups
+    • **🌡️ COOLING ONLY** - Ideal for people who run hot and never want heating to activate
+    • **🔥 HEATING ONLY** - Perfect for cold climates or winter operation where cooling isn't needed
+    • **📊 SMART DEBUG** - Debug logs clearly show when modes are ENABLED/DISABLED and why conditions fail
+    • **✅ BACKWARD COMPATIBLE** - Both modes default to enabled, existing automations unchanged
 
     **v2.10.1 Critical Fan Speed & Target Logic Fix:**
     • **🔧 CRITICAL FIX** - Added missing fan mode service calls to all 6 heating/cooling activations (HIGH/MEDIUM/LOW)
@@ -291,6 +300,32 @@ blueprint:
               step: 0.5
               unit_of_measurement: "°C"
               mode: slider
+        
+        enable_heating_mode:
+          name: 🔥 Enable Heating Mode
+          description: |
+            **Control whether heating activates** when temperature drops below comfort zone.
+            
+            • **ON:** Heating will activate when room gets cold (full climate control)
+            • **OFF:** Heating disabled - cooling only (perfect for people who run hot)
+            
+            **Use cases:** Seasonal control, energy management, personal preference, cooling-only setups.
+          default: true
+          selector:
+            boolean:
+        
+        enable_cooling_mode:
+          name: ❄️ Enable Cooling Mode
+          description: |
+            **Control whether cooling activates** when temperature rises above comfort zone.
+            
+            • **ON:** Cooling will activate when room gets warm (full climate control)
+            • **OFF:** Cooling disabled - heating only (perfect for cold climates)
+            
+            **Use cases:** Seasonal control, energy management, heating-only setups, winter operation.
+          default: true
+          selector:
+            boolean:
         
         temperature_aggressiveness:
           name: ⚡ Response Aggressiveness
@@ -1929,6 +1964,8 @@ variables:
   devices: !input presence_devices
   eco_enabled: !input enable_eco_mode
   gradual_enabled: !input enable_gradual_adjustment
+  enable_heating: !input enable_heating_mode
+  enable_cooling: !input enable_cooling_mode
   away_action: !input away_mode_action
   temp_sensor: !input temperature_sensor
   use_avg: !input use_average_temperature
@@ -3022,9 +3059,10 @@ action:
             • mode_check: {{ last_mode != 'heating' }} (last_mode: {{ last_mode }})
             • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'heating' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • LOW heating conditions: {% if last_mode == 'heating_low' %}{{ current_temp < target_temp and current_temp > heating_medium_temp }} (continue until target){% else %}{{ should_activate and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating_low') }} (start condition){% endif %}
-            • MEDIUM heating conditions: {% if last_mode == 'heating_medium' %}{{ current_temp < target_temp and current_temp > heating_high_temp }} (continue until target){% else %}{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }} (start condition){% endif %}
-            • HIGH heating conditions: {% if last_mode == 'heating_high' %}{{ current_temp < target_temp }} (continue until target){% else %}{{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }} (start condition){% endif %}
+            • Heating Mode: {{ 'ENABLED' if enable_heating else 'DISABLED' }}
+            • LOW heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_low' %}{{ current_temp < target_temp and current_temp > heating_medium_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating_low') }} (start condition){% endif %}
+            • MEDIUM heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_medium' %}{{ current_temp < target_temp and current_temp > heating_high_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }} (start condition){% endif %}
+            • HIGH heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_high' %}{{ current_temp < target_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }} (start condition){% endif %}
         
         ❄️ Cooling Logic:
             • cooling_low: {{ cooling_low_temp }}°C
@@ -3037,9 +3075,10 @@ action:
             • mode_check: {{ last_mode != 'cooling' }} (last_mode: {{ last_mode }})
             • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'cooling' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • LOW cooling conditions: {% if last_mode == 'cooling_low' %}{{ current_temp > target_temp and current_temp < cooling_medium_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (time_since_change > runtime_min or last_mode != 'cooling_low') }} (start condition){% endif %}
-            • MEDIUM cooling conditions: {% if last_mode == 'cooling_medium' %}{{ current_temp > target_temp and current_temp < cooling_high_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling_medium') }} (start condition){% endif %}
-            • HIGH cooling conditions: {% if last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
+            • Cooling Mode: {{ 'ENABLED' if enable_cooling else 'DISABLED' }}
+            • LOW cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_low' %}{{ current_temp > target_temp and current_temp < cooling_medium_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (time_since_change > runtime_min or last_mode != 'cooling_low') }} (start condition){% endif %}
+            • MEDIUM cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_medium' %}{{ current_temp > target_temp and current_temp < cooling_high_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling_medium') }} (start condition){% endif %}
+            • HIGH cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -3101,7 +3140,7 @@ action:
                 {{ current_temp < target_temp }}
               {% else %}
                 {# Not heating high - start if threshold exceeded and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp <= heating_high_temp }}
+                {{ should_activate and enable_heating and room_presence_detected and current_temp <= heating_high_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3173,7 +3212,7 @@ action:
                 {{ current_temp < target_temp and current_temp > heating_high_temp }}
               {% else %}
                 {# Not heating medium - start if in medium range and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
+                {{ should_activate and enable_heating and room_presence_detected and current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3234,7 +3273,7 @@ action:
                 {{ current_temp < target_temp and current_temp > heating_medium_temp }}
               {% else %}
                 {# Not heating low - start if in low range and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+                {{ should_activate and enable_heating and room_presence_detected and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3298,7 +3337,7 @@ action:
                 {{ current_temp > target_temp }}
               {% else %}
                 {# Not cooling high - start if threshold exceeded and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp >= cooling_high_temp }}
+                {{ should_activate and enable_cooling and room_presence_detected and current_temp >= cooling_high_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3359,7 +3398,7 @@ action:
                 {{ current_temp > target_temp and current_temp < cooling_high_temp }}
               {% else %}
                 {# Not cooling medium - start if in medium range and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
+                {{ should_activate and enable_cooling and room_presence_detected and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3420,7 +3459,7 @@ action:
                 {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
               {% else %}
                 {# Not cooling low - start if in low range and conditions met #}
-                {{ should_activate and room_presence_detected and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+                {{ should_activate and enable_cooling and room_presence_detected and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
               {% endif %}
         sequence:
           - service: system_log.write
