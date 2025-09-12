@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.15
+  name: Ultimate Smart Climate Control - v2.8.16
 
   description: |
-    **Ultimate Smart Climate Control v2.8.15**
+    **Ultimate Smart Climate Control v2.8.16**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.16 Debug Enhancement:**
+    • **Enhanced Runtime Lockout Debug** - Added detailed debug output showing runtime minimum lockout status, actual timing values, and clear indication when activation is prevented by compressor protection
 
     **v2.8.15 Enhancement:**
     • **Enhanced Debug Part 3** - Added cooling logic debug alongside heating logic for complete temperature control condition visibility in one section
@@ -2833,8 +2836,9 @@ action:
             • temp <= medium: {{ current_temp <= heating_medium_temp }}
             • temp <= low: {{ current_temp <= heating_low_temp }}
             • temp > low: {{ current_temp > heating_low_temp }}
-            • time_check: {{ time_since_change > runtime_min }}
-            • mode_check: {{ last_mode != 'heating' }}
+            • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
+            • mode_check: {{ last_mode != 'heating' }} (last_mode: {{ last_mode }})
+            • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'heating' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • LOW heating conditions: {{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
             • MEDIUM heating conditions: {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}
@@ -2844,8 +2848,9 @@ action:
             • cooling_high: {{ cooling_high_temp }}°C
             • temp >= medium: {{ current_temp >= cooling_medium_temp }}
             • temp >= high: {{ current_temp >= cooling_high_temp }}
-            • time_check: {{ time_since_change > runtime_min }}
-            • mode_check: {{ last_mode != 'cooling' }}
+            • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
+            • mode_check: {{ last_mode != 'cooling' }} (last_mode: {{ last_mode }})
+            • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'cooling' else 'inactive' }}
             • actual_ac_off: {{ actual_ac_state == 'off' }}
             • HIGH cooling conditions: {{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }}
             • MEDIUM cooling conditions: {{ should_activate and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling') }}
