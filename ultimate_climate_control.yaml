@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.16
+  name: Ultimate Smart Climate Control - v2.8.18
 
   description: |
-    **Ultimate Smart Climate Control v2.8.16**
+    **Ultimate Smart Climate Control v2.8.18**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,9 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.18 Critical Threshold Fix:**
+    • **Fixed Heating/Cooling Threshold Overlap** - Adjusted heating medium threshold to be 0.1°C below comfort zone minimum and cooling medium to be 0.1°C above comfort zone maximum, preventing boundary overlaps that caused incorrect behavior at exact comfort zone edges
 
     **v2.8.16 Debug Enhancement:**
     • **Enhanced Runtime Lockout Debug** - Added detailed debug output showing runtime minimum lockout status, actual timing values, and clear indication when activation is prevented by compressor protection
@@ -1856,9 +1859,9 @@ variables:
   base_heating_target: "{{ heating_target_input if advanced_enabled else target_temp | float }}"
   
   # Auto-calculate base thresholds based on aggressiveness (smooth graduated response)
-  base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else base_comfort_max | round(1) }}"
+  base_cooling_medium: "{{ cooling_medium_input if advanced_enabled else (base_comfort_max + 0.1) | round(1) }}"
   base_cooling_high: "{{ cooling_high_input if advanced_enabled else (base_comfort_max + aggressiveness/2) | round(1) }}"
-  base_heating_medium: "{{ heating_medium_input if advanced_enabled else base_comfort_min | round(1) }}"
+  base_heating_medium: "{{ heating_medium_input if advanced_enabled else (base_comfort_min - 0.1) | round(1) }}"
   base_heating_low: "{{ heating_low_input if advanced_enabled else (base_comfort_min - aggressiveness/2) | round(1) }}"
   
   enable_pre_conditioning: !input enable_pre_conditioning
