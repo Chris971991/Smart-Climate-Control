@@ -790,24 +790,29 @@ blueprint:
             sensors report specific room names. This allows the AC to activate when you're detected
             in ANY of these connected spaces.
             
-            **Format:** Comma-separated room names (e.g., "Kitchen, Dining")
+            **Format:** Comma-separated room names - spaces in names are fine!
+            
+            **Examples:**
+            • Simple: `Kitchen, Dining`
+            • With spaces: `Master Bedroom, Guest Room, Home Office`
+            • Mixed: `Kitchen, Living Room, Dining`
             
             **Example Configuration:**
             • **Room Name:** Living Room (main room from top of config)
-            • **Adjacent Rooms:** Kitchen, Dining
-            • **Result:** AC activates when BLE detects Living Room, Kitchen, OR Dining
+            • **Adjacent Rooms:** `Kitchen, Dining, Family Room`
+            • **Result:** AC activates when BLE detects Living Room, Kitchen, Dining, OR Family Room
             
             **⚠️ IMPORTANT for SMART/BLE_PLUS modes:**
             When using validation modes that require motion + BLE, you MUST also add the motion 
             sensors from adjacent rooms to the "Room Presence Sensors" list above.
             
             **Example for SMART mode:**
-            • **Adjacent Room Names:** Kitchen, Dining
+            • **Adjacent Room Names:** `Kitchen, Family Room`
             • **Room Presence Sensors must include:**
               - `sensor.phone_ble_area` (BLE sensor)
               - `binary_sensor.living_room_motion` (main room)
               - `binary_sensor.kitchen_motion` (adjacent)
-              - `binary_sensor.dining_motion` (adjacent)
+              - `binary_sensor.family_room_motion` (adjacent)
             
             **Leave empty if not using open-plan space detection.**
           default: ""
