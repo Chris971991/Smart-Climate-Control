@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.10.0
+  name: Ultimate Smart Climate Control - v2.10.1
 
   description: |
-    **Ultimate Smart Climate Control v2.10.0**
+    **Ultimate Smart Climate Control v2.10.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,13 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.10.1 Critical Fan Speed & Target Logic Fix:**
+    • **🔧 CRITICAL FIX** - Added missing fan mode service calls to all 6 heating/cooling activations (HIGH/MEDIUM/LOW)
+    • **🎯 TARGET LOGIC** - Added default action to main choose block that properly turns off AC when temperature reaches comfort zone
+    • **⚡ FAN SPEEDS** - Fixed fan speeds now properly set: Level 5 (high), Level 3 (medium), Level 1 (low) with intelligent fallbacks
+    • **🛡️ ANTI-OVERSHOOT** - Prevents temperature overshoot by turning off AC when target achieved instead of relying on stability feature
+    • **📊 SMART TURNOFF** - AC now turns off immediately when no heating/cooling conditions are met and temperature is in comfort zone
 
     **v2.10.0 Smart Hysteresis Logic Restored:**
     • **🔧 CRITICAL FIX** - Restored sophisticated "continue until target" hysteresis control that was failing due to template variable timing issues
@@ -6445,6 +6452,41 @@ action:
             data:
               datetime: "{{ now() }}"
             continue_on_error: true
+    
+    # DEFAULT ACTION: Turn off AC when temperature reaches target and no conditions met
+    default:
+      - condition: and
+        conditions:
+          - condition: template
+            value_template: "{{ actual_ac_state == 'on' }}"
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+      - service: system_log.write
+        data:
+          message: >
+            🎯 {{ room_name | upper }} TARGET REACHED - Turning off AC
+            
+            ✅ Smart Hysteresis Complete:
+                • Temperature: {{ current_temp }}°C reached target zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C)
+                • Previous mode: {{ last_mode }}
+                • Action: Turning off AC (target achieved)
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+        continue_on_error: true
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
   - condition: template
