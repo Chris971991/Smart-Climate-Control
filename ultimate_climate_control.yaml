@@ -5664,27 +5664,6 @@ action:
       # High heating mode - Maximum heating when temperature drops significantly
       # Activates at heating_high_temp (e.g., 18°C) for emergency heating
       # Uses maximum fan speed for rapid temperature recovery
-      # Debug logging RIGHT before condition evaluation
-      - condition: template
-        value_template: "{{ debug_enabled }}"
-      - service: system_log.write
-        data:
-          message: >
-            🔍 {{ room_name | upper }} DEBUG: HIGH HEATING CONDITION EVALUATION
-            📊 At Exact Condition Time:
-                • last_mode: "{{ last_mode }}"
-                • should_activate: {{ should_activate }}
-                • current_temp: {{ current_temp }}°C
-                • heating_high_temp: {{ heating_high_temp }}°C
-                • time_since_change: {{ time_since_change | round(1) }}min
-                • runtime_min: {{ runtime_min }}min
-                • temp_check: {{ current_temp <= heating_high_temp }}
-                • time_check: {{ time_since_change > runtime_min }}
-                • mode_check: {{ last_mode != 'heating_high' }}
-                • FULL_CONDITION: {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
-          level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
       - conditions:
           - condition: template
             value_template: >
@@ -5696,6 +5675,27 @@ action:
                 {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
               {% endif %}
         sequence:
+          # Debug logging at exact condition evaluation time
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 {{ room_name | upper }} DEBUG: HIGH HEATING CONDITION EVALUATION
+                📊 At Exact Condition Time (condition was TRUE):
+                    • last_mode: "{{ last_mode }}"
+                    • should_activate: {{ should_activate }}
+                    • current_temp: {{ current_temp }}°C
+                    • heating_high_temp: {{ heating_high_temp }}°C
+                    • time_since_change: {{ time_since_change | round(1) }}min
+                    • runtime_min: {{ runtime_min }}min
+                    • temp_check: {{ current_temp <= heating_high_temp }}
+                    • time_check: {{ time_since_change > runtime_min }}
+                    • mode_check: {{ last_mode != 'heating_high' }}
+                    • FULL_CONDITION: {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
           - service: system_log.write
             data:
               message: "🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_high_temp }}°C (high threshold)"
