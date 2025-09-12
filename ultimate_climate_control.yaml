@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.24
+  name: Ultimate Smart Climate Control - v2.9.0
 
   description: |
-    **Ultimate Smart Climate Control v2.8.24**
+    **Ultimate Smart Climate Control v2.9.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,7 +32,7 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.8.24 Adjacent Room BLE Detection for Open-Plan Spaces:**
+    **v2.9.0 Adjacent Room BLE Detection for Open-Plan Spaces:**
     • **🏠 NEW FEATURE** - Adjacent room detection for open-plan living spaces (Kitchen/Living/Dining areas)
     • **🎯 SMART BLE** - AC activates when BLE detects presence in main room OR any configured adjacent rooms
     • **📱 FLEXIBLE CONFIG** - Simply add comma-separated adjacent room names (e.g., "Kitchen, Dining")
