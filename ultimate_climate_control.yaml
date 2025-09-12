@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.9.8
+  name: Ultimate Smart Climate Control - v2.9.9
 
   description: |
-    **Ultimate Smart Climate Control v2.9.8**
+    **Ultimate Smart Climate Control v2.9.9**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -3100,24 +3100,15 @@ action:
         data:
           datetime: "{{ now() }}"
 
-  # Debug: Choose block entry
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: "🔍 {{ room_name | upper }} DEBUG: ENTERING MAIN CHOOSE BLOCK"
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
   - choose:
-      # TEST: Simple heating condition with hardcoded values
+      # HIGH HEATING: Fixed simple condition
       - conditions:
           - condition: template
-            value_template: "{{ current_temp <= 18.0 }}"
+            value_template: "{{ current_temp <= heating_high_temp and should_activate and room_presence_detected }}"
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} TEST HEATING TRIGGERED - Current temp {{ current_temp }}°C is <= 18.0°C"
+              message: "🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_high_temp }}°C (high threshold)"
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -3129,7 +3120,172 @@ action:
             target:
               entity_id: !input climate_entities
             data:
-              temperature: 22
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_high"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+
+      # MEDIUM HEATING: Fixed simple condition  
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp <= heating_medium_temp and current_temp > heating_high_temp and should_activate and room_presence_detected }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🔥 {{ room_name | upper }} MEDIUM HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_medium_temp }}°C (medium threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "heat"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_medium"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+
+      # LOW HEATING: Fixed simple condition
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp <= heating_low_temp and current_temp > heating_medium_temp and should_activate and room_presence_detected }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🔥 {{ room_name | upper }} LOW HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_low_temp }}°C (low threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "heat"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_low"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+
+      # HIGH COOLING: Fixed simple condition
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp >= cooling_high_temp and should_activate and room_presence_detected }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "❄️ {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_high_temp }}°C (high threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "cool"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_high"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+
+      # MEDIUM COOLING: Fixed simple condition
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and should_activate and room_presence_detected }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "❄️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_medium_temp }}°C (medium threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "cool"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_medium"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+
+      # LOW COOLING: Fixed simple condition
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and should_activate and room_presence_detected }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "❄️ {{ room_name | upper }} LOW COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_low_temp }}°C (low threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "cool"
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ target_temp }}"
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_low"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
 
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
