@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.9.6
+  name: Ultimate Smart Climate Control - v2.9.7
 
   description: |
-    **Ultimate Smart Climate Control v2.9.6**
+    **Ultimate Smart Climate Control v2.9.7**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -3100,6 +3100,15 @@ action:
         data:
           datetime: "{{ now() }}"
 
+  # Debug: Choose block entry
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
+    data:
+      message: "🔍 {{ room_name | upper }} DEBUG: ENTERING MAIN CHOOSE BLOCK"
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
   - choose:
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
@@ -5666,7 +5675,14 @@ action:
       # Uses maximum fan speed for rapid temperature recovery
       - conditions:
           - condition: template
-            value_template: "{{ current_temp <= 18.0 and should_activate }}"
+            value_template: >
+              {% if last_mode == 'heating_high' %}
+                {# Already heating high - continue until target reached #}
+                {{ current_temp < target_temp }}
+              {% else %}
+                {# Not heating high - start if high threshold exceeded #}
+                {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
+              {% endif %}
         sequence:
           # Debug logging at exact condition evaluation time
           - condition: template
