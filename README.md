@@ -85,6 +85,14 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 ## Installation Guide
 
 ### Step 1: Blueprint Installation
+
+#### Option A: Direct Import (Recommended)
+1. Go to Settings → Automations & Scenes → Blueprints Tab
+2. Click "Import Blueprint" 
+3. Paste this URL: `https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml`
+4. Click "Preview Blueprint" then "Import Blueprint"
+
+#### Option B: Manual Installation
 1. Download `ultimate_climate_control.yaml`
 2. Place in your Home Assistant config directory:
    ```
