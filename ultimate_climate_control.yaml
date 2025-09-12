@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.20
+  name: Ultimate Smart Climate Control - v2.8.21
 
   description: |
-    **Ultimate Smart Climate Control v2.8.20**
+    **Ultimate Smart Climate Control v2.8.21**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,14 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.21 COMPLETE Three-Tier System:**
+    • **🎯 FULLY IMPLEMENTED** - Complete LOW/MEDIUM/HIGH system for both heating and cooling
+    • **🔥 NEW Heating Structure** - Completely restructured with proper LOW (19.9°C, gentle), MEDIUM (19.0°C, balanced), HIGH (18.0°C, maximum) 
+    • **❄️ Enhanced Cooling Logic** - LOW (24.1°C, gentle), MEDIUM (25.0°C, balanced), HIGH (26.0°C, maximum)
+    • **🌡️ Perfect Escalation** - Intuitive temperature-based escalation with appropriate fan speeds
+    • **🔍 Complete Debug Output** - All 6 thresholds shown with proper condition evaluations
+    • **⚙️ Dynamic Compatibility** - Full integration with existing dynamic adaptation system
 
     **v2.8.20 Major Enhancement (PARTIAL):**
     • **Three-Tier System Implementation** - Added consistent LOW/MEDIUM/HIGH levels for both heating and cooling
@@ -5124,14 +5132,16 @@ action:
             data:
               datetime: "{{ now() }}"
       
-      # Low heating mode
+      # Low heating mode - Gentle heating when temperature just falls below comfort zone
+      # Activates at heating_low_temp (e.g., 19.9°C) for minimal heating
+      # Uses low fan speed for maximum efficiency with minimal power consumption
       - conditions:
           - condition: template
-            value_template: "{{ should_activate and current_temp <= heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
+            value_template: "{{ should_activate and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} LOW HEATING ACTIVATED - All conditions met!"
+              message: "🌡️ {{ room_name | upper }} LOW HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_low_temp }}°C (low threshold)"
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
@@ -5139,10 +5149,10 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH HEATING MODE
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: LOW HEATING MODE
                 Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
                 Target: {{ heating_target_temp }}°C
-                Fan: Maximum
+                Fan: Low/Minimum (efficient)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
@@ -5168,7 +5178,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                🌡️ {{ room_name | upper }} TEMP SET: High Heating
+                🌡️ {{ room_name | upper }} TEMP SET: Low Heating
                 Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ heating_target_temp | round(1) }}°C
                 Reason: Direct target temperature (no gradual adjustment for heating)
@@ -5176,34 +5186,65 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
-          # Set max fan mode with compatibility check
+          # Set low fan mode with compatibility check
           - repeat:
               for_each: "{{ climate_list }}"
               sequence:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                    desired_max_fan: !input fan_speed_max
+                    
+                    # Smart low fan mode selection
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      
+                      {# Try low speed equivalents in order of preference #}
+                      {% if 'low' in fans %}
+                        low
+                      {% elif 'Low' in fans %}
+                        Low
+                      {% elif '1' in fans %}
+                        1
+                      {% elif 'Level 1' in fans %}
+                        Level 1
+                      {% elif 'quiet' in fans %}
+                        quiet
+                      {% elif 'Quiet' in fans %}
+                        Quiet
+                      {% elif 'eco' in fans %}
+                        eco
+                      {% elif 'Eco' in fans %}
+                        Eco
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {# Fallback to available options #}
+                      {% elif '2' in fans %}
+                        2
+                      {% elif 'Level 2' in fans %}
+                        Level 2
+                      {% else %}
+                        {{ fans[0] if fans else 'Auto' }}
+                      {% endif %}
+                
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: >
-                      {% if desired_max_fan in available_fans %}
-                        {{ desired_max_fan }}
-                      {% elif '5' in available_fans %}
-                        5
-                      {% elif 'Level 5' in available_fans %}
-                        Level 5
-                      {% elif 'high' in available_fans %}
-                        high
-                      {% elif 'Auto' in available_fans %}
-                        Auto
-                      {% elif 'auto' in available_fans %}
-                        auto
-                      {% else %}
-                        {{ available_fans[-1] if available_fans else 'Auto' }}
-                      {% endif %}
+                    fan_mode: "{{ selected_fan_mode }}"
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART LOW HEAT FAN: {{ repeat.item }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Reason: Low fan speed for gentle heating
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -5276,12 +5317,14 @@ action:
           - service: !input notification_service
             data:
               title: "{{ room_name }} Climate Control"
-              message: "High heating mode - {{ current_temp }}°C"
+              message: "Low heating mode - {{ current_temp }}°C"
       
-      # Medium heating mode
+      # Medium heating mode - Balanced heating when temperature drops further
+      # Activates at heating_medium_temp (e.g., 19°C) for moderate heating
+      # Uses medium fan speed for balanced efficiency and performance
       - conditions:
           - condition: template
-            value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_low_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
+            value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -5424,6 +5467,196 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "{{ room_name }} Climate Control"
+              message: "Medium heating mode - {{ current_temp }}°C"
+      
+      # High heating mode - Maximum heating when temperature drops significantly
+      # Activates at heating_high_temp (e.g., 18°C) for emergency heating
+      # Uses maximum fan speed for rapid temperature recovery
+      - conditions:
+          - condition: template
+            value_template: "{{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating') }}"
+        sequence:
+          - service: system_log.write
+            data:
+              message: "🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_high_temp }}°C (high threshold)"
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH HEATING MODE
+                Temperature: {{ current_temp }}°C < {{ heating_high_temp }}°C
+                Target: {{ heating_target_temp }}°C
+                Fan: Maximum (emergency)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
+          
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ heating_target_temp }}"
+
+          - service: system_log.write
+            data:
+              message: >
+                🌡️ {{ room_name | upper }} TEMP SET: High Heating
+                Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
+                Actual value: {{ heating_target_temp | round(1) }}°C
+                Reason: Direct target temperature (emergency heating mode)
+                Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          # Set max fan mode for emergency heating
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                    desired_max_fan: !input fan_speed_max
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: >
+                      {% if desired_max_fan in available_fans %}
+                        {{ desired_max_fan }}
+                      {% elif '5' in available_fans %}
+                        5
+                      {% elif 'Level 5' in available_fans %}
+                        Level 5
+                      {% elif 'high' in available_fans %}
+                        high
+                      {% elif 'High' in available_fans %}
+                        High
+                      {% elif 'turbo' in available_fans %}
+                        turbo
+                      {% elif 'Turbo' in available_fans %}
+                        Turbo
+                      {% elif 'max' in available_fans %}
+                        max
+                      {% elif 'Max' in available_fans %}
+                        Max
+                      {% elif '4' in available_fans %}
+                        4
+                      {% elif 'Level 4' in available_fans %}
+                        Level 4
+                      {% elif 'Auto' in available_fans %}
+                        Auto
+                      {% elif 'auto' in available_fans %}
+                        auto
+                      {% else %}
+                        {{ available_fans[-1] if available_fans else 'Auto' }}
+                      {% endif %}
+                
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 SMART HIGH HEAT FAN: {{ repeat.item }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ (desired_max_fan if desired_max_fan in available_fans else ('5' if '5' in available_fans else ('high' if 'high' in available_fans else available_fans[-1]))) }}
+                      • Reason: Maximum fan speed for emergency heating
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          
+          # Set swing mode with compatibility check
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                    desired_swing: !input swing_mode_active
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: >
+                      {% if desired_swing in available_swings %}
+                        {{ desired_swing }}
+                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        3D
+                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        Both
+                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        vertical
+                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        Horizontal
+                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        horizontal
+                      {% elif 'both' in available_swings %}
+                        both
+                      {% elif 'Both' in available_swings %}
+                        Both
+                      {% elif '3D' in available_swings %}
+                        3D
+                      {% elif 'Vertical' in available_swings %}
+                        Vertical
+                      {% elif 'vertical' in available_swings %}
+                        vertical
+                      {% else %}
+                        {{ available_swings[0] if available_swings else 'off' }}
+                      {% endif %}
+          
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating"
+          
+          # Update hysteresis tracking - we're now heating
+          - condition: template
+            value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_last_transition }}"
+            data:
+              value: "heating"
+          
+          # Update mode start time for effectiveness tracking
+          - condition: template
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
+          
+          - condition: template
+            value_template: "{{ enable_notifications }}"
+          
+          - service: !input notification_service
+            data:
+              title: "{{ room_name }} Climate Control"
+              message: "High heating mode - {{ current_temp }}°C"
       
 
       # FALLBACK: Dynamic Escalation - Only if no normal modes triggered
@@ -5652,9 +5885,12 @@ action:
             • extreme_temp_detected: {{ extreme_temp_detected }}
         
         🌡️ Thresholds that were checked:
-            • Cooling: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
-            • Heating Low: {{ current_temp }} <= {{ heating_low_temp }} = {{ current_temp <= heating_low_temp }}
-            • Heating Medium: {{ current_temp }} <= {{ heating_medium_temp }} AND > {{ heating_low_temp }} = {{ current_temp <= heating_medium_temp and current_temp > heating_low_temp }}
+            • Cooling LOW: {{ current_temp }} >= {{ cooling_low_temp }} AND < {{ cooling_medium_temp }} = {{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+            • Cooling MEDIUM: {{ current_temp }} >= {{ cooling_medium_temp }} AND < {{ cooling_high_temp }} = {{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
+            • Cooling HIGH: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
+            • Heating LOW: {{ current_temp }} <= {{ heating_low_temp }} AND > {{ heating_medium_temp }} = {{ current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+            • Heating MEDIUM: {{ current_temp }} <= {{ heating_medium_temp }} AND > {{ heating_high_temp }} = {{ current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
+            • Heating HIGH: {{ current_temp }} <= {{ heating_high_temp }} = {{ current_temp <= heating_high_temp }}
             • Escalation: {{ should_escalate }}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
