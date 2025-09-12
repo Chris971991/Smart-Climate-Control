@@ -3403,7 +3403,7 @@ action:
               # Need heating
               - conditions:
                   - condition: template
-                    value_template: "{{ current_temp <= heating_medium_temp }}"
+                    value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }}"
                 sequence:
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -5666,14 +5666,7 @@ action:
       # Uses maximum fan speed for rapid temperature recovery
       - conditions:
           - condition: template
-            value_template: >
-              {% if last_mode == 'heating_high' %}
-                {# Already heating high - continue until target reached #}
-                {{ current_temp < target_temp }}
-              {% else %}
-                {# Not heating high - start if high threshold exceeded #}
-                {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
-              {% endif %}
+            value_template: "{{ current_temp <= 18.0 and should_activate }}"
         sequence:
           # Debug logging at exact condition evaluation time
           - condition: template
