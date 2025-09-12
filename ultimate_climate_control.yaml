@@ -55,19 +55,7 @@ blueprint:
 
     **v2.8.16 Debug Enhancement:**
     • **Enhanced Runtime Lockout Debug** - Added detailed debug output showing runtime minimum lockout status, actual timing values, and clear indication when activation is prevented by compressor protection
-
-    **v2.8.15 Enhancement:**
-    • **Enhanced Debug Part 3** - Added cooling logic debug alongside heating logic for complete temperature control condition visibility in one section
-
-    **v2.8.14 Enhancement:**
-    • **Improved Debug Clarity** - Changed "Time Since Change" to "Time Since Manual Override" with context indicator to clarify what this timing actually tracks
-
-    **v2.8.13 Revert:**
-    • **Reverted v2.8.12 Changes** - Removed unnecessary helper_change updates as the "Time Since Change" discrepancy was actually normal behavior indicating proper operation
-
-    **v2.8.11 Critical Bug Fix:**
-    • **Fixed Original Heating Conditions** - Corrected YAML structure where heating conditions were split into separate templates instead of combined, preventing proper evaluation
-
+    
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
 
