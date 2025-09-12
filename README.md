@@ -1,11 +1,11 @@
-# Ultimate Smart Climate Control Blueprint v2.8.21
+# Ultimate Smart Climate Control Blueprint v2.8.22
 
 ## Overview
 A comprehensive Home Assistant blueprint for advanced climate control featuring **complete 3-tier temperature escalation**, intelligent presence detection, power efficiency optimization, and extensive customization options. This system provides automated climate management with LOW/MEDIUM/HIGH heating and cooling modes, smart fan speed control, and sophisticated presence-based automation.
 
 ## Key Features
 
-### 🌡️ **Complete 3-Tier Temperature System (v2.8.21)**
+### 🌡️ **Complete 3-Tier Temperature System (v2.8.22)**
 - **Intelligent Escalation**: LOW → MEDIUM → HIGH for both heating and cooling
 - **Graduated Fan Speeds**: Automatic selection from gentle to maximum power
 - **Smart Thresholds**: Weather-compensated with automatic adjustments
@@ -727,7 +727,17 @@ Additional:
 
 ## Version History
 
-### **v2.8.21** (Current) - Complete 3-Tier Implementation
+### **v2.8.22** (Current) - Critical Bug Fixes & Reliability Improvements
+- **🐛 CRITICAL FIX** - Time calculation logic now uses helper entity instead of climate entity for accurate runtime lockout
+- **🔧 VARIABLE FIX** - Corrected undefined variable references (eco_offset → eco_mode_setpoint_offset)
+- **🛡️ ENHANCED VALIDATION** - Improved input validation for proximity/direction sensor entities
+- **⚠️ SAFER TEMPLATES** - Better error handling for temperature averaging and state access patterns
+- **🔄 OPTIMIZED HELPERS** - Enhanced helper entity updates with proper existence checks and error handling
+- **⚙️ ROBUST SERVICES** - Added service call error handling with continue_on_error for critical operations
+- **🧹 CODE CLEANUP** - Improved formatting consistency and removed potential logic conflicts
+- **📋 BETTER DEBUG** - Enhanced debug logging patterns and hysteresis variable references
+
+### **v2.8.21** - Complete 3-Tier Implementation
 - **🎯 COMPLETE SYSTEM** - Fully implemented LOW/MEDIUM/HIGH for heating and cooling
 - **🔥 RESTRUCTURED HEATING** - Proper temperature escalation: LOW (19.9°C), MEDIUM (19.0°C), HIGH (18.0°C)
 - **❄️ ENHANCED COOLING** - Optimized thresholds: LOW (24.1°C), MEDIUM (25.0°C), HIGH (26.0°C)

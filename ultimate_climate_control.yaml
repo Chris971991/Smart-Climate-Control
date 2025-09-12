@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.8.21
+  name: Ultimate Smart Climate Control - v2.8.22
 
   description: |
-    **Ultimate Smart Climate Control v2.8.21**
+    **Ultimate Smart Climate Control v2.8.22**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,14 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.8.22 Critical Bug Fixes & Reliability Improvements:**
+    • **🐛 FIXED** - Critical time calculation logic now uses helper entity instead of climate entity for accurate runtime lockout
+    • **🔧 FIXED** - Undefined variable references (eco_offset → eco_mode_setpoint_offset)
+    • **🛡️ ENHANCED** - Added proper input validation for proximity/direction sensor entities
+    • **⚠️ IMPROVED** - Safer state access patterns with error handling for temperature averaging
+    • **🔄 OPTIMIZED** - Helper entity updates with error handling and existence checks
+    • **⚙️ ROBUST** - Added service call error handling with continue_on_error for critical climate operations
 
     **v2.8.21 COMPLETE Three-Tier System:**
     • **🎯 FULLY IMPLEMENTED** - Complete LOW/MEDIUM/HIGH system for both heating and cooling
@@ -2034,8 +2042,18 @@ action:
   - variables:
       check_interval: !input check_interval_minutes
       debug_enabled: !input enable_debug_logging
-      proximity_sensor: "{{ proximity_sensor_input if proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
-      direction_sensor: "{{ direction_sensor_input if direction_sensor_input not in [none, '', 'unavailable', 'unknown'] else none }}"
+      proximity_sensor: >
+        {% if proximity_sensor_input and proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] and proximity_sensor_input is string and proximity_sensor_input != '' %}
+          {{ proximity_sensor_input }}
+        {% else %}
+          none
+        {% endif %}
+      direction_sensor: >
+        {% if direction_sensor_input and direction_sensor_input not in [none, '', 'unavailable', 'unknown'] and direction_sensor_input is string and direction_sensor_input != '' %}
+          {{ direction_sensor_input }}
+        {% else %}
+          none
+        {% endif %}
       # Dynamic adaptation variables
       previous_temp: >
         {% if helper_temp_history %}
@@ -2061,35 +2079,39 @@ action:
           {# Use manual helper if available #}
           {{ states(helper_effectiveness) | float(50) }}
         {% else %}
-          {# Calculate effectiveness automatically #}
+          {# Calculate effectiveness automatically with error handling #}
           {% if time_in_current_mode < 2 %}
             {# Too early to judge - assume moderate effectiveness #}
             50
           {% elif last_mode in ['cooling', 'heating'] %}
             {% set target = cooling_target_temp if last_mode == 'cooling' else heating_target_temp %}
-            {% set initial_distance = (previous_temp - target) | abs if previous_temp else distance_from_target %}
-            {% set current_distance = distance_from_target %}
-            {% if initial_distance > 0 %}
-              {# Calculate progress toward target (0-100%) #}
+            {% set initial_distance = (previous_temp - target) | abs if previous_temp and previous_temp > 0 else distance_from_target %}
+            {% set current_distance = distance_from_target | float(0) %}
+            {% if initial_distance > 0 and initial_distance is number %}
+              {# Calculate progress toward target (0-100%) with safety checks #}
               {% set progress = ((initial_distance - current_distance) / initial_distance) * 100 %}
-              {% set time_factor = time_in_current_mode / 10 %}  {# Normalize to 10 minutes #}
-              {% set effectiveness = (progress / time_factor) | round(1) %}
-              {# Cap between 0-100 and apply logic #}
-              {% if calculated_trend == 'rising' and last_mode == 'cooling' %}
-                0  {# Cooling but getting hotter - completely ineffective #}
-              {% elif calculated_trend == 'falling' and last_mode == 'heating' %}
-                0  {# Heating but getting colder - completely ineffective #}
-              {% elif current_distance <= 0.5 %}
-                100  {# Very close to target - highly effective #}
-              {% elif effectiveness > 100 %}
-                100
-              {% elif effectiveness < 0 %}
-                10  {# Some minimum effectiveness #}
+              {% set time_factor = (time_in_current_mode | float(1)) / 10 %}  {# Normalize to 10 minutes #}
+              {% if time_factor > 0 and time_factor is number %}
+                {% set effectiveness = (progress / time_factor) | round(1) %}
+                {# Cap between 0-100 and apply logic #}
+                {% if calculated_trend == 'rising' and last_mode == 'cooling' %}
+                  0  {# Cooling but getting hotter - completely ineffective #}
+                {% elif calculated_trend == 'falling' and last_mode == 'heating' %}
+                  0  {# Heating but getting colder - completely ineffective #}
+                {% elif current_distance <= 0.5 %}
+                  100  {# Very close to target - highly effective #}
+                {% elif effectiveness > 100 %}
+                  100
+                {% elif effectiveness < 0 %}
+                  10  {# Some minimum effectiveness #}
+                {% else %}
+                  {{ effectiveness | round(0) }}
+                {% endif %}
               {% else %}
-                {{ effectiveness | round(0) }}
+                50  {# Avoid division by zero or invalid time factor #}
               {% endif %}
             {% else %}
-              75  {# Already at target - good effectiveness #}
+              75  {# Already at target or invalid distance calculation #}
             {% endif %}
           {% else %}
             50  {# Not in heating/cooling mode #}
@@ -2134,9 +2156,16 @@ action:
         {% elif use_avg %}
           {% set temps = namespace(values=[]) %}
           {% for entity in climate_list %}
-            {% set temps.values = temps.values + [state_attr(entity, 'current_temperature')] %}
+            {% set temp_value = state_attr(entity, 'current_temperature') | float(0) %}
+            {% if temp_value > 0 %}
+              {% set temps.values = temps.values + [temp_value] %}
+            {% endif %}
           {% endfor %}
-          {{ temps.values | average | round(1) }}
+          {% if temps.values | length > 0 %}
+            {{ (temps.values | sum / temps.values | length) | round(1) }}
+          {% else %}
+            25
+          {% endif %}
         {% else %}
           {{ state_attr(climate_list[0], 'current_temperature') | float(25) }}
         {% endif %}
@@ -2264,7 +2293,11 @@ action:
         {% endif %}
       
       time_since_change: >
-        {{ (as_timestamp(now()) - as_timestamp(states[climate_list[0]].last_changed)) / 60 }}
+        {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+          {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) / 60 }}
+        {% else %}
+          999
+        {% endif %}
       
       # Dynamic adaptation calculations
       time_in_current_mode: >
@@ -3012,6 +3045,7 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
+            continue_on_error: true
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -3089,7 +3123,7 @@ action:
             data:
               value: "cooling"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -3097,6 +3131,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
       
       # CRITICAL: Clear stability mode when temperature exits comfort zone
       # This MUST be the FIRST condition to prevent getting stuck
@@ -3132,7 +3167,7 @@ action:
                   off
                 {% endif %}
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -3140,6 +3175,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           # Clear the stability timestamp to reset the feature
           # Don't use 1970 as it causes calculation issues - use current time instead
@@ -3526,6 +3562,7 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
+            continue_on_error: true
           
           # Use low fan speed for gentle cooling
           - repeat:
@@ -3593,7 +3630,7 @@ action:
             data:
               value: "cooling"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -3601,6 +3638,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
       
       # Medium cooling - Normal cooling mode when temperature exceeds comfort zone
       # Activates at cooling_medium_temp (e.g., 25°C) for balanced cooling
@@ -3669,6 +3707,7 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
+            continue_on_error: true
           
           # Use medium fan speed for balanced cooling
           - repeat:
@@ -3738,7 +3777,7 @@ action:
             data:
               value: "cooling"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -3746,6 +3785,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
       
       # Comfort zone - Eco mode or OFF mode (Power Saving)
       # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
@@ -3924,6 +3964,7 @@ action:
               - service: climate.turn_off
                 target:
                   entity_id: !input climate_entities
+                continue_on_error: true
               
               - service: input_text.set_value
                 target:
@@ -4075,7 +4116,7 @@ action:
             data:
               value: "stability_{{ stability_behavior }}"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -4083,6 +4124,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -4217,7 +4259,13 @@ action:
                         false
                       {% endif %}
                   - condition: template
-                    value_template: "{{ states(climate_list[0]) != 'off' if climate_list else false }}"
+                    value_template: >
+                      {% if climate_list %}
+                        {% set first_climate_state = states(climate_list[0]) %}
+                        {{ first_climate_state not in ['off', 'Off', 'unavailable', 'unknown'] }}
+                      {% else %}
+                        false
+                      {% endif %}
           
           # Execute actions when conditions are met
           # Handle occupied room - switch to Auto/Smart mode
@@ -4348,7 +4396,13 @@ action:
             # Handle case where already in Manual mode but AC still running and room vacant
             - conditions:
                 - condition: template
-                  value_template: "{{ control_mode == 'Manual' and not room_presence_detected and (states(climate_list[0]) != 'off' if climate_list else false) }}"
+                  value_template: >
+                    {% if control_mode == 'Manual' and not room_presence_detected and climate_list %}
+                      {% set first_climate_state = states(climate_list[0]) %}
+                      {{ first_climate_state not in ['off', 'Off', 'unavailable', 'unknown'] }}
+                    {% else %}
+                      false
+                    {% endif %}
               sequence:
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4495,7 +4549,7 @@ action:
             data:
               value: "manual"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -4503,6 +4557,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           # CRITICAL: Update helper_change to start 3-hour override protection
           - condition: template
@@ -4591,9 +4646,9 @@ action:
                     data:
                       temperature: >
                         {% if current_temp > comfort_max_temp %}
-                          {{ comfort_max_temp + eco_offset }}
+                          {{ comfort_max_temp + eco_mode_setpoint_offset }}
                         {% elif current_temp < comfort_min_temp %}
-                          {{ comfort_min_temp - eco_offset }}
+                          {{ comfort_min_temp - eco_mode_setpoint_offset }}
                         {% else %}
                           {{ target_temp }}
                         {% endif %}
@@ -4602,9 +4657,9 @@ action:
                     data:
                       message: >
                         🌡️ {{ room_name | upper }} TEMP SET: Smart Room Eco Mode
-                        Set AC to: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
-                        Actual value: {{ ((comfort_max_temp + eco_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_offset) if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
-                        Reason: {{ 'Eco cooling (comfort max +' + eco_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
+                        Set AC to: {{ ((comfort_max_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_mode_setpoint_offset) if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ ((comfort_max_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (comfort_min_temp - eco_mode_setpoint_offset) if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
+                        Reason: {{ 'Eco cooling (comfort max +' + eco_mode_setpoint_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_mode_setpoint_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -4636,7 +4691,7 @@ action:
             data:
               value: "smart_{{ smart_behavior }}"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -4644,6 +4699,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -4781,7 +4837,8 @@ action:
             value_template: "{{ should_activate }}"
           - condition: template
             value_template: >
-              {% if last_transition == 'heating' %}
+              {% set last_transition_val = states(helper_last_transition) if helper_last_transition else 'none' %}
+              {% if last_transition_val == 'heating' %}
                 {{ current_temp >= (cooling_high_temp + hysteresis_tolerance) }}
               {% else %}
                 {{ current_temp >= cooling_high_temp }}
@@ -4789,16 +4846,9 @@ action:
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
-          # Debug why cooling isn't triggering
           - service: system_log.write
             data:
-              message: >
-                🔥 HIGH COOLING TRIGGERED!
-                • Temperature: {{ current_temp }}°C
-                • Cooling high temp: {{ cooling_high_temp }}°C
-                • should_activate: {{ should_activate }}
-                • time_since_change: {{ time_since_change | round(1) }}min > runtime_min: {{ runtime_min }}min
-                • last_mode: {{ last_mode }}
+              message: "🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C (high threshold)"
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
@@ -4948,7 +4998,7 @@ action:
             data:
               value: "cooling"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -4956,6 +5006,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -5111,7 +5162,7 @@ action:
             data:
               value: "cooling"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -5119,6 +5170,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
       
       # Low heating mode - Gentle heating when temperature just falls below comfort zone
       # Activates at heating_low_temp (e.g., 19.9°C) for minimal heating
@@ -5290,7 +5342,7 @@ action:
             data:
               value: "heating"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -5298,6 +5350,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -5447,7 +5500,7 @@ action:
             data:
               value: "heating"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -5455,6 +5508,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -5629,7 +5683,7 @@ action:
             data:
               value: "heating"
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -5637,6 +5691,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -5844,7 +5899,7 @@ action:
                   heating_escalated  
                 {% endif %}
           
-          # Update mode start time for effectiveness tracking
+          # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
           - service: input_datetime.set_datetime
@@ -5852,6 +5907,7 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+            continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
   - condition: template
