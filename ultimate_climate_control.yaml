@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.9.0
+  name: Ultimate Smart Climate Control - v2.9.1
 
   description: |
-    **Ultimate Smart Climate Control v2.9.0**
+    **Ultimate Smart Climate Control v2.9.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -31,6 +31,11 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.9.1 Documentation & Example Improvements:**
+    • **📝 IMPROVED** - Better examples for adjacent room names with spaces (e.g., "Master Bedroom, Guest Room")
+    • **📋 CLARIFIED** - Multiple format examples: simple, with spaces, and mixed scenarios
+    • **🔧 ENHANCED** - Updated SMART mode example to show proper motion sensor naming for rooms with spaces
 
     **v2.9.0 Adjacent Room BLE Detection for Open-Plan Spaces:**
     • **🏠 NEW FEATURE** - Adjacent room detection for open-plan living spaces (Kitchen/Living/Dining areas)
