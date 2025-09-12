@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.10.2
+  name: Ultimate Smart Climate Control - v2.11.0
 
   description: |
-    **Ultimate Smart Climate Control v2.10.2**
+    **Ultimate Smart Climate Control v2.11.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,7 +32,7 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.10.2 Heating & Cooling Mode Toggles:**
+    **v2.11.0 Heating & Cooling Mode Toggles:**
     • **🔥❄️ NEW FEATURE** - Added individual toggle switches for heating and cooling modes
     • **🎯 GRANULAR CONTROL** - Users can now disable heating (cooling-only) or cooling (heating-only) independently
     • **🔧 USE CASES** - Perfect for seasonal control, energy management, personal preferences, and climate-specific setups
@@ -53,14 +53,6 @@ blueprint:
     • **🎯 SMART LOGIC** - All 6 temperature conditions now use direct helper entity reads instead of cached variables to prevent evaluation errors
     • **📊 START/CONTINUE** - System intelligently differentiates between starting new cycles vs continuing existing ones until target reached
     • **🛡️ ANTI-CYCLING** - Prevents short-cycling: start at threshold (e.g., 18°C), continue until comfortable target (22°C)
-    • **⚡ ENERGY EFFICIENT** - Longer, more efficient cycles vs rapid on/off switching that wastes energy and stresses equipment
-    • **🔍 ENHANCED DEBUG** - Detailed logging shows whether condition is in "START MODE" or "CONTINUE MODE" with remaining temperature to target
-    • **⚙️ TEMPLATE SAFETY** - Fixed variable scope issues that prevented complex conditions from executing properly
-
-    **v2.9.3 Documentation Formatting Fix:**
-    • **🔧 FIXED** - Improved underscore visibility in BLE format examples (removed backticks that caused text clipping)
-    • **📋 READABILITY** - Clearer formatting prevents underscores from being cut off in code blocks
-    • **✨ ENHANCED** - Added "(with underscores)" clarification to make underscore format examples crystal clear
 
     **v2.9.2 Critical BLE Sensor Format Clarification:**
     • **⚠️ CRITICAL** - Added warning to check BLE sensor format in Developer Tools before configuring
