@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.15.1
+  name: Ultimate Smart Climate Control - v2.16.0
 
   description: |
-    **Ultimate Smart Climate Control v2.15.1**
+    **Ultimate Smart Climate Control v2.16.0**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,15 +40,13 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.15.0 Enhanced Adaptive Fan Control:**
-    • **🎯 SMART ESCALATION** - Temperature tiers now use progressive fan speeds based on cooling/heating effectiveness
-    • **🔄 ALL 5 FAN LEVELS** - Intelligent use of Level 1→2→3→4→5 based on actual performance, not just temperature
-    • **❄️ LOW Tier Adaptive** - Starts Level 1, escalates to 2→3 if cooling/heating slowly within tier
-    • **🌡️ MEDIUM Tier Adaptive** - Starts Level 3, escalates to 4→5 if effectiveness poor within tier
-    • **🔥 HIGH Tier Maximum** - Uses Level 5 immediately for emergency temperature situations
-    • **🎮 BOTH HEATING/COOLING** - Same intelligent escalation logic applied to all temperature scenarios
-    • **📊 ENHANCED DEBUGGING** - Shows escalation level, effectiveness score, and fan selection reasoning
-    • **⚡ PERFORMANCE-BASED** - Fan speed increases only when actually needed based on real-world effectiveness
+    **v2.16.0 Target-Based Hysteresis Fix:**
+    • **🎯 FIXED STABILITY AUTO-OFF** - No longer interrupts continue mode when AC is pursuing target temperature
+    • **📍 TARGET DISTANCE CHECK** - Stability detection now requires being within 0.5°C of actual target, not just comfort zone
+    • **🔄 CONTINUE MODE PROTECTION** - Prevents premature auto-off when in cooling_low/medium/high or heating modes
+    • **🌡️ ENHANCED DEBUG** - Shows "Continue mode active - pursuing target" status during target pursuit
+    • **⚡ PREVENTS SHORT CYCLING** - AC now continues from trigger (24.1°C) to actual target (22°C) without interruption
+    • **🚀 SMART HYSTERESIS** - Perfect balance between energy efficiency and reaching desired temperature
 
     **v2.14.3 Fan Speed Inheritance Fix:**
     • **🎮 TRUE MANUAL CONTROL** - Manual mode now provides complete user control without automation interference
@@ -2580,9 +2578,13 @@ action:
         {% if temp_stability_enabled and helper_temp_history %}
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% set time_threshold = stability_duration | float %}
-          {# CRITICAL: Only consider stable if temp is stable AND within comfort zone #}
+          {# CRITICAL: Only consider stable if temp is stable AND within comfort zone AND close to target #}
           {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
-          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone %}
+          {# NEW: Respect target-based hysteresis - must be close to actual target, not just in comfort zone #}
+          {% set close_to_target = (current_temp - target_temp) | abs <= 0.5 %}
+          {# NEW: Don't interrupt continue modes that are actively pursuing target #}
+          {% set not_in_continue_mode = last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
+          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone and close_to_target and not_in_continue_mode %}
             {% if temp_stability_time >= time_threshold %}
               {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] %}
                 true
@@ -3176,13 +3178,13 @@ action:
                 • Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
             
             🎯 System Status:
-                {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}• Temperature stable for {{ temp_stability_time | round(0) }} min - ready for auto-off{% elif last_mode in ['stability_off', 'stability_eco'] %}• AC off due to temperature stability{% elif current_temp < comfort_min_temp %}• Too cold - needs heating{% elif current_temp > comfort_max_temp %}• Too hot - needs cooling{% else %}• Perfect temperature{% endif %}
+                {% if temp_stability_enabled and temp_stability_detected and last_mode not in ['stability_off', 'stability_eco'] %}• Temperature stable for {{ temp_stability_time | round(0) }} min - ready for auto-off{% elif temp_stability_enabled and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}• Continue mode active - pursuing {{ target_temp }}°C target ({{ (current_temp - target_temp) | round(1) }}°C to go){% elif last_mode in ['stability_off', 'stability_eco'] %}• AC off due to temperature stability{% elif current_temp < comfort_min_temp %}• Too cold - needs heating{% elif current_temp > comfort_max_temp %}• Too hot - needs cooling{% else %}• Perfect temperature{% endif %}
             
             📋 Technical Details:
                 • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
                 • Cooling Triggers: {{ cooling_low_temp }}°C (low), {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
                 • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
-            {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min){% endif %}
+            {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Continue mode - pursuing target' if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min, target ±0.5°C){% endif %}
                 • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
             {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3{% endif %}
           level: warning
