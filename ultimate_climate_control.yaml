@@ -1,18 +1,26 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.14.3
+  name: Ultimate Smart Climate Control - v2.15.0
 
   description: |
-    **Ultimate Smart Climate Control v2.14.3**
+    **Ultimate Smart Climate Control v2.15.0**
 
-    🌡️ **INTELLIGENT CLIMATE CONTROL**
+    🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
-    Advanced power-efficient climate automation with **proximity-based pre-conditioning** and **intelligent presence detection**. Control multiple A/C units with full customization of temperatures, distances, and operating modes.
+    Advanced power-efficient climate automation with **adaptive fan control**, **proximity-based pre-conditioning** and **intelligent presence detection**. Control multiple A/C units with full customization of temperatures, distances, and operating modes.
+
+    **🎯 NEW: ENHANCED ADAPTIVE FAN CONTROL:**
+
+    • **Progressive Escalation:** Temperature tiers now adapt fan speeds based on actual cooling/heating effectiveness
+    • **All 5 Fan Levels:** Intelligent use of Level 1→2→3→4→5 based on performance, not just temperature
+    • **Smart Tier Logic:** LOW starts gentle (Level 1), escalates within tier; MEDIUM starts moderate (Level 3), escalates to max; HIGH uses maximum immediately
+    • **Both Heating & Cooling:** Same intelligent escalation applies to all temperature scenarios
+    • **Performance-Based:** Fan speed increases only when actually needed based on real-world effectiveness
 
     **POWER SAVING FEATURES:**
 
     • **Energy Optimization:** Configured to turn OFF in comfort zone (saves 40-60% energy)
     • **Smart Tolerance:** Wider temperature tolerance (±2°C) with extended cycling protection
-    • **Eco Mode:** Reduces energy use by 30-40% vs traditional on/off cycling
+    • **Adaptive Efficiency:** Progressive fan ramping prevents over-powered responses, maximizing efficiency
 
     **UNIVERSAL COMPATIBILITY:**
 
@@ -32,7 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.13.0 Simplified Manual Mode:**
+    **v2.15.0 Enhanced Adaptive Fan Control:**
+    • **🎯 SMART ESCALATION** - Temperature tiers now use progressive fan speeds based on cooling/heating effectiveness
+    • **🔄 ALL 5 FAN LEVELS** - Intelligent use of Level 1→2→3→4→5 based on actual performance, not just temperature
+    • **❄️ LOW Tier Adaptive** - Starts Level 1, escalates to 2→3 if cooling/heating slowly within tier
+    • **🌡️ MEDIUM Tier Adaptive** - Starts Level 3, escalates to 4→5 if effectiveness poor within tier
+    • **🔥 HIGH Tier Maximum** - Uses Level 5 immediately for emergency temperature situations
+    • **🎮 BOTH HEATING/COOLING** - Same intelligent escalation logic applied to all temperature scenarios
+    • **📊 ENHANCED DEBUGGING** - Shows escalation level, effectiveness score, and fan selection reasoning
+    • **⚡ PERFORMANCE-BASED** - Fan speed increases only when actually needed based on real-world effectiveness
+
+    **v2.14.3 Fan Speed Inheritance Fix:**
     • **🎮 TRUE MANUAL CONTROL** - Manual mode now provides complete user control without automation interference
     • **⏰ OPTIONAL TIMEOUT** - Simple dropdown to choose timeout duration (Never, 1-24 hours) - default 4 hours
     • **🔄 SMART RESUME** - When timeout reached, switches back to Smart mode (doesn't turn off AC)
@@ -3448,28 +3466,63 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% set desired_max_fan = fan_speed_max %}
-                {% if desired_max_fan in available_fans %}
-                  {{ desired_max_fan }}
-                {% elif '5' in available_fans %}
-                  5
-                {% elif 'Level 5' in available_fans %}
-                  Level 5
-                {% elif 'high' in available_fans %}
-                  high
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[-1] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # HIGH heating always uses maximum fan speed (no escalation beyond this tier)
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # HIGH heating maximum fan selection
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% set desired_max_fan = fan_speed_max %}
+                      {% if desired_max_fan in fans %}
+                        {{ desired_max_fan }}
+                      {% elif '5' in fans %}
+                        5
+                      {% elif 'Level 5' in fans %}
+                        Level 5
+                      {% elif 'turbo' in fans %}
+                        turbo
+                      {% elif 'Turbo' in fans %}
+                        Turbo
+                      {% elif 'max' in fans %}
+                        max
+                      {% elif 'Max' in fans %}
+                        Max
+                      {% elif 'high' in fans %}
+                        high
+                      {% elif 'High' in fans %}
+                        High
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% else %}
+                        {{ fans[-1] if fans else 'Auto' }}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 HIGH HEAT MAXIMUM FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }} (max tier - no further escalation)
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3509,28 +3562,103 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% set desired_medium_fan = fan_speed_medium %}
-                {% if desired_medium_fan in available_fans %}
-                  {{ desired_medium_fan }}
-                {% elif '3' in available_fans %}
-                  3
-                {% elif 'Level 3' in available_fans %}
-                  Level 3
-                {% elif 'medium' in available_fans %}
-                  medium
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[0] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # Progressive fan speed for MEDIUM heating based on escalation level
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # MEDIUM heating progressive fan selection (Level 3 → Level 4 → Level 5)
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% if escalation_level == 0 %}
+                        {# Level 0: Start moderate - Level 3 equivalent #}
+                        {% set desired_medium_fan = fan_speed_medium %}
+                        {% if desired_medium_fan in fans %}
+                          {{ desired_medium_fan }}
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif escalation_level == 1 %}
+                        {# Level 1: Higher escalation - Level 4 equivalent #}
+                        {% if '4' in fans %}
+                          4
+                        {% elif 'Level 4' in fans %}
+                          Level 4
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[-2] if fans|length > 1 else fans[-1] }}
+                        {% endif %}
+                      {% else %}
+                        {# Level 2+: Maximum for MEDIUM tier - Level 5 equivalent #}
+                        {% set desired_max_fan = fan_speed_max %}
+                        {% if desired_max_fan in fans %}
+                          {{ desired_max_fan }}
+                        {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif 'turbo' in fans %}
+                          turbo
+                        {% elif 'Turbo' in fans %}
+                          Turbo
+                        {% elif 'max' in fans %}
+                          max
+                        {% elif 'Max' in fans %}
+                          Max
+                        {% else %}
+                          {{ fans[-1] if fans else 'Auto' }}
+                        {% endif %}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 MEDIUM HEAT ADAPTIVE FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3570,31 +3698,97 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% if 'low' in available_fans %}
-                  low
-                {% elif 'Low' in available_fans %}
-                  Low
-                {% elif '1' in available_fans %}
-                  1
-                {% elif 'Level 1' in available_fans %}
-                  Level 1
-                {% elif 'quiet' in available_fans %}
-                  quiet
-                {% elif 'Quiet' in available_fans %}
-                  Quiet
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[0] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # Progressive fan speed for LOW heating based on escalation level
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # LOW heating progressive fan selection (Level 1 → Level 2 → Level 3)
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% if escalation_level == 0 %}
+                        {# Level 0: Start gentle - Level 1 equivalent #}
+                        {% if 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif escalation_level == 1 %}
+                        {# Level 1: Moderate escalation - Level 2 equivalent #}
+                        {% if '2' in fans %}
+                          2
+                        {% elif 'Level 2' in fans %}
+                          Level 2
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[1] if fans|length > 1 else fans[0] }}
+                        {% endif %}
+                      {% else %}
+                        {# Level 2+: Maximum for LOW tier - Level 3 equivalent #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[-1] if fans else 'Auto' }}
+                        {% endif %}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 LOW HEAT ADAPTIVE FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3634,28 +3828,63 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% set desired_max_fan = fan_speed_max %}
-                {% if desired_max_fan in available_fans %}
-                  {{ desired_max_fan }}
-                {% elif '5' in available_fans %}
-                  5
-                {% elif 'Level 5' in available_fans %}
-                  Level 5
-                {% elif 'high' in available_fans %}
-                  high
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[-1] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # HIGH cooling always uses maximum fan speed (no escalation beyond this tier)
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # HIGH cooling maximum fan selection
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% set desired_max_fan = fan_speed_max %}
+                      {% if desired_max_fan in fans %}
+                        {{ desired_max_fan }}
+                      {% elif '5' in fans %}
+                        5
+                      {% elif 'Level 5' in fans %}
+                        Level 5
+                      {% elif 'turbo' in fans %}
+                        turbo
+                      {% elif 'Turbo' in fans %}
+                        Turbo
+                      {% elif 'max' in fans %}
+                        max
+                      {% elif 'Max' in fans %}
+                        Max
+                      {% elif 'high' in fans %}
+                        high
+                      {% elif 'High' in fans %}
+                        High
+                      {% elif 'Auto' in fans %}
+                        Auto
+                      {% elif 'auto' in fans %}
+                        auto
+                      {% else %}
+                        {{ fans[-1] if fans else 'Auto' }}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 HIGH COOL MAXIMUM FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }} (max tier - no further escalation)
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3695,28 +3924,103 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% set desired_medium_fan = fan_speed_medium %}
-                {% if desired_medium_fan in available_fans %}
-                  {{ desired_medium_fan }}
-                {% elif '3' in available_fans %}
-                  3
-                {% elif 'Level 3' in available_fans %}
-                  Level 3
-                {% elif 'medium' in available_fans %}
-                  medium
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[0] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # Progressive fan speed for MEDIUM cooling based on escalation level
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # MEDIUM cooling progressive fan selection (Level 3 → Level 4 → Level 5)
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% if escalation_level == 0 %}
+                        {# Level 0: Start moderate - Level 3 equivalent #}
+                        {% set desired_medium_fan = fan_speed_medium %}
+                        {% if desired_medium_fan in fans %}
+                          {{ desired_medium_fan }}
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif escalation_level == 1 %}
+                        {# Level 1: Higher escalation - Level 4 equivalent #}
+                        {% if '4' in fans %}
+                          4
+                        {% elif 'Level 4' in fans %}
+                          Level 4
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[-2] if fans|length > 1 else fans[-1] }}
+                        {% endif %}
+                      {% else %}
+                        {# Level 2+: Maximum for MEDIUM tier - Level 5 equivalent #}
+                        {% set desired_max_fan = fan_speed_max %}
+                        {% if desired_max_fan in fans %}
+                          {{ desired_max_fan }}
+                        {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif 'turbo' in fans %}
+                          turbo
+                        {% elif 'Turbo' in fans %}
+                          Turbo
+                        {% elif 'max' in fans %}
+                          max
+                        {% elif 'Max' in fans %}
+                          Max
+                        {% else %}
+                          {{ fans[-1] if fans else 'Auto' }}
+                        {% endif %}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 MEDIUM COOL ADAPTIVE FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3756,31 +4060,97 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ target_temp }}"
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
-                {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
-                {% if 'low' in available_fans %}
-                  low
-                {% elif 'Low' in available_fans %}
-                  Low
-                {% elif '1' in available_fans %}
-                  1
-                {% elif 'Level 1' in available_fans %}
-                  Level 1
-                {% elif 'quiet' in available_fans %}
-                  quiet
-                {% elif 'Quiet' in available_fans %}
-                  Quiet
-                {% elif 'Auto' in available_fans %}
-                  Auto
-                {% elif 'auto' in available_fans %}
-                  auto
-                {% else %}
-                  {{ available_fans[0] if available_fans else 'Auto' }}
-                {% endif %}
+
+          # Progressive fan speed for LOW cooling based on escalation level
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # LOW cooling progressive fan selection (Level 1 → Level 2 → Level 3)
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% if escalation_level == 0 %}
+                        {# Level 0: Start gentle - Level 1 equivalent #}
+                        {% if 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif escalation_level == 1 %}
+                        {# Level 1: Moderate escalation - Level 2 equivalent #}
+                        {% if '2' in fans %}
+                          2
+                        {% elif 'Level 2' in fans %}
+                          Level 2
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[1] if fans|length > 1 else fans[0] }}
+                        {% endif %}
+                      {% else %}
+                        {# Level 2+: Maximum for LOW tier - Level 3 equivalent #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[-1] if fans else 'Auto' }}
+                        {% endif %}
+                      {% endif %}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+                - condition: template
+                  value_template: "{{ debug_enabled }}"
+                - service: system_log.write
+                  data:
+                    message: >
+                      🔍 LOW COOL ADAPTIVE FAN: {{ repeat.item }}
+                      • Escalation Level: {{ escalation_level }}
+                      • Available: {{ available_fans | join(', ') }}
+                      • Selected: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}%
+                    level: debug
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
