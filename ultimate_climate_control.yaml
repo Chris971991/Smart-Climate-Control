@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.13.9
+  name: Ultimate Smart Climate Control - v2.13.10
 
   description: |
-    **Ultimate Smart Climate Control v2.13.9**
+    **Ultimate Smart Climate Control v2.13.10**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2197,6 +2197,18 @@ trigger:
 condition: []
 
 action:
+  # Mode change detected - immediately clear helper BEFORE variables are calculated
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'mode_change' and helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_text.set_value
+        target:
+          entity_id: "{{ helper_mode }}"
+        data:
+          value: "off"
+        continue_on_error: true
+
   # Store inputs as variables first
   - variables:
       check_interval: !input check_interval_minutes
@@ -2321,15 +2333,6 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # Clear the helper mode so Smart/Auto modes can work immediately
-      - condition: template
-        value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
-      - service: input_text.set_value
-        target:
-          entity_id: "{{ helper_mode }}"
-        data:
-          value: "off"
-        continue_on_error: true
 
       - if:
           - condition: template
