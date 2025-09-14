@@ -4289,9 +4289,10 @@ action:
       # Activates at cooling_low_temp (e.g., 24.1°C) but continues until target reached
       # Uses low fan speed for maximum efficiency with minimal power consumption
       # NEW: Prevents short cycling by using target-based hysteresis logic
+      # IMPORTANT: Only for pre-conditioning - not when already home in Smart mode
       - conditions:
           - condition: template
-            value_template: "{{ should_activate }}"
+            value_template: "{{ should_activate and approaching_home }}"
           - condition: template
             value_template: >
               {% if last_mode == 'cooling' %}
