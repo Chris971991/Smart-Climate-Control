@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.12.0
+  name: Ultimate Smart Climate Control - v2.13.0
 
   description: |
-    **Ultimate Smart Climate Control v2.12.0**
+    **Ultimate Smart Climate Control v2.13.0**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -32,6 +32,14 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.13.0 Simplified Manual Mode:**
+    • **🎮 TRUE MANUAL CONTROL** - Manual mode now provides complete user control without automation interference
+    • **⏰ OPTIONAL TIMEOUT** - Simple dropdown to choose timeout duration (Never, 1-24 hours) - default 4 hours
+    • **🔄 SMART RESUME** - When timeout reached, switches back to Smart mode (doesn't turn off AC)
+    • **📱 REMOTE PRE-CONDITIONING** - Perfect for setting AC before entering room without presence sensors interfering
+    • **🎯 SIMPLIFIED DESIGN** - Removed confusing toggles in favor of single timeout selection
+    • **✅ BACKWARD COMPATIBLE** - Existing configurations continue working with smart defaults
+
     **v2.12.0 Enhanced Manual Mode Control:**
     • **🎮 MANUAL MODE OPTIONS** - Choose between Pure Manual, Safety Timeout, Presence Aware, or Extreme Protection behaviors
     • **⏰ SAFETY TIMEOUT** - Optional timeout to prevent AC running forever in Manual mode (default 8 hours)
@@ -40,15 +48,6 @@ blueprint:
     • **🎯 AUTO-DETECTION** - Automatically switches to Manual when user changes AC (from HA or remote)
     • **⏱️ SEPARATE TIMEOUTS** - Different timeouts for manual override vs manual mode safety
     • **✅ BACKWARD COMPATIBLE** - Default "Safety Timeout" mode prevents energy waste while respecting control
-
-    **v2.11.0 Heating & Cooling Mode Toggles:**
-    • **🔥❄️ NEW FEATURE** - Added individual toggle switches for heating and cooling modes
-    • **🎯 GRANULAR CONTROL** - Users can now disable heating (cooling-only) or cooling (heating-only) independently
-    • **🔧 USE CASES** - Perfect for seasonal control, energy management, personal preferences, and climate-specific setups
-    • **🌡️ COOLING ONLY** - Ideal for people who run hot and never want heating to activate
-    • **🔥 HEATING ONLY** - Perfect for cold climates or winter operation where cooling isn't needed
-    • **📊 SMART DEBUG** - Debug logs clearly show when modes are ENABLED/DISABLED and why conditions fail
-    • **✅ BACKWARD COMPATIBLE** - Both modes default to enabled, existing automations unchanged
 
     
     📖 **For complete changelog and version history, visit:**
@@ -1919,79 +1918,44 @@ blueprint:
               unit_of_measurement: hours
               mode: slider
 
-        manual_mode_behavior:
-          name: Manual Mode Behavior
+        manual_mode_timeout:
+          name: 🎮 Manual Mode Timeout
           description: |
-            **How Manual mode should behave** - choose your preferred level of automation override.
+            **How long Manual mode should last** before automatically returning to Smart/Auto mode.
 
-            • **Pure Manual:** NO automation at all - AC runs exactly as set (may run forever)
-            • **Safety Timeout:** Turn off after timeout period to prevent accidental energy waste
-            • **Presence Aware:** Respect presence sensors but ignore temperature (turns off when room empty)
-            • **Extreme Protection:** Only intervene for extreme temperatures, otherwise full manual control
+            **Manual Mode = FULL USER CONTROL:**
+            • Set AC to any temperature/fan speed remotely
+            • NO automation interference - ignores presence sensors and temperature thresholds
+            • Perfect for pre-cooling/heating rooms before arrival
 
-            **⚠️ WARNING:** "Pure Manual" means the AC could run indefinitely if you forget about it!
+            **Timeout Options:**
+            • **Never**: Manual mode until you manually change it back (could run forever)
+            • **2-8 hours**: Good for pre-conditioning and daily use
+            • **12-24 hours**: Extended manual control periods
 
-            **Recommended:** "Safety Timeout" for most users - balances control with energy safety.
-          default: "safety_timeout"
+            **After timeout**: Automatically switches back to Smart/Auto mode (doesn't turn off AC)
+            **Automation resumes**: Presence detection and temperature control work normally again
+
+            **Your use case**: Set to 4-8 hours, manually cool to 18°C before coming home!
+          default: "4_hours"
           selector:
             select:
               options:
-                - label: "Pure Manual - No automation interference"
-                  value: "pure_manual"
-                - label: "Safety Timeout - Turn off after timeout"
-                  value: "safety_timeout"
-                - label: "Presence Aware - Turn off when room empty"
-                  value: "presence_aware"
-                - label: "Extreme Protection - Only extreme temps"
-                  value: "extreme_only"
+                - label: "Never (Pure Manual - runs until manually changed)"
+                  value: "never"
+                - label: "1 Hour"
+                  value: "1_hour"
+                - label: "2 Hours"
+                  value: "2_hours"
+                - label: "4 Hours (Recommended)"
+                  value: "4_hours"
+                - label: "8 Hours"
+                  value: "8_hours"
+                - label: "12 Hours"
+                  value: "12_hours"
+                - label: "24 Hours"
+                  value: "24_hours"
 
-        manual_mode_timeout:
-          name: Manual Mode Safety Timeout (hours)
-          description: |
-            **Maximum time Manual mode can run** before automatically turning off AC.
-
-            **Only applies when Manual Mode Behavior is set to "Safety Timeout".**
-
-            • **0 hours:** Disabled - Manual mode runs forever (not recommended)
-            • **4-8 hours:** Good for overnight or workday periods
-            • **12-24 hours:** Safety net for forgotten AC units
-
-            **Purpose:** Prevents accidentally leaving AC running for days in Manual mode.
-
-            **Example:** Set to 8 hours - if you manually set AC at night and forget, it will turn off by morning.
-
-            **Recommended:** 8 hours - long enough for intended use, short enough to prevent waste.
-          default: 8
-          selector:
-            number:
-              min: 0
-              max: 48
-              step: 1
-              unit_of_measurement: hours
-              mode: slider
-
-        manual_mode_presence_timeout:
-          name: Manual Mode Presence Timeout (minutes)
-          description: |
-            **Time to wait after room is empty** before turning off AC in Manual mode.
-
-            **Only applies when Manual Mode Behavior is set to "Presence Aware".**
-
-            • **0 minutes:** Turn off immediately when room empty
-            • **15-30 minutes:** Allow for brief departures
-            • **60+ minutes:** Very tolerant of absences
-
-            **Purpose:** Even in Manual mode, save energy when room is unoccupied.
-
-            **Recommended:** 30 minutes - handles bathroom breaks without turning off.
-          default: 30
-          selector:
-            number:
-              min: 0
-              max: 120
-              step: 5
-              unit_of_measurement: minutes
-              mode: slider
         
         adaptive_override_helper:
           name: Override Helper (Optional)
@@ -2165,9 +2129,28 @@ variables:
   adaptive_target_mode: !input adaptive_target_mode
   adaptive_override_timeout: !input adaptive_override_timeout
   adaptive_override_helper: !input adaptive_override_helper
-  manual_mode_behavior: !input manual_mode_behavior
   manual_mode_timeout: !input manual_mode_timeout
-  manual_mode_presence_timeout: !input manual_mode_presence_timeout
+
+  # Convert timeout selection to hours for calculations
+  manual_timeout_hours: >
+    {% set timeout = manual_mode_timeout %}
+    {% if timeout == 'never' %}
+      0
+    {% elif timeout == '1_hour' %}
+      1
+    {% elif timeout == '2_hours' %}
+      2
+    {% elif timeout == '4_hours' %}
+      4
+    {% elif timeout == '8_hours' %}
+      8
+    {% elif timeout == '12_hours' %}
+      12
+    {% elif timeout == '24_hours' %}
+      24
+    {% else %}
+      4
+    {% endif %}
 
 trigger:
   - platform: state
@@ -3276,130 +3259,79 @@ action:
           datetime: "{{ now() }}"
 
   - choose:
-      # Handle Manual mode based on configured behavior
+      # Handle Manual mode - True manual control with optional timeout
       - conditions:
           - condition: template
             value_template: "{{ control_mode == 'Manual' }}"
         sequence:
-          - choose:
-              # Pure Manual - No automation at all
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_mode_behavior == 'pure_manual' and not extreme_temp_detected }}"
-                sequence:
-                  - condition: template
-                    value_template: "{{ debug_enabled }}"
-                  - service: system_log.write
-                    data:
-                      message: >
-                        🎮 {{ room_name | upper }} PURE MANUAL MODE: Complete automation bypass
-                        • Behavior: Pure Manual - NO automation
-                        • Temperature: {{ current_temp }}°C
-                        • USER HAS FULL CONTROL - No timeouts, no presence checks
-                        • ⚠️ WARNING: AC will run indefinitely until manually changed
-                      level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-                  - stop: "Pure manual mode - complete user control"
+          # Check if Manual mode timeout has been reached
+          - if:
+              - condition: template
+                value_template: "{{ manual_timeout_hours > 0 }}"
+              - condition: template
+                value_template: >
+                  {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+                    {% set time_in_manual = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
+                    {{ time_in_manual >= manual_timeout_hours }}
+                  {% else %}
+                    false
+                  {% endif %}
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    ⏰ {{ room_name | upper }} MANUAL MODE TIMEOUT: Returning to automation
+                    • Manual timeout reached: {{ manual_timeout_hours }} hours
+                    • Time in manual: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600) | round(1) }}h
+                    • Switching back to Smart mode - automation will resume
+                    • AC will continue running under normal automation control
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-              # Safety Timeout - Turn off after configured hours
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_mode_behavior == 'safety_timeout' and manual_mode_timeout > 0 }}"
-                  - condition: template
-                    value_template: >
-                      {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-                        {% set time_in_manual = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
-                        {{ time_in_manual >= manual_mode_timeout }}
-                      {% else %}
-                        false
-                      {% endif %}
-                sequence:
-                  - service: system_log.write
-                    data:
-                      message: >
-                        ⏰ {{ room_name | upper }} MANUAL MODE TIMEOUT: Safety shutdown
-                        • Manual mode timeout reached ({{ manual_mode_timeout }} hours)
-                        • Turning off AC to prevent energy waste
-                        • Switch back to Auto/Smart or adjust timer if needed
-                      level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              # Switch back to Smart mode (don't turn off AC)
+              - condition: template
+                value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
+              - service: input_select.select_option
+                target:
+                  entity_id: "{{ control_mode_helper }}"
+                data:
+                  option: "Smart"
+                continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_last_mode
+                data:
+                  value: "manual_timeout_return_to_smart"
+                continue_on_error: true
 
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "manual_timeout_off"
-                    continue_on_error: true
-
-                  - condition: template
-                    value_template: "{{ enable_notifications }}"
-                  - service: !input notification_service
-                    data:
-                      title: "{{ room_name }} Climate Control"
-                      message: "Manual mode safety timeout - AC turned off after {{ manual_mode_timeout }}h"
-
-              # Presence Aware - Turn off when room empty
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_mode_behavior == 'presence_aware' }}"
-                  - condition: template
-                    value_template: "{{ not room_presence_detected }}"
-                  - condition: template
-                    value_template: >
-                      {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-                        {% set vacant_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
-                        {{ vacant_time >= manual_mode_presence_timeout }}
-                      {% else %}
-                        false
-                      {% endif %}
-                sequence:
-                  - service: system_log.write
-                    data:
-                      message: >
-                        🚪 {{ room_name | upper }} MANUAL MODE: Room empty timeout
-                        • Room vacant for {{ manual_mode_presence_timeout }} minutes
-                        • Turning off AC to save energy (presence-aware manual mode)
-                        • AC will stay off until manually restarted
-                      level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "manual_presence_off"
-                    continue_on_error: true
-
-              # Extreme Protection - Only extreme temps override
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_mode_behavior == 'extreme_only' and not extreme_temp_detected }}"
-                sequence:
-                  - condition: template
-                    value_template: "{{ debug_enabled }}"
-                  - service: system_log.write
-                    data:
-                      message: >
-                        🛡️ {{ room_name | upper }} MANUAL MODE: Extreme protection only
-                        • Temperature: {{ current_temp }}°C (not extreme)
-                        • User has control unless extreme temps detected
-                        • High limit: {{ extreme_high_temp }}°C, Low limit: {{ extreme_low_temp }}°C
-                      level: debug
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-                  - stop: "Manual mode with extreme protection - normal temps"
-
-          # Default: Skip if in any manual mode variant and conditions don't match above
-          - condition: template
-            value_template: "{{ not extreme_temp_detected }}"
-          - stop: "Manual mode - checking conditions complete"
+              - condition: template
+                value_template: "{{ enable_notifications }}"
+              - service: !input notification_service
+                data:
+                  title: "{{ room_name }} Climate Control"
+                  message: "Manual timeout ({{ manual_timeout_hours }}h) - switched back to Smart mode"
+              - stop: "Manual mode timeout - returned to Smart mode"
+            else:
+              # Manual mode continues - complete user control
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+              - service: system_log.write
+                data:
+                  message: >
+                    🎮 {{ room_name | upper }} MANUAL MODE: Full user control active
+                    • Temperature: {{ current_temp }}°C
+                    • Timeout setting: {{ manual_mode_timeout }} ({{ manual_timeout_hours }}h)
+                    {% if manual_timeout_hours > 0 %}
+                    • Time remaining: {{ (manual_timeout_hours - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }}h
+                    {% else %}
+                    • No timeout - manual until you change it
+                    {% endif %}
+                    • FULL CONTROL: Set any temp/fan remotely - NO automation interference
+                    • Perfect for pre-conditioning rooms before arrival!
+                  level: debug
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              - stop: "Manual mode active - user has complete control"
 
       # Skip if manual override is active (user changed AC while in Auto/Smart)
       - conditions:
