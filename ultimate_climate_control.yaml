@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.14.1
+  name: Ultimate Smart Climate Control - v2.14.2
 
   description: |
-    **Ultimate Smart Climate Control v2.14.1**
+    **Ultimate Smart Climate Control v2.14.2**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -3391,7 +3391,7 @@ action:
       # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
       - conditions:
           - condition: template
-            value_template: "{{ manual_override_active and trigger.id != 'mode_change' }}"
+            value_template: "{{ manual_override_active and manual_change_detected }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
