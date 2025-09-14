@@ -3517,10 +3517,12 @@ action:
                   data:
                     message: >
                       🔍 HIGH HEAT MAXIMUM FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }} (max tier - no further escalation)
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4 (max tier - Level 5 always)
+                      • Fan Selection: {{ selected_fan_mode }} (maximum power)
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -3549,7 +3551,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} MEDIUM HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_medium_temp }}°C (medium threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🔥 {{ room_name | upper }} MEDIUM HEATING ACTIVATED
+                {% if current_mode == 'heating_medium' %}
+                📊 CONTINUE MODE: Already heating medium, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting MEDIUM heating
+                • Trigger: {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to heat)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -3653,10 +3666,12 @@ action:
                   data:
                     message: >
                       🔍 MEDIUM HEAT ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4
+                      • Fan Selection: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -3685,7 +3700,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} LOW HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_low_temp }}°C (low threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🔥 {{ room_name | upper }} LOW HEATING ACTIVATED
+                {% if current_mode == 'heating_low' %}
+                📊 CONTINUE MODE: Already heating low, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting LOW heating
+                • Trigger: {{ current_temp }}°C ≤ {{ heating_low_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to heat)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -3783,10 +3809,12 @@ action:
                   data:
                     message: >
                       🔍 LOW HEAT ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4
+                      • Fan Selection: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -3879,10 +3907,12 @@ action:
                   data:
                     message: >
                       🔍 HIGH COOL MAXIMUM FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }} (max tier - no further escalation)
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4 (max tier - Level 5 always)
+                      • Fan Selection: {{ selected_fan_mode }} (maximum power)
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -3911,7 +3941,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "❄️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_medium_temp }}°C (medium threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                ❄️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED
+                {% if current_mode == 'cooling_medium' %}
+                📊 CONTINUE MODE: Already cooling medium, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting MEDIUM cooling
+                • Trigger: {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -4015,10 +4056,12 @@ action:
                   data:
                     message: >
                       🔍 MEDIUM COOL ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4
+                      • Fan Selection: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -4047,7 +4090,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "❄️ {{ room_name | upper }} LOW COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_low_temp }}°C (low threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                ❄️ {{ room_name | upper }} LOW COOLING ACTIVATED
+                {% if current_mode == 'cooling_low' %}
+                📊 CONTINUE MODE: Already cooling low, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting LOW cooling
+                • Trigger: {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -4145,10 +4199,12 @@ action:
                   data:
                     message: >
                       🔍 LOW COOL ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}
-                      • Available: {{ available_fans | join(', ') }}
-                      • Selected: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}%
+                      • Escalation Level: {{ escalation_level }}/4
+                      • Fan Selection: {{ selected_fan_mode }}
+                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                      • Distance from Target: {{ distance_from_target | round(1) }}°C
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
+                      • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: input_text.set_value
@@ -4677,7 +4733,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🌡️ {{ room_name | upper }} LOW COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_low_temp }}°C (low threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🌡️ {{ room_name | upper }} LOW COOLING ACTIVATED
+                {% if current_mode == 'cooling_low' %}
+                📊 CONTINUE MODE: Already cooling low, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting LOW cooling
+                • Trigger: {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
@@ -4830,7 +4897,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🌡️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_medium_temp }}°C (medium threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🌡️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED
+                {% if current_mode == 'cooling_medium' %}
+                📊 CONTINUE MODE: Already cooling medium, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting MEDIUM cooling
+                • Trigger: {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
@@ -6364,7 +6442,18 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🌡️ {{ room_name | upper }} LOW HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_low_temp }}°C (low threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🌡️ {{ room_name | upper }} LOW HEATING ACTIVATED
+                {% if current_mode == 'heating_low' %}
+                📊 CONTINUE MODE: Already heating low, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting LOW heating
+                • Trigger: {{ current_temp }}°C ≤ {{ heating_low_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to heat)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
@@ -6745,7 +6834,18 @@ action:
 
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED - Temperature {{ current_temp }}°C below {{ heating_high_temp }}°C (high threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED
+                {% if current_mode == 'heating_high' %}
+                📊 CONTINUE MODE: Already heating high, continuing until target
+                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to go)
+                {% else %}
+                🚀 START MODE: Starting HIGH heating
+                • Trigger: {{ current_temp }}°C ≤ {{ heating_high_temp }}°C (threshold)
+                • Target: {{ target_temp }}°C ({{ (target_temp - current_temp) | round(1) }}°C to heat)
+                {% endif %}
+                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
