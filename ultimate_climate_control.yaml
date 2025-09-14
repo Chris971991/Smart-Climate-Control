@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.13.5
+  name: Ultimate Smart Climate Control - v2.13.6
 
   description: |
-    **Ultimate Smart Climate Control v2.13.5**
+    **Ultimate Smart Climate Control v2.13.6**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2842,20 +2842,20 @@ action:
           false
         {% endif %}
 
-      # Honor manual override timeout - only when staying in Auto/Smart mode
+      # Honor manual override timeout - ONLY when manual changes are detected
       manual_override_active: >
-        {% if manual_change_detected and adaptive_override_timeout > 0 %}
+        {% if not manual_change_detected %}
+          false
+        {% elif adaptive_override_timeout <= 0 %}
+          false
+        {% else %}
           {% set last_change = states(helper_change) %}
           {% if last_change not in ['unknown', 'unavailable', ''] %}
             {% set time_since_manual = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
-            {# Override only applies if still in same mode and within timeout #}
-            {% set last_control_mode = states(helper_mode) | default('off') %}
-            {{ time_since_manual < adaptive_override_timeout and control_mode in ['Auto', 'Smart'] and last_control_mode not in ['manual_timeout_return_to_smart'] }}
+            {{ time_since_manual < adaptive_override_timeout }}
           {% else %}
             false
           {% endif %}
-        {% else %}
-          false
         {% endif %}
 
       should_activate: >
