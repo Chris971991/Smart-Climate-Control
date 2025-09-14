@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.14.0
+  name: Ultimate Smart Climate Control - v2.14.1
 
   description: |
-    **Ultimate Smart Climate Control v2.14.0**
+    **Ultimate Smart Climate Control v2.14.1**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2859,9 +2859,11 @@ action:
           false
         {% endif %}
 
-      # Honor manual override timeout - ONLY when changing TO Manual mode (not FROM Manual)
+      # Manual Override - NEVER active when user explicitly switches modes
       manual_override_active: >
-        {% if not manual_change_detected %}
+        {% if trigger.id == 'mode_change' %}
+          false
+        {% elif not manual_change_detected %}
           false
         {% elif adaptive_override_timeout <= 0 %}
           false
@@ -3386,10 +3388,10 @@ action:
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
               - stop: "Manual mode active - user has complete control"
 
-      # Skip if manual override is active (user changed AC while in Auto/Smart)
+      # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
       - conditions:
           - condition: template
-            value_template: "{{ manual_override_active }}"
+            value_template: "{{ manual_override_active and trigger.id != 'mode_change' }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
