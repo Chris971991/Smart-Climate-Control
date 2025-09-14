@@ -2298,8 +2298,31 @@ action:
           message: >
             🏠 {{ room_name | upper }} CLIMATE CONTROL ACTIVATED
             {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
-            
+
             📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  # Debug: Log mode change detection
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🎮 {{ room_name | upper }} MODE STATUS CHECK
+
+            🔄 Mode Information:
+                • Current Control Mode: {{ control_mode }} (from {{ control_mode_helper }})
+                • Last Automation Mode: {{ states(helper_mode) | default('unknown') }} (from {{ helper_mode }})
+                • Manual Override Active: {{ manual_override_active }}
+                {% if manual_override_active %}• Override Time Remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }}h{% endif %}
+
+            🎯 Activation Status:
+                • Should Activate: {{ should_activate }}
+                • Smart Presence Active: {{ smart_presence_active }}
+                • Room Presence Detected: {{ room_presence_detected }}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
