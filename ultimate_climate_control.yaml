@@ -1894,19 +1894,21 @@ blueprint:
         adaptive_override_timeout:
           name: Manual Override Timeout (hours)
           description: |
-            **How long to respect manual user changes** before resuming adaptive control.
+            **How long to respect small adjustments** you make while automation is running.
 
-            When you **manually change climate settings**, adaptive control will pause for this duration.
+            **WHAT THIS DOES:** When you tweak temperature/fan settings while in Auto/Smart mode,
+            automation pauses its adjustments for this duration but **stays in the same mode**.
 
-            • **0 hours:** No override protection (always allow adaptive switching)
-            • **1-4 hours:** Good for temporary comfort adjustments
-            • **8+ hours:** Good for energy-saving periods or when pets are sensitive
+            **WHEN IT ACTIVATES:** Any manual adjustment while automation is active
+            **WHAT CONTINUES:** Presence detection, mode switching, all other automation
+            **WHAT PAUSES:** Temperature and fan speed adjustments only
 
-            **Common scenarios:**
+            **Examples:**
+            • You adjust 23°C → 25°C for comfort → System won't change it back for X hours
+            • You turn off AC for pets → System won't turn it back on for X hours
+            • You change fan from Auto to Level 3 → System respects your fan choice
 
-            • You turn off AC because pets are cold → **System waits** before turning back on
-            • You manually adjust temperature for comfort → **System respects** your preference
-            • You turn off AC to save energy → **System stays off** for the configured time
+            **This is NOT for remote pre-conditioning** - use Manual Mode for that.
 
             **Recommended:** 2 hours for most situations.
           default: 2
@@ -1921,22 +1923,24 @@ blueprint:
         manual_mode_timeout:
           name: 🎮 Manual Mode Timeout
           description: |
-            **How long Manual mode should last** before automatically returning to Smart/Auto mode.
+            **How long to completely bypass ALL automation** when you switch to Manual mode.
 
-            **Manual Mode = FULL USER CONTROL:**
-            • Set AC to any temperature/fan speed remotely
-            • NO automation interference - ignores presence sensors and temperature thresholds
-            • Perfect for pre-cooling/heating rooms before arrival
+            **WHAT THIS DOES:** Manual mode = 100% user control with ZERO automation interference.
+            Perfect for **remote pre-conditioning** before arriving home.
 
-            **Timeout Options:**
-            • **Never**: Manual mode until you manually change it back (could run forever)
-            • **2-8 hours**: Good for pre-conditioning and daily use
-            • **12-24 hours**: Extended manual control periods
+            **WHEN IT ACTIVATES:** Only when you switch the control mode to "Manual"
+            **WHAT STOPS:** ALL automation - presence detection, temperature control, everything
+            **WHAT YOU GET:** Complete control to set any temperature/fan remotely
 
-            **After timeout**: Automatically switches back to Smart/Auto mode (doesn't turn off AC)
-            **Automation resumes**: Presence detection and temperature control work normally again
+            **Examples:**
+            • Set AC to 18°C cold before coming home → No presence sensors turn it off
+            • Heat room to 26°C while away → System won't adjust based on "empty room"
+            • Set specific fan speed for noise → Automation won't change it
 
-            **Your use case**: Set to 4-8 hours, manually cool to 18°C before coming home!
+            **After timeout:** Switches back to Smart mode (AC keeps running at your settings)
+            **Then:** Normal automation resumes with presence detection
+
+            **This IS for remote pre-conditioning** - different from Override above!
           default: "4_hours"
           selector:
             select:
@@ -3358,7 +3362,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_high' %}
                 {# Already heating high - continue until target reached #}
                 {{ current_temp < target_temp }}
@@ -3370,7 +3374,7 @@ action:
           - service: system_log.write
             data:
               message: >
-                {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+                {% set current_mode = states(helper_mode) | default('off') %}
                 🔥 {{ room_name | upper }} HIGH HEATING ACTIVATED
                 {% if current_mode == 'heating_high' %}
                 📊 CONTINUE MODE: Already heating high, continuing until target
@@ -3430,7 +3434,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_medium' %}
                 {# Already heating medium - continue until target reached or escalation needed #}
                 {{ current_temp < target_temp and current_temp > heating_high_temp }}
@@ -3491,7 +3495,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_low' %}
                 {# Already heating low - continue until target reached or escalation needed #}
                 {{ current_temp < target_temp and current_temp > heating_medium_temp }}
@@ -3555,7 +3559,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_high' %}
                 {# Already cooling high - continue until target reached #}
                 {{ current_temp > target_temp }}
@@ -3616,7 +3620,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_medium' %}
                 {# Already cooling medium - continue until target reached or escalation needed #}
                 {{ current_temp > target_temp and current_temp < cooling_high_temp }}
@@ -3677,7 +3681,7 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current_mode = states('input_text.climate_last_mode_office') | default('off') %}
+              {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_low' %}
                 {# Already cooling low - continue until target reached or escalation needed #}
                 {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
