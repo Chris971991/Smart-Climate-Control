@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.13.6
+  name: Ultimate Smart Climate Control - v2.13.7
 
   description: |
-    **Ultimate Smart Climate Control v2.13.6**
+    **Ultimate Smart Climate Control v2.13.7**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2308,28 +2308,29 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-  # Debug: Log mode change detection
+  # Mode change detected - clear Manual Override timer when user explicitly changes modes
   - if:
       - condition: template
-        value_template: "{{ debug_enabled }}"
+        value_template: "{{ trigger.id == 'mode_change' and helper_change not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      - service: system_log.write
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
         data:
-          message: >
-            🎮 {{ room_name | upper }} MODE STATUS CHECK
-
-            🔄 Mode Information:
-                • Current Control Mode: {{ control_mode }} (from {{ control_mode_helper }})
-                • Last Automation Mode: {{ states(helper_mode) | default('unknown') }} (from {{ helper_mode }})
-                • Manual Override Active: {{ manual_override_active }}
-                {% if manual_override_active %}• Override Time Remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }}h{% endif %}
-
-            🎯 Activation Status:
-                • Should Activate: {{ should_activate }}
-                • Smart Presence Active: {{ smart_presence_active }}
-                • Room Presence Detected: {{ room_presence_detected }}
-          level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          datetime: "{{ now() }}"
+        continue_on_error: true
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🎮 {{ room_name | upper }} MODE CHANGE DETECTED: Manual Override timer reset
+                • Mode Changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
+                • Manual Override timer has been reset - modes will work immediately
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
   - variables:
       current_temp: >
