@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.13.8
+  name: Ultimate Smart Climate Control - v2.13.9
 
   description: |
-    **Ultimate Smart Climate Control v2.13.8**
+    **Ultimate Smart Climate Control v2.13.9**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2308,17 +2308,29 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-  # Mode change detected - clear Manual Override timer when user explicitly changes modes
+  # Mode change detected - immediately update helper and clear Manual Override
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'mode_change' and helper_change not in [none, '', 'unavailable', 'unknown'] }}"
     then:
+      # Reset Manual Override timer
       - service: input_datetime.set_datetime
         target:
           entity_id: "{{ helper_change }}"
         data:
           datetime: "{{ now() }}"
         continue_on_error: true
+
+      # Clear the helper mode so Smart/Auto modes can work immediately
+      - condition: template
+        value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_text.set_value
+        target:
+          entity_id: "{{ helper_mode }}"
+        data:
+          value: "off"
+        continue_on_error: true
+
       - if:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -2326,9 +2338,10 @@ action:
           - service: system_log.write
             data:
               message: >
-                🎮 {{ room_name | upper }} MODE CHANGE DETECTED: Manual Override timer reset
+                🎮 {{ room_name | upper }} MODE CHANGE DETECTED: Cleared for immediate mode switch
                 • Mode Changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
-                • Manual Override timer has been reset - modes will work immediately
+                • Helper cleared to "off" - {{ trigger.to_state.state }} mode will activate immediately
+                • Manual Override disabled for mode changes
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
