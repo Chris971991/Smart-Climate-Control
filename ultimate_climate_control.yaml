@@ -2191,7 +2191,7 @@ trigger:
 
   # Fire immediately when control mode changes (Manual/Smart/Auto)
   - platform: state
-    entity_id: !input control_mode_helper
+    entity_id: !input helper_control_mode
     id: mode_change
 
 condition: []
