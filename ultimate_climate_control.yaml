@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.13.0
+  name: Ultimate Smart Climate Control - v2.13.5
 
   description: |
-    **Ultimate Smart Climate Control v2.13.0**
+    **Ultimate Smart Climate Control v2.13.5**
 
     🌡️ **INTELLIGENT CLIMATE CONTROL**
 
@@ -2189,6 +2189,11 @@ trigger:
     entity_id: !input presence_devices
     id: device_change
 
+  # Fire immediately when control mode changes (Manual/Smart/Auto)
+  - platform: state
+    entity_id: !input control_mode_helper
+    id: mode_change
+
 condition: []
 
 action:
@@ -2297,7 +2302,7 @@ action:
         data:
           message: >
             🏠 {{ room_name | upper }} CLIMATE CONTROL ACTIVATED
-            {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% else %}🔄 {{ trigger.id }}{% endif %}
+            {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% elif trigger.id == 'mode_change' %}🎮 MODE CHANGED: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}{% else %}🔄 {{ trigger.id }}{% endif %}
 
             📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
           level: warning
