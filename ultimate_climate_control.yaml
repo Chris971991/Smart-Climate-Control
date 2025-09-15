@@ -40,12 +40,14 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.17.1 Additional Timer Reset Fixes:**
+    • **🚨 CRITICAL FIX** - Resolved remaining timer resets that were still causing cooling_medium mode to reset every few minutes
+    • **📊 COMPLETE COVERAGE** - Fixed adaptive_off, smart_*, and multiple cooling mode timer reset locations
+    • **⏰ SYSTEMATIC APPROACH** - Applied replace_all to ensure all cooling mode timer conditions include mode change detection
+    • **🎯 VERIFIED PATTERN** - Targeted exact timer reset locations causing "running 0 min" resets observed in logs
+    • **🔧 14+ LOCATIONS FIXED** - Comprehensive mode change detection applied across all major timer reset points
+
     **v2.17.0 Dynamic Escalation Timer Fix:**
-    • **🐛 FIXED TIMER RESET BUG** - Resolved critical issue where dynamic escalation timers reset every activation, preventing effectiveness calculations
-    • **⏰ MODE CHANGE DETECTION** - Timer resets now only occur on actual mode changes, not during "continue until target" operations
-    • **🎯 ESCALATION ENABLED** - Dynamic fan control can now accumulate timing beyond 0.6 minutes to reach 5+ minute thresholds for escalation
-    • **🔧 SMART HYSTERESIS PRESERVED** - Maintains intelligent continue-until-target logic while enabling proper timer accumulation
-    • **📊 9 CRITICAL MODES FIXED** - Applied mode change detection to off, manual, eco, cooling, heating, stability, and composite modes
 
     **v2.16.3 Manual Override Detection Fix:**
     • **🎯 FIXED STABILITY AUTO-OFF** - No longer interrupts continue mode when AC is pursuing target temperature
