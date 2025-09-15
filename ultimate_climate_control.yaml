@@ -5641,10 +5641,10 @@ action:
                     entity_id: "{{ helper_mode }}"
                   data:
                     value: "adaptive_off"
-                
-                # Update mode start time for effectiveness tracking
+
+                # Update mode start time for effectiveness tracking (only if mode changed)
                 - condition: template
-                  value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                  value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'adaptive_off' }}"
                 - service: input_datetime.set_datetime
                   target:
                     entity_id: "{{ helper_mode_time }}"
@@ -5959,10 +5959,10 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "smart_{{ smart_behavior }}"
-          
-          # Update mode start time for effectiveness tracking (only if it exists)
+
+          # Update mode start time for effectiveness tracking (only if mode changed)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'smart_' + smart_behavior }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6278,7 +6278,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6442,7 +6442,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6645,7 +6645,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6810,7 +6810,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7032,7 +7032,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7248,7 +7248,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
