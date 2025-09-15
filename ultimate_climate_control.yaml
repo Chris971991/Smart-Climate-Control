@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.4
+  name: Ultimate Smart Climate Control - v2.17.5
 
   description: |
-    **Ultimate Smart Climate Control v2.17.4**
+    **Ultimate Smart Climate Control v2.17.5**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,18 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.17.5 Effectiveness Helper Update Fix:**
+    • **🚨 CRITICAL FIX** - Fixed effectiveness percentage showing 0% despite correct calculations and working escalation
+    • **💾 HELPER PERSISTENCE** - Added missing service call to save calculated effectiveness score to helper entity
+    • **📊 VISUAL FEEDBACK** - Users now see actual effectiveness percentages in logs and debug output
+    • **✅ COMPLETE SYSTEM** - Dynamic escalation now fully functional with proper effectiveness tracking and display
+
     **v2.17.4 Distance Calculation Fix:**
     • **🚨 CRITICAL FIX** - Fixed distance_from_target calculation returning 0 when inside comfort zone but actively cooling/heating
     • **📊 ACTIVE MODE TRACKING** - Now calculates distance to target when in cooling_medium/heating modes regardless of comfort zone
     • **🎯 TARGET PURSUIT** - Properly tracks progress toward target temperature during continue mode operation
     • **✅ ESCALATION ENABLED** - Dynamic escalation now works with correct distance calculations for effectiveness
-
-    **v2.17.3 Dynamic Effectiveness Calculation Fix:**
-    • **🚨 CRITICAL FIX** - Fixed effectiveness calculation stuck at 0% preventing dynamic escalation from working
-    • **🔧 MODE RECOGNITION** - Updated effectiveness logic to properly recognize cooling_medium/heating_medium modes
-    • **📊 PROGRESS TRACKING** - Fixed effectiveness calculation for temperature modes (was only checking 'cooling'/'heating')
-    • **⚡ ACTIVE PURSUIT** - Added 40% baseline effectiveness when actively pursuing target but temperature hasn't changed yet
-    • **✅ DYNAMIC ESCALATION** - Now properly calculates effectiveness and triggers fan speed escalation based on performance
 
     **v2.17.2 Adaptive Timer Reset Fix:**
     • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
@@ -3255,7 +3254,16 @@ action:
       entity_id: "{{ helper_temp_history }}"
     data:
       value: "{{ current_temp }}"
-  
+
+  # Update effectiveness score helper
+  - condition: template
+    value_template: "{{ dynamic_enabled and helper_effectiveness not in [none, '', 'unavailable', 'unknown'] }}"
+  - service: input_number.set_value
+    target:
+      entity_id: "{{ helper_effectiveness }}"
+    data:
+      value: "{{ current_effectiveness }}"
+
   - condition: template
     value_template: "{{ dynamic_enabled and helper_trend not in [none, '', 'unavailable', 'unknown'] }}"  
   - service: input_text.set_value
