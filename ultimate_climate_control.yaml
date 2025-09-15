@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.16.2
+  name: Ultimate Smart Climate Control - v2.16.3
 
   description: |
-    **Ultimate Smart Climate Control v2.16.2**
+    **Ultimate Smart Climate Control v2.16.3**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,23 +40,21 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.16.3 Manual Override Detection Fix:**
+    • **🐛 FIXED FALSE DETECTION** - Eliminated conflicting manual change detection systems causing auto-switch to Manual mode
+    • **⏰ TIME-BASED PROTECTION** - Added 2-minute grace period after automation changes to prevent false positives
+    • **🔗 UNIFIED LOGIC** - Both manual detection systems now use the same source of truth for consistency
+    • **🔍 ENHANCED DEBUG** - Comprehensive logging shows detection logic status, timing, and exact trigger reasons
+    • **✅ ADAPTIVE CONTROL RESTORED** - No more unexpected Manual mode switches disrupting adaptive operation
+
     **v2.16.0 Target-Based Hysteresis Fix:**
     • **🎯 FIXED STABILITY AUTO-OFF** - No longer interrupts continue mode when AC is pursuing target temperature
     • **📍 TARGET DISTANCE CHECK** - Stability detection now requires being within 0.5°C of actual target, not just comfort zone
     • **🔄 CONTINUE MODE PROTECTION** - Prevents premature auto-off when in cooling_low/medium/high or heating modes
     • **🌡️ ENHANCED DEBUG** - Shows "Continue mode active - pursuing target" status during target pursuit
     • **⚡ PREVENTS SHORT CYCLING** - AC now continues from trigger (24.1°C) to actual target (22°C) without interruption
-    • **🚀 SMART HYSTERESIS** - Perfect balance between energy efficiency and reaching desired temperature
 
     **v2.14.3 Fan Speed Inheritance Fix:**
-    • **🎮 TRUE MANUAL CONTROL** - Manual mode now provides complete user control without automation interference
-    • **⏰ OPTIONAL TIMEOUT** - Simple dropdown to choose timeout duration (Never, 1-24 hours) - default 4 hours
-    • **🔄 SMART RESUME** - When timeout reached, switches back to Smart mode (doesn't turn off AC)
-    • **📱 REMOTE PRE-CONDITIONING** - Perfect for setting AC before entering room without presence sensors interfering
-    • **🎯 SIMPLIFIED DESIGN** - Removed confusing toggles in favor of single timeout selection
-    • **✅ BACKWARD COMPATIBLE** - Existing configurations continue working with smart defaults
-
-    **v2.12.0 Enhanced Manual Mode Control:**
     • **🎮 MANUAL MODE OPTIONS** - Choose between Pure Manual, Safety Timeout, Presence Aware, or Extreme Protection behaviors
     • **⏰ SAFETY TIMEOUT** - Optional timeout to prevent AC running forever in Manual mode (default 8 hours)
     • **🚪 PRESENCE AWARE** - Optional mode where Manual respects presence but ignores temperature
@@ -2867,9 +2865,12 @@ action:
         {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
           {% set last_mode_state = states(helper_mode) | default('off') %}
           {% set actual_state = actual_ac_state %}
+          {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 60 %}
+          {# Only detect manual changes if enough time has passed since last automation change #}
+          {% if time_since_change < 2 %}
+            false
           {# If AC state doesn't match what automation expects, user changed it manually #}
-          {# DEBUG: Check if detection logic is working correctly #}
-          {% if last_mode_state == 'off' and actual_state == 'on' %}
+          {% elif last_mode_state == 'off' and actual_state == 'on' %}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
             true
@@ -2930,22 +2931,14 @@ action:
       - condition: template
         value_template: "{{ control_mode_helper and control_mode != 'Manual' }}"
       - condition: template
-        value_template: >
-          {% set expected_state = last_mode %}
-          {% set actual = actual_ac_state %}
-          {% if expected_state in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual == 'on' %}
-            true
-          {% elif expected_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'smart_eco', 'smart_maintain'] and actual == 'off' %}
-            true
-          {% else %}
-            false
-          {% endif %}
+        value_template: "{{ manual_change_detected }}"
     then:
       - service: system_log.write
         data:
           message: >
             🎮 {{ room_name | upper }} MANUAL OVERRIDE DETECTED
-            • AC was manually changed (expected: {{ last_mode }}, actual: {{ actual_ac_state }})
+            • AC was manually changed (helper_mode: {{ states(helper_mode) | default('off') }}, actual: {{ actual_ac_state }})
+            • Time since last automation change: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
             • Switching to Manual mode to respect user control
             • Override protection: {{ adaptive_override_timeout }} hours
           level: warning
@@ -7322,7 +7315,7 @@ action:
         {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
             • Override Helper: {{ states(adaptive_override_helper) }}
         {% endif %}
-            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}
+            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
         {% if adaptive_override_timeout > 0 %}
         {% set last_change = states(helper_change) %}
         {% if last_change not in ['unknown', 'unavailable', ''] %}
