@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.1
+  name: Ultimate Smart Climate Control - v2.18.2
 
   description: |
-    **Ultimate Smart Climate Control v2.18.1**
+    **Ultimate Smart Climate Control v2.18.2**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.18.2 Critical Template Syntax Fix:**
+    • **🚨 URGENT FIX** - Fixed template syntax error in cooling_high mode that prevented blueprint loading
+    • **✅ VALIDATION READY** - Blueprint now passes Home Assistant template validation
+    • **🔧 TEMPLATE REPAIR** - Added missing {% endif %} tag to close cooling_high fan selection logic
+    • **🎯 FULLY OPERATIONAL** - All de-escalation features now work without template errors
 
     **v2.18.1 Complete De-escalation System Implementation:**
     • **🔄 ALL MODES FIXED** - De-escalation now works across ALL 6 temperature modes (cooling_high/medium/low, heating_high/medium/low)
@@ -4225,6 +4231,7 @@ action:
                         auto
                       {% else %}
                         {{ fans[-1] if fans else 'Auto' }}
+                      {% endif %}
                       {% endif %}
 
                 - service: climate.set_fan_mode
