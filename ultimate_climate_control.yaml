@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.14
+  name: Ultimate Smart Climate Control - v2.19.0
 
   description: |
-    **Ultimate Smart Climate Control v2.18.14**
+    **Ultimate Smart Climate Control v2.19.0**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.19.0 Enhanced Dynamic Status Display:**
+    • **🎯 SMART STATUS** - Status now shows actual system state (IDLE/ACTIVE/MONITORING/STANDBY) instead of misleading "last mode"
+    • **🔼🔽 DYNAMIC INDICATORS** - Real-time display of escalation/de-escalation levels with visual indicators
+    • **📊 EFFECTIVENESS DISPLAY** - Shows when system is EFFECTIVE (85%), ESCALATING L2 🔼, or DE-ESCALATING L3 🔽
+    • **✅ ACCURATE STATES** - "IDLE - COMFORT ZONE ✅" when in comfort zone, not "cooling_high mode" when actually idle
+
     **v2.18.14 Critical Template & Logic Fixes:**
     • **🔧 TEMPLATE REPAIR** - Fixed ALL template syntax errors (missing {% endif %}, incorrect indentation, extra tags)
     • **⚡ LOGIC RESTORATION** - Fixed HIGH cooling/heating logic to properly de-escalate when moving out of HIGH temperature ranges
     • **🎯 SMART DE-ESCALATION** - HIGH modes now transition to MEDIUM/LOW when appropriate, preventing over-cooling/heating
     • **✅ PRODUCTION READY** - All 11 templates validated, dynamic system now works as intended
-
-    **v2.18.2 Critical Template Syntax Fix:**
-    • **🚨 URGENT FIX** - Fixed template syntax error in cooling_high mode that prevented blueprint loading
-    • **✅ VALIDATION READY** - Blueprint now passes Home Assistant template validation
-    • **🔧 TEMPLATE REPAIR** - Added missing {% endif %} tag to close cooling_high fan selection logic
-    • **🎯 FULLY OPERATIONAL** - All de-escalation features now work without template errors
 
     **v2.18.0 De-escalation System Actually Works:**
     • **🚀 MAJOR FIX** - De-escalation now actually reduces fan speeds instead of just showing in status
@@ -3190,7 +3190,7 @@ action:
                 • Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
                 • People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
                 • Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
-                • Current Mode: {{ last_mode|title }} (running {{ time_since_change | round(0) }} min)
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_since_change | round(0) }} min){% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_since_change | round(0) }} min ago){% endif %}
                 • Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('Unknown') | title }}
                 • Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
             
@@ -7873,7 +7873,7 @@ action:
             📋 Technical Details:
                 • Temperature: {{ current_temp }}°C
                 • Occupancy: {{ 'Someone home' if anyone_home else 'Nobody home' }}
-                • Current Mode: {{ last_mode }} mode
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
