@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.11
+  name: Ultimate Smart Climate Control - v2.18.12
 
   description: |
-    **Ultimate Smart Climate Control v2.18.11**
+    **Ultimate Smart Climate Control v2.18.12**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -3504,99 +3504,99 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Normal HIGH heating - maximum power #}
                         {% set desired_max_fan = fan_speed_max %}
                         {% if desired_max_fan in fans %}
                           {{ desired_max_fan }}
-                      {% elif '5' in fans %}
-                        5
-                      {% elif 'Level 5' in fans %}
+                          {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
                         Level 5
-                      {% elif 'turbo' in fans %}
+                        {% elif 'turbo' in fans %}
                         turbo
-                      {% elif 'Turbo' in fans %}
+                        {% elif 'Turbo' in fans %}
                         Turbo
-                      {% elif 'max' in fans %}
+                        {% elif 'max' in fans %}
                         max
-                      {% elif 'Max' in fans %}
+                        {% elif 'Max' in fans %}
                         Max
-                      {% elif 'high' in fans %}
+                        {% elif 'high' in fans %}
                         high
-                      {% elif 'High' in fans %}
+                        {% elif 'High' in fans %}
                         High
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% else %}
+                        {% else %}
                         {{ fans[-1] if fans else 'Auto' }}
                       {% endif %}
                       {% endif %}
@@ -3699,128 +3699,128 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to low-medium power #}
                         {% if '2' in fans %}
                           2
-                        {% elif 'Level 2' in fans %}
+                          {% elif 'Level 2' in fans %}
                           Level 2
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                      {% elif escalation_level == 0 %}
+                        {% elif escalation_level == 0 %}
                         {# Level 0: Start moderate - Level 3 equivalent #}
                         {% set desired_medium_fan = fan_speed_medium %}
                         {% if desired_medium_fan in fans %}
                           {{ desired_medium_fan }}
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 1 %}
+                        {% elif escalation_level == 1 %}
                         {# Level 1: Higher escalation - Level 4 equivalent #}
                         {% if '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[-2] if fans|length > 1 else fans[-1] }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Level 2+: Maximum for MEDIUM tier - Level 5 equivalent #}
                         {% set desired_max_fan = fan_speed_max %}
                         {% if desired_max_fan in fans %}
                           {{ desired_max_fan }}
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif 'turbo' in fans %}
+                          {% elif 'turbo' in fans %}
                           turbo
-                        {% elif 'Turbo' in fans %}
+                          {% elif 'Turbo' in fans %}
                           Turbo
-                        {% elif 'max' in fans %}
+                          {% elif 'max' in fans %}
                           max
-                        {% elif 'Max' in fans %}
+                          {% elif 'Max' in fans %}
                           Max
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
@@ -3924,130 +3924,130 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 0 %}
+                        {% elif escalation_level == 0 %}
                         {# Level 0: Start gentle - Level 1 equivalent #}
                         {% if 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 1 %}
+                        {% elif escalation_level == 1 %}
                         {# Level 1: Moderate escalation - Level 2 equivalent #}
                         {% if '2' in fans %}
                           2
-                        {% elif 'Level 2' in fans %}
+                          {% elif 'Level 2' in fans %}
                           Level 2
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Level 2+: Maximum for LOW tier - Level 3 equivalent #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
@@ -4140,99 +4140,99 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Normal HIGH cooling - maximum power #}
                         {% set desired_max_fan = fan_speed_max %}
                         {% if desired_max_fan in fans %}
                           {{ desired_max_fan }}
-                      {% elif '5' in fans %}
-                        5
-                      {% elif 'Level 5' in fans %}
+                          {% elif '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
                         Level 5
-                      {% elif 'turbo' in fans %}
+                        {% elif 'turbo' in fans %}
                         turbo
-                      {% elif 'Turbo' in fans %}
+                        {% elif 'Turbo' in fans %}
                         Turbo
-                      {% elif 'max' in fans %}
+                        {% elif 'max' in fans %}
                         max
-                      {% elif 'Max' in fans %}
+                        {% elif 'Max' in fans %}
                         Max
-                      {% elif 'high' in fans %}
+                        {% elif 'high' in fans %}
                         high
-                      {% elif 'High' in fans %}
+                        {% elif 'High' in fans %}
                         High
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% else %}
+                        {% else %}
                         {{ fans[-1] if fans else 'Auto' }}
                       {% endif %}
                       {% endif %}
@@ -4352,128 +4352,128 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to low-medium power #}
                         {% if '2' in fans %}
                           2
-                        {% elif 'Level 2' in fans %}
+                          {% elif 'Level 2' in fans %}
                           Level 2
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                      {% elif escalation_level == 0 %}
+                        {% elif escalation_level == 0 %}
                         {# Level 0: Normal operation - Level 3 equivalent #}
                         {% set desired_medium_fan = fan_speed_medium %}
                         {% if desired_medium_fan in fans %}
                           {{ desired_medium_fan }}
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 1 %}
+                        {% elif escalation_level == 1 %}
                         {# Level 1: Higher escalation - Level 4 equivalent #}
                         {% if '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[-2] if fans|length > 1 else fans[-1] }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Level 2+: Maximum for MEDIUM tier - Level 5 equivalent #}
                         {% set desired_max_fan = fan_speed_max %}
                         {% if desired_max_fan in fans %}
                           {{ desired_max_fan }}
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif 'turbo' in fans %}
+                          {% elif 'turbo' in fans %}
                           turbo
-                        {% elif 'Turbo' in fans %}
+                          {% elif 'Turbo' in fans %}
                           Turbo
-                        {% elif 'max' in fans %}
+                          {% elif 'max' in fans %}
                           max
-                        {% elif 'Max' in fans %}
+                          {% elif 'Max' in fans %}
                           Max
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
@@ -4492,7 +4492,7 @@ action:
                       🔍 MEDIUM COOL ADAPTIVE FAN: {{ repeat.item }}
                       {% if deescalation_level > 0 %}
                       • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
-                      {% else %}
+                        {% else %}
                       • Escalation Level: {{ escalation_level }}/4
                       {% endif %}
                       • Fan Selection: {{ selected_fan_mode }}
@@ -4583,130 +4583,130 @@ action:
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'silence' in fans %}
+                          {% elif 'silence' in fans %}
                           silence
-                        {% elif 'Silence' in fans %}
+                          {% elif 'Silence' in fans %}
                           Silence
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'low' in fans %}
+                          {% elif 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 0 %}
+                        {% elif escalation_level == 0 %}
                         {# Level 0: Start gentle - Level 1 equivalent #}
                         {% if 'low' in fans %}
                           low
-                        {% elif 'Low' in fans %}
+                          {% elif 'Low' in fans %}
                           Low
-                        {% elif '1' in fans %}
+                          {% elif '1' in fans %}
                           1
-                        {% elif 'Level 1' in fans %}
+                          {% elif 'Level 1' in fans %}
                           Level 1
-                        {% elif 'quiet' in fans %}
+                          {% elif 'quiet' in fans %}
                           quiet
-                        {% elif 'Quiet' in fans %}
+                          {% elif 'Quiet' in fans %}
                           Quiet
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 1 %}
+                        {% elif escalation_level == 1 %}
                         {# Level 1: Moderate escalation - Level 2 equivalent #}
                         {% if '2' in fans %}
                           2
-                        {% elif 'Level 2' in fans %}
+                          {% elif 'Level 2' in fans %}
                           Level 2
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         {# Level 2+: Maximum for LOW tier - Level 3 equivalent #}
                         {% if '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
@@ -4778,17 +4778,17 @@ action:
                     hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
-                      {% elif 'Cool' in available_modes %}
+                        {% elif 'Cool' in available_modes %}
                         Cool
-                      {% elif 'auto' in available_modes %}
+                        {% elif 'auto' in available_modes %}
                         auto
-                      {% elif 'Auto' in available_modes %}
+                        {% elif 'Auto' in available_modes %}
                         Auto
-                      {% elif 'heat_cool' in available_modes %}
+                        {% elif 'heat_cool' in available_modes %}
                         heat_cool
-                      {% elif 'Heat/Cool' in available_modes %}
+                        {% elif 'Heat/Cool' in available_modes %}
                         Heat/Cool
-                      {% else %}
+                        {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
           
@@ -4816,37 +4816,37 @@ action:
                       {% if desired in fans %}
                         {{ desired }}
                       {# Then try maximum speed equivalents in order of preference #}
-                      {% elif 'high' in fans %}
+                        {% elif 'high' in fans %}
                         high
-                      {% elif 'High' in fans %}
+                        {% elif 'High' in fans %}
                         High
-                      {% elif '5' in fans %}
+                        {% elif '5' in fans %}
                         5
-                      {% elif 'Level 5' in fans %}
+                        {% elif 'Level 5' in fans %}
                         Level 5
-                      {% elif 'turbo' in fans %}
+                        {% elif 'turbo' in fans %}
                         turbo
-                      {% elif 'Turbo' in fans %}
+                        {% elif 'Turbo' in fans %}
                         Turbo
-                      {% elif 'max' in fans %}
+                        {% elif 'max' in fans %}
                         max
-                      {% elif 'Max' in fans %}
+                        {% elif 'Max' in fans %}
                         Max
                       {# Fallback to highest available numeric #}
-                      {% elif '4' in fans %}
+                        {% elif '4' in fans %}
                         4
-                      {% elif 'Level 4' in fans %}
+                        {% elif 'Level 4' in fans %}
                         Level 4
-                      {% elif '3' in fans %}
+                        {% elif '3' in fans %}
                         3
-                      {% elif 'Level 3' in fans %}
+                        {% elif 'Level 3' in fans %}
                         Level 3
                       {# Last resort - Auto or highest available #}
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% else %}
+                        {% else %}
                         {{ fans[-1] if fans else 'Auto' }}
                       {% endif %}
                 
@@ -4962,17 +4962,17 @@ action:
                               {# For cooling, try cooling-capable modes #}
                               {% if 'cool' in modes %}
                                 cool
-                              {% elif 'Cool' in modes %}
+                                {% elif 'Cool' in modes %}
                                 Cool
-                              {% elif 'auto' in modes %}
+                                {% elif 'auto' in modes %}
                                 auto
-                              {% elif 'Auto' in modes %}
+                                {% elif 'Auto' in modes %}
                                 Auto
-                              {% elif 'heat_cool' in modes %}
+                                {% elif 'heat_cool' in modes %}
                                 heat_cool
-                              {% elif 'Heat/Cool' in modes %}
+                                {% elif 'Heat/Cool' in modes %}
                                 Heat/Cool
-                              {% else %}
+                                {% else %}
                                 {{ modes[0] if modes else 'off' }}
                               {% endif %}
                         
@@ -5014,17 +5014,17 @@ action:
                             fan_mode: >
                               {% if desired_max_fan in available_fans %}
                                 {{ desired_max_fan }}
-                              {% elif '5' in available_fans %}
+                                {% elif '5' in available_fans %}
                                 5
-                              {% elif 'Level 5' in available_fans %}
+                                {% elif 'Level 5' in available_fans %}
                                 Level 5
-                              {% elif 'high' in available_fans %}
+                                {% elif 'high' in available_fans %}
                                 high
-                              {% elif 'Auto' in available_fans %}
+                                {% elif 'Auto' in available_fans %}
                                 Auto
-                              {% elif 'auto' in available_fans %}
+                                {% elif 'auto' in available_fans %}
                                 auto
-                              {% else %}
+                                {% else %}
                                 {{ available_fans[-1] if available_fans else 'Auto' }}
                               {% endif %}
                   
@@ -5071,17 +5071,17 @@ action:
                               {# For heating, try heating-capable modes #}
                               {% if 'heat' in modes %}
                                 heat
-                              {% elif 'Heat' in modes %}
+                                {% elif 'Heat' in modes %}
                                 Heat
-                              {% elif 'auto' in modes %}
+                                {% elif 'auto' in modes %}
                                 auto
-                              {% elif 'Auto' in modes %}
+                                {% elif 'Auto' in modes %}
                                 Auto
-                              {% elif 'heat_cool' in modes %}
+                                {% elif 'heat_cool' in modes %}
                                 heat_cool
-                              {% elif 'Heat/Cool' in modes %}
+                                {% elif 'Heat/Cool' in modes %}
                                 Heat/Cool
-                              {% else %}
+                                {% else %}
                                 {{ modes[0] if modes else 'off' }}
                               {% endif %}
                         
@@ -5123,17 +5123,17 @@ action:
                             fan_mode: >
                               {% if desired_max_fan in available_fans %}
                                 {{ desired_max_fan }}
-                              {% elif '5' in available_fans %}
+                                {% elif '5' in available_fans %}
                                 5
-                              {% elif 'Level 5' in available_fans %}
+                                {% elif 'Level 5' in available_fans %}
                                 Level 5
-                              {% elif 'high' in available_fans %}
+                                {% elif 'high' in available_fans %}
                                 high
-                              {% elif 'Auto' in available_fans %}
+                                {% elif 'Auto' in available_fans %}
                                 Auto
-                              {% elif 'auto' in available_fans %}
+                                {% elif 'auto' in available_fans %}
                                 auto
-                              {% else %}
+                                {% else %}
                                 {{ available_fans[-1] if available_fans else 'Auto' }}
                               {% endif %}
                   
@@ -5297,17 +5297,17 @@ action:
                       {# For cooling, try cooling-capable modes #}
                       {% if 'cool' in modes %}
                         cool
-                      {% elif 'Cool' in modes %}
+                        {% elif 'Cool' in modes %}
                         Cool
-                      {% elif 'auto' in modes %}
+                        {% elif 'auto' in modes %}
                         auto
-                      {% elif 'Auto' in modes %}
+                        {% elif 'Auto' in modes %}
                         Auto
-                      {% elif 'heat_cool' in modes %}
+                        {% elif 'heat_cool' in modes %}
                         heat_cool
-                      {% elif 'Heat/Cool' in modes %}
+                        {% elif 'Heat/Cool' in modes %}
                         Heat/Cool
-                      {% else %}
+                        {% else %}
                         {{ modes[0] if modes else 'off' }}
                       {% endif %}
                 
@@ -5351,30 +5351,30 @@ action:
                       {# Try low speed equivalents in order of preference #}
                       {% if 'low' in fans %}
                         low
-                      {% elif 'Low' in fans %}
+                        {% elif 'Low' in fans %}
                         Low
-                      {% elif '1' in fans %}
+                        {% elif '1' in fans %}
                         1
-                      {% elif 'Level 1' in fans %}
+                        {% elif 'Level 1' in fans %}
                         Level 1
-                      {% elif 'quiet' in fans %}
+                        {% elif 'quiet' in fans %}
                         quiet
-                      {% elif 'Quiet' in fans %}
+                        {% elif 'Quiet' in fans %}
                         Quiet
-                      {% elif 'eco' in fans %}
+                        {% elif 'eco' in fans %}
                         eco
-                      {% elif 'Eco' in fans %}
+                        {% elif 'Eco' in fans %}
                         Eco
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
                       {# Fallback to available options #}
-                      {% elif '2' in fans %}
+                        {% elif '2' in fans %}
                         2
-                      {% elif 'Level 2' in fans %}
+                        {% elif 'Level 2' in fans %}
                         Level 2
-                      {% else %}
+                        {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
                 
@@ -5461,17 +5461,17 @@ action:
                       {# For cooling, try cooling-capable modes #}
                       {% if 'cool' in modes %}
                         cool
-                      {% elif 'Cool' in modes %}
+                        {% elif 'Cool' in modes %}
                         Cool
-                      {% elif 'auto' in modes %}
+                        {% elif 'auto' in modes %}
                         auto
-                      {% elif 'Auto' in modes %}
+                        {% elif 'Auto' in modes %}
                         Auto
-                      {% elif 'heat_cool' in modes %}
+                        {% elif 'heat_cool' in modes %}
                         heat_cool
-                      {% elif 'Heat/Cool' in modes %}
+                        {% elif 'Heat/Cool' in modes %}
                         Heat/Cool
-                      {% else %}
+                        {% else %}
                         {{ modes[0] if modes else 'off' }}
                       {% endif %}
                 
@@ -5518,28 +5518,28 @@ action:
                       {% if desired in fans %}
                         {{ desired }}
                       {# Then try medium speed equivalents in order of preference #}
-                      {% elif 'medium' in fans %}
+                        {% elif 'medium' in fans %}
                         medium
-                      {% elif 'Medium' in fans %}
+                        {% elif 'Medium' in fans %}
                         Medium
-                      {% elif '3' in fans %}
+                        {% elif '3' in fans %}
                         3
-                      {% elif 'Level 3' in fans %}
+                        {% elif 'Level 3' in fans %}
                         Level 3
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
                       {# Fallback to available options #}
-                      {% elif '2' in fans %}
+                        {% elif '2' in fans %}
                         2
-                      {% elif 'Level 2' in fans %}
+                        {% elif 'Level 2' in fans %}
                         Level 2
-                      {% elif 'low' in fans %}
+                        {% elif 'low' in fans %}
                         low
-                      {% elif 'high' in fans %}
+                        {% elif 'high' in fans %}
                         high
-                      {% else %}
+                        {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
                 
@@ -5627,13 +5627,13 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
-                              {% elif 'Auto' in available_modes %}
+                                {% elif 'Auto' in available_modes %}
                                 Auto
-                              {% elif 'heat_cool' in available_modes %}
+                                {% elif 'heat_cool' in available_modes %}
                                 heat_cool
-                              {% elif 'Heat/Cool' in available_modes %}
+                                {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
-                              {% else %}
+                                {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
                   
@@ -5668,19 +5668,19 @@ action:
                             fan_mode: >
                               {% if 'Auto' in available_fans %}
                                 Auto
-                              {% elif 'auto' in available_fans %}
+                                {% elif 'auto' in available_fans %}
                                 auto
-                              {% elif 'low' in available_fans %}
+                                {% elif 'low' in available_fans %}
                                 low
-                              {% elif 'Quiet' in available_fans %}
+                                {% elif 'Quiet' in available_fans %}
                                 Quiet
-                              {% elif 'Silence' in available_fans %}
+                                {% elif 'Silence' in available_fans %}
                                 Silence
-                              {% elif '1' in available_fans %}
+                                {% elif '1' in available_fans %}
                                 1
-                              {% elif 'Level 1' in available_fans %}
+                                {% elif 'Level 1' in available_fans %}
                                 Level 1
-                              {% else %}
+                                {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
                   
@@ -5699,29 +5699,29 @@ action:
                             swing_mode: >
                               {% if desired_swing in available_swings %}
                                 {{ desired_swing }}
-                              {% elif desired_swing == 'both' and '3D' in available_swings %}
+                                {% elif desired_swing == 'both' and '3D' in available_swings %}
                                 3D
-                              {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                                {% elif desired_swing == 'both' and 'Both' in available_swings %}
                                 Both
-                              {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                                {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                                 Vertical
-                              {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                                {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                                 vertical
-                              {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                                {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                                 Horizontal
-                              {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                                {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                                 horizontal
-                              {% elif 'both' in available_swings %}
+                                {% elif 'both' in available_swings %}
                                 both
-                              {% elif 'Both' in available_swings %}
+                                {% elif 'Both' in available_swings %}
                                 Both
-                              {% elif '3D' in available_swings %}
+                                {% elif '3D' in available_swings %}
                                 3D
-                              {% elif 'Vertical' in available_swings %}
+                                {% elif 'Vertical' in available_swings %}
                                 Vertical
-                              {% elif 'vertical' in available_swings %}
+                                {% elif 'vertical' in available_swings %}
                                 vertical
-                              {% else %}
+                                {% else %}
                                 {{ available_swings[0] if available_swings else 'Off' }}
                               {% endif %}
                   
@@ -5850,29 +5850,29 @@ action:
                               {% if current_temp > comfort_max_temp %}
                                 {% if 'cool' in available_modes %}
                                   cool
-                                {% elif 'auto' in available_modes %}
+                                  {% elif 'auto' in available_modes %}
                                   auto
-                                {% elif 'heat_cool' in available_modes %}
+                                  {% elif 'heat_cool' in available_modes %}
                                   heat_cool
-                                {% else %}
+                                  {% else %}
                                   {{ available_modes[0] if available_modes else 'off' }}
                                 {% endif %}
-                              {% elif current_temp < comfort_min_temp %}
+                                {% elif current_temp < comfort_min_temp %}
                                 {% if 'heat' in available_modes %}
                                   heat
-                                {% elif 'auto' in available_modes %}
+                                  {% elif 'auto' in available_modes %}
                                   auto
-                                {% elif 'heat_cool' in available_modes %}
+                                  {% elif 'heat_cool' in available_modes %}
                                   heat_cool
-                                {% else %}
+                                  {% else %}
                                   {{ available_modes[0] if available_modes else 'off' }}
                                 {% endif %}
-                              {% else %}
+                                {% else %}
                                 {% if 'auto' in available_modes %}
                                   auto
-                                {% elif 'heat_cool' in available_modes %}
+                                  {% elif 'heat_cool' in available_modes %}
                                   heat_cool
-                                {% else %}
+                                  {% else %}
                                   {{ available_modes[0] if available_modes else 'off' }}
                                 {% endif %}
                               {% endif %}
@@ -5884,9 +5884,9 @@ action:
                       temperature: >
                         {% if current_temp > comfort_max_temp %}
                           {{ comfort_max_temp + 1 }}
-                        {% elif current_temp < comfort_min_temp %}
+                          {% elif current_temp < comfort_min_temp %}
                           {{ comfort_min_temp - 1 }}
-                        {% else %}
+                          {% else %}
                           {{ target_temp }}
                         {% endif %}
 
@@ -6020,7 +6020,7 @@ action:
                       {% if last_presence not in ['unknown', 'unavailable', ''] %}
                         {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                         {{ (vacant_time / 60) >= adaptive_vacant_delay }}
-                      {% else %}
+                        {% else %}
                         false
                       {% endif %}
               # Handle case where already in Manual mode but AC still running and room vacant
@@ -6036,7 +6036,7 @@ action:
                       {% if last_presence not in ['unknown', 'unavailable', ''] %}
                         {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                         {{ (vacant_time / 60) >= adaptive_vacant_delay }}
-                      {% else %}
+                        {% else %}
                         false
                       {% endif %}
                   - condition: template
@@ -6044,7 +6044,7 @@ action:
                       {% if climate_list %}
                         {% set first_climate_state = states(climate_list[0]) %}
                         {{ first_climate_state not in ['off', 'Off', 'unavailable', 'unknown'] }}
-                      {% else %}
+                        {% else %}
                         false
                       {% endif %}
           
@@ -6259,7 +6259,7 @@ action:
                           {% if last_presence not in ['unknown', 'unavailable', ''] %}
                             {% set presence_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                             {{ (presence_time / 60) >= adaptive_occupied_delay }}
-                          {% else %}
+                            {% else %}
                             false
                           {% endif %}
                   # Check if vacant conditions would be met
@@ -6275,7 +6275,7 @@ action:
                           {% if last_presence not in ['unknown', 'unavailable', ''] %}
                             {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                             {{ (vacant_time / 60) >= adaptive_vacant_delay }}
-                          {% else %}
+                            {% else %}
                             false
                           {% endif %}
         sequence:
@@ -6402,17 +6402,17 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
-                              {% elif 'Auto' in available_modes %}
+                                {% elif 'Auto' in available_modes %}
                                 Auto
-                              {% elif 'heat_cool' in available_modes %}
+                                {% elif 'heat_cool' in available_modes %}
                                 heat_cool
-                              {% elif 'Heat/Cool' in available_modes %}
+                                {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
-                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
-                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                                 heat
-                              {% else %}
+                                {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
                   
@@ -6423,9 +6423,9 @@ action:
                       temperature: >
                         {% if current_temp > comfort_max_temp %}
                           {{ comfort_max_temp + eco_mode_setpoint_offset }}
-                        {% elif current_temp < comfort_min_temp %}
+                          {% elif current_temp < comfort_min_temp %}
                           {{ comfort_min_temp - eco_mode_setpoint_offset }}
-                        {% else %}
+                          {% else %}
                           {{ target_temp }}
                         {% endif %}
 
@@ -6533,17 +6533,17 @@ action:
                             hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
-                              {% elif 'Auto' in available_modes %}
+                                {% elif 'Auto' in available_modes %}
                                 Auto
-                              {% elif 'heat_cool' in available_modes %}
+                                {% elif 'heat_cool' in available_modes %}
                                 heat_cool
-                              {% elif 'Heat/Cool' in available_modes %}
+                                {% elif 'Heat/Cool' in available_modes %}
                                 heat_cool
-                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
                                 cool
-                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                                 heat
-                              {% else %}
+                                {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
                   
@@ -6554,7 +6554,7 @@ action:
                       temperature: >
                         {% if current_temp > comfort_max_temp %}
                           {{ cooling_target_temp + eco_mode_setpoint_offset }}
-                        {% else %}
+                          {% else %}
                           {{ heating_target_temp - eco_mode_setpoint_offset }}
                         {% endif %}
 
@@ -6583,19 +6583,19 @@ action:
                             fan_mode: >
                               {% if 'Auto' in available_fans %}
                                 Auto
-                              {% elif 'auto' in available_fans %}
+                                {% elif 'auto' in available_fans %}
                                 auto
-                              {% elif 'low' in available_fans %}
+                                {% elif 'low' in available_fans %}
                                 low
-                              {% elif 'Quiet' in available_fans %}
+                                {% elif 'Quiet' in available_fans %}
                                 Quiet
-                              {% elif 'Silence' in available_fans %}
+                                {% elif 'Silence' in available_fans %}
                                 Silence
-                              {% elif '1' in available_fans %}
+                                {% elif '1' in available_fans %}
                                 1
-                              {% elif 'Level 1' in available_fans %}
+                                {% elif 'Level 1' in available_fans %}
                                 Level 1
-                              {% else %}
+                                {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
           
@@ -6662,17 +6662,17 @@ action:
                     hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
-                      {% elif 'Cool' in available_modes %}
+                        {% elif 'Cool' in available_modes %}
                         Cool
-                      {% elif 'auto' in available_modes %}
+                        {% elif 'auto' in available_modes %}
                         auto
-                      {% elif 'Auto' in available_modes %}
+                        {% elif 'Auto' in available_modes %}
                         Auto
-                      {% elif 'heat_cool' in available_modes %}
+                        {% elif 'heat_cool' in available_modes %}
                         heat_cool
-                      {% elif 'Heat/Cool' in available_modes %}
+                        {% elif 'Heat/Cool' in available_modes %}
                         Heat/Cool
-                      {% else %}
+                        {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
           
@@ -6722,17 +6722,17 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif '5' in available_fans %}
+                        {% elif '5' in available_fans %}
                         5
-                      {% elif 'Level 5' in available_fans %}
+                        {% elif 'Level 5' in available_fans %}
                         Level 5
-                      {% elif 'high' in available_fans %}
+                        {% elif 'high' in available_fans %}
                         high
-                      {% elif 'Auto' in available_fans %}
+                        {% elif 'Auto' in available_fans %}
                         Auto
-                      {% elif 'auto' in available_fans %}
+                        {% elif 'auto' in available_fans %}
                         auto
-                      {% else %}
+                        {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
@@ -6751,29 +6751,29 @@ action:
                     swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
-                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        {% elif desired_swing == 'both' and '3D' in available_swings %}
                         3D
-                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        {% elif desired_swing == 'both' and 'Both' in available_swings %}
                         Both
-                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                         Vertical
-                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                         vertical
-                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                         Horizontal
-                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                         horizontal
-                      {% elif 'both' in available_swings %}
+                        {% elif 'both' in available_swings %}
                         both
-                      {% elif 'Both' in available_swings %}
+                        {% elif 'Both' in available_swings %}
                         Both
-                      {% elif '3D' in available_swings %}
+                        {% elif '3D' in available_swings %}
                         3D
-                      {% elif 'Vertical' in available_swings %}
+                        {% elif 'Vertical' in available_swings %}
                         Vertical
-                      {% elif 'vertical' in available_swings %}
+                        {% elif 'vertical' in available_swings %}
                         vertical
-                      {% else %}
+                        {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
           
@@ -6844,11 +6844,11 @@ action:
                     hvac_mode: >
                       {% if 'auto' in available_modes %}
                         auto
-                      {% elif 'heat_cool' in available_modes %}
+                        {% elif 'heat_cool' in available_modes %}
                         heat_cool
-                      {% elif 'cool' in available_modes %}
+                        {% elif 'cool' in available_modes %}
                         cool
-                      {% else %}
+                        {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
           
@@ -6888,15 +6888,15 @@ action:
                     fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
-                      {% elif 'auto' in available_fans %}
+                        {% elif 'auto' in available_fans %}
                         auto
-                      {% elif 'medium' in available_fans %}
+                        {% elif 'medium' in available_fans %}
                         medium
-                      {% elif 'Level 3' in available_fans %}
+                        {% elif 'Level 3' in available_fans %}
                         Level 3
-                      {% elif '3' in available_fans %}
+                        {% elif '3' in available_fans %}
                         3
-                      {% else %}
+                        {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
@@ -6915,29 +6915,29 @@ action:
                     swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
-                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        {% elif desired_swing == 'both' and '3D' in available_swings %}
                         3D
-                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        {% elif desired_swing == 'both' and 'Both' in available_swings %}
                         Both
-                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                         Vertical
-                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                         vertical
-                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                         Horizontal
-                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                         horizontal
-                      {% elif 'both' in available_swings %}
+                        {% elif 'both' in available_swings %}
                         both
-                      {% elif 'Both' in available_swings %}
+                        {% elif 'Both' in available_swings %}
                         Both
-                      {% elif '3D' in available_swings %}
+                        {% elif '3D' in available_swings %}
                         3D
-                      {% elif 'Vertical' in available_swings %}
+                        {% elif 'Vertical' in available_swings %}
                         Vertical
-                      {% elif 'vertical' in available_swings %}
+                        {% elif 'vertical' in available_swings %}
                         vertical
-                      {% else %}
+                        {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
           
@@ -7049,30 +7049,30 @@ action:
                       {# Try low speed equivalents in order of preference #}
                       {% if 'low' in fans %}
                         low
-                      {% elif 'Low' in fans %}
+                        {% elif 'Low' in fans %}
                         Low
-                      {% elif '1' in fans %}
+                        {% elif '1' in fans %}
                         1
-                      {% elif 'Level 1' in fans %}
+                        {% elif 'Level 1' in fans %}
                         Level 1
-                      {% elif 'quiet' in fans %}
+                        {% elif 'quiet' in fans %}
                         quiet
-                      {% elif 'Quiet' in fans %}
+                        {% elif 'Quiet' in fans %}
                         Quiet
-                      {% elif 'eco' in fans %}
+                        {% elif 'eco' in fans %}
                         eco
-                      {% elif 'Eco' in fans %}
+                        {% elif 'Eco' in fans %}
                         Eco
-                      {% elif 'auto' in fans %}
+                        {% elif 'auto' in fans %}
                         auto
-                      {% elif 'Auto' in fans %}
+                        {% elif 'Auto' in fans %}
                         Auto
                       {# Fallback to available options #}
-                      {% elif '2' in fans %}
+                        {% elif '2' in fans %}
                         2
-                      {% elif 'Level 2' in fans %}
+                        {% elif 'Level 2' in fans %}
                         Level 2
-                      {% else %}
+                        {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
                 
@@ -7109,29 +7109,29 @@ action:
                     swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
-                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        {% elif desired_swing == 'both' and '3D' in available_swings %}
                         3D
-                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        {% elif desired_swing == 'both' and 'Both' in available_swings %}
                         Both
-                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                         Vertical
-                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                         vertical
-                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                         Horizontal
-                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                         horizontal
-                      {% elif 'both' in available_swings %}
+                        {% elif 'both' in available_swings %}
                         both
-                      {% elif 'Both' in available_swings %}
+                        {% elif 'Both' in available_swings %}
                         Both
-                      {% elif '3D' in available_swings %}
+                        {% elif '3D' in available_swings %}
                         3D
-                      {% elif 'Vertical' in available_swings %}
+                        {% elif 'Vertical' in available_swings %}
                         Vertical
-                      {% elif 'vertical' in available_swings %}
+                        {% elif 'vertical' in available_swings %}
                         vertical
-                      {% else %}
+                        {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
           
@@ -7208,11 +7208,11 @@ action:
                     hvac_mode: >
                       {% if 'auto' in available_modes %}
                         auto
-                      {% elif 'heat_cool' in available_modes %}
+                        {% elif 'heat_cool' in available_modes %}
                         heat_cool
-                      {% elif 'heat' in available_modes %}
+                        {% elif 'heat' in available_modes %}
                         heat
-                      {% else %}
+                        {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
           
@@ -7247,15 +7247,15 @@ action:
                     fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
-                      {% elif 'auto' in available_fans %}
+                        {% elif 'auto' in available_fans %}
                         auto
-                      {% elif 'medium' in available_fans %}
+                        {% elif 'medium' in available_fans %}
                         medium
-                      {% elif 'Level 3' in available_fans %}
+                        {% elif 'Level 3' in available_fans %}
                         Level 3
-                      {% elif '3' in available_fans %}
+                        {% elif '3' in available_fans %}
                         3
-                      {% else %}
+                        {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
           
@@ -7274,29 +7274,29 @@ action:
                     swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
-                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        {% elif desired_swing == 'both' and '3D' in available_swings %}
                         3D
-                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        {% elif desired_swing == 'both' and 'Both' in available_swings %}
                         Both
-                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                         Vertical
-                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                         vertical
-                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                         Horizontal
-                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                         horizontal
-                      {% elif 'both' in available_swings %}
+                        {% elif 'both' in available_swings %}
                         both
-                      {% elif 'Both' in available_swings %}
+                        {% elif 'Both' in available_swings %}
                         Both
-                      {% elif '3D' in available_swings %}
+                        {% elif '3D' in available_swings %}
                         3D
-                      {% elif 'Vertical' in available_swings %}
+                        {% elif 'Vertical' in available_swings %}
                         Vertical
-                      {% elif 'vertical' in available_swings %}
+                        {% elif 'vertical' in available_swings %}
                         vertical
-                      {% else %}
+                        {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
           
@@ -7441,31 +7441,31 @@ action:
                     fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
-                      {% elif '5' in available_fans %}
+                        {% elif '5' in available_fans %}
                         5
-                      {% elif 'Level 5' in available_fans %}
+                        {% elif 'Level 5' in available_fans %}
                         Level 5
-                      {% elif 'high' in available_fans %}
+                        {% elif 'high' in available_fans %}
                         high
-                      {% elif 'High' in available_fans %}
+                        {% elif 'High' in available_fans %}
                         High
-                      {% elif 'turbo' in available_fans %}
+                        {% elif 'turbo' in available_fans %}
                         turbo
-                      {% elif 'Turbo' in available_fans %}
+                        {% elif 'Turbo' in available_fans %}
                         Turbo
-                      {% elif 'max' in available_fans %}
+                        {% elif 'max' in available_fans %}
                         max
-                      {% elif 'Max' in available_fans %}
+                        {% elif 'Max' in available_fans %}
                         Max
-                      {% elif '4' in available_fans %}
+                        {% elif '4' in available_fans %}
                         4
-                      {% elif 'Level 4' in available_fans %}
+                        {% elif 'Level 4' in available_fans %}
                         Level 4
-                      {% elif 'Auto' in available_fans %}
+                        {% elif 'Auto' in available_fans %}
                         Auto
-                      {% elif 'auto' in available_fans %}
+                        {% elif 'auto' in available_fans %}
                         auto
-                      {% else %}
+                        {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
                 
@@ -7496,29 +7496,29 @@ action:
                     swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
-                      {% elif desired_swing == 'both' and '3D' in available_swings %}
+                        {% elif desired_swing == 'both' and '3D' in available_swings %}
                         3D
-                      {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                        {% elif desired_swing == 'both' and 'Both' in available_swings %}
                         Both
-                      {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                        {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
                         Vertical
-                      {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                        {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
                         vertical
-                      {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                        {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
                         Horizontal
-                      {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                        {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
                         horizontal
-                      {% elif 'both' in available_swings %}
+                        {% elif 'both' in available_swings %}
                         both
-                      {% elif 'Both' in available_swings %}
+                        {% elif 'Both' in available_swings %}
                         Both
-                      {% elif '3D' in available_swings %}
+                        {% elif '3D' in available_swings %}
                         3D
-                      {% elif 'Vertical' in available_swings %}
+                        {% elif 'Vertical' in available_swings %}
                         Vertical
-                      {% elif 'vertical' in available_swings %}
+                        {% elif 'vertical' in available_swings %}
                         vertical
-                      {% else %}
+                        {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
           
@@ -7593,13 +7593,13 @@ action:
                     hvac_mode: >
                       {% if current_temp > comfort_max_temp and 'cool' in available_modes %}
                         cool
-                      {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                        {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
                         heat
-                      {% elif 'auto' in available_modes %}
+                        {% elif 'auto' in available_modes %}
                         auto
-                      {% elif 'heat_cool' in available_modes %}
+                        {% elif 'heat_cool' in available_modes %}
                         heat_cool
-                      {% else %}
+                        {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
           
@@ -7643,84 +7643,84 @@ action:
                         {% set desired = fan_speed_max %}
                         {% if desired in fans %}
                           {{ desired }}
-                        {% elif 'turbo' in fans %}
+                          {% elif 'turbo' in fans %}
                           turbo
-                        {% elif 'Turbo' in fans %}
+                          {% elif 'Turbo' in fans %}
                           Turbo
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif 'max' in fans %}
+                          {% elif 'max' in fans %}
                           max
-                        {% elif 'Max' in fans %}
+                          {% elif 'Max' in fans %}
                           Max
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 3 %}
+                        {% elif escalation_level == 3 %}
                         {# Level 3: HIGH power - use high speed #}
                         {% if 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '4' in fans %}
+                          {% elif '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif '5' in fans %}
+                          {% elif '5' in fans %}
                           5
-                        {% elif 'Level 5' in fans %}
+                          {% elif 'Level 5' in fans %}
                           Level 5
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 2 %}
+                        {% elif escalation_level == 2 %}
                         {# Level 2: ELEVATED power - use medium-high speed #}
                         {% if '4' in fans %}
                           4
-                        {% elif 'Level 4' in fans %}
+                          {% elif 'Level 4' in fans %}
                           Level 4
-                        {% elif 'high' in fans %}
+                          {% elif 'high' in fans %}
                           high
-                        {% elif 'High' in fans %}
+                          {% elif 'High' in fans %}
                           High
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% else %}
+                          {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                      {% elif escalation_level == 1 %}
+                        {% elif escalation_level == 1 %}
                         {# Level 1: MODERATE power - use medium speed #}
                         {% set desired = fan_speed_medium %}
                         {% if desired in fans %}
                           {{ desired }}
-                        {% elif '3' in fans %}
+                          {% elif '3' in fans %}
                           3
-                        {% elif 'Level 3' in fans %}
+                          {% elif 'Level 3' in fans %}
                           Level 3
-                        {% elif 'medium' in fans %}
+                          {% elif 'medium' in fans %}
                           medium
-                        {% elif 'Medium' in fans %}
+                          {% elif 'Medium' in fans %}
                           Medium
-                        {% elif 'auto' in fans %}
+                          {% elif 'auto' in fans %}
                           auto
-                        {% elif 'Auto' in fans %}
+                          {% elif 'Auto' in fans %}
                           Auto
-                        {% else %}
+                          {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                      {% else %}
+                        {% else %}
                         Auto
                       {% endif %}
                 
