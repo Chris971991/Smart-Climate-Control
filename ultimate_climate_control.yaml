@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.2
+  name: Ultimate Smart Climate Control - v2.17.3
 
   description: |
-    **Ultimate Smart Climate Control v2.17.2**
+    **Ultimate Smart Climate Control v2.17.3**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,13 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.17.3 Dynamic Effectiveness Calculation Fix:**
+    • **🚨 CRITICAL FIX** - Fixed effectiveness calculation stuck at 0% preventing dynamic escalation from working
+    • **🔧 MODE RECOGNITION** - Updated effectiveness logic to properly recognize cooling_medium/heating_medium modes
+    • **📊 PROGRESS TRACKING** - Fixed effectiveness calculation for temperature modes (was only checking 'cooling'/'heating')
+    • **⚡ ACTIVE PURSUIT** - Added 40% baseline effectiveness when actively pursuing target but temperature hasn't changed yet
+    • **✅ DYNAMIC ESCALATION** - Now properly calculates effectiveness and triggers fan speed escalation based on performance
 
     **v2.17.2 Adaptive Timer Reset Fix:**
     • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
@@ -2277,8 +2284,8 @@ action:
           {% if time_in_current_mode < 2 %}
             {# Too early to judge - assume moderate effectiveness #}
             50
-          {% elif last_mode in ['cooling', 'heating'] %}
-            {% set target = cooling_target_temp if last_mode == 'cooling' else heating_target_temp %}
+          {% elif last_mode in ['cooling', 'heating', 'cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
+            {% set target = target_temp %}
             {% set initial_distance = (previous_temp - target) | abs if previous_temp and previous_temp > 0 else distance_from_target %}
             {% set current_distance = distance_from_target | float(0) %}
             {% if initial_distance > 0 and initial_distance is number %}
@@ -2286,11 +2293,17 @@ action:
               {% set progress = ((initial_distance - current_distance) / initial_distance) * 100 %}
               {% set time_factor = (time_in_current_mode | float(1)) / 10 %}  {# Normalize to 10 minutes #}
               {% if time_factor > 0 and time_factor is number %}
-                {% set effectiveness = (progress / time_factor) | round(1) %}
+                {% set raw_effectiveness = (progress / time_factor) | round(1) %}
+                {# Handle case where temperature hasn't changed yet but system is actively working #}
+                {% if progress == 0 and time_in_current_mode < 10 and current_distance > 0.5 %}
+                  {% set effectiveness = 40 %}  {# Moderate effectiveness while pursuing target #}
+                {% else %}
+                  {% set effectiveness = raw_effectiveness %}
+                {% endif %}
                 {# Cap between 0-100 and apply logic #}
-                {% if calculated_trend == 'rising' and last_mode == 'cooling' %}
+                {% if calculated_trend == 'rising' and 'cooling' in last_mode %}
                   0  {# Cooling but getting hotter - completely ineffective #}
-                {% elif calculated_trend == 'falling' and last_mode == 'heating' %}
+                {% elif calculated_trend == 'falling' and 'heating' in last_mode %}
                   0  {# Heating but getting colder - completely ineffective #}
                 {% elif current_distance <= 0.5 %}
                   100  {# Very close to target - highly effective #}
