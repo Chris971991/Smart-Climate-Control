@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.21.4
+  name: Ultimate Smart Climate Control - v2.21.5
 
   description: |
-    **Ultimate Smart Climate Control v2.21.4**
+    **Ultimate Smart Climate Control v2.21.5**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -51,51 +51,6 @@ blueprint:
     • **✓ VERIFICATION LOGIC** - Helper entity only updated to "off" after AC actually responds to shutdown command
     • **⏰ SMART TIMING** - Added 3-second delay and state verification before marking AC as off
     • **🚫 ELIMINATES AUTO-SWITCH** - No more automatic switching to Manual mode when temperature target is reached
-
-    **v2.21.2 Critical AC Auto-Shutoff Fix:**
-    • **🎯 FIXED AC STUCK ON** - AC now properly turns off when target temperature is reached in Smart mode
-    • **⏰ BYPASS RUNTIME LOCKOUT** - Emergency condition allows immediate shutoff when within 0.5°C of target
-    • **🔍 ENHANCED DEBUG** - Added detailed logging to diagnose AC shutoff conditions
-    • **🚑 EMERGENCY OVERRIDE** - AC will turn off if temperature is very close to target, regardless of other conditions
-
-    **v2.21.1 Critical Manual Override Bug Fix:**
-    • **🚫 FIXED FALSE OVERRIDES** - Manual override no longer incorrectly triggers in Smart mode during normal operation
-    • **⏰ SMART MODE TIMEOUT** - Reduced override timeout to 30 minutes in Smart mode (was 3 hours)
-    • **🔄 AUTO-RESET** - System automatically clears false overrides after 1.5 hours of normal operation
-    • **🎯 IMPROVED DETECTION** - Enhanced logic now correctly identifies actual manual changes vs normal automation
-
-    **v2.21.0 Complete Ultra-Dynamic Message System:**
-    • **🔥 ALL HEATING MODES** - HIGH/MEDIUM/LOW heating now have ultra-dynamic context-aware messages with scenario detection
-    • **❄️ ALL COOLING MODES** - HIGH/MEDIUM/LOW cooling now feature complete ultra-dynamic messaging system
-    • **🎯 UNIFIED EXPERIENCE** - All 6 temperature modes now provide consistent contextual information (ETA, effectiveness, escalation levels)
-    • **📊 COMPREHENSIVE METRICS** - Every activation shows real-time data: temperature gaps, fan speeds, effectiveness percentages, trend analysis
-
-    **v2.20.0 Ultra-Dynamic Context-Aware Status Messages:**
-    • **🎯 SMART STATUS** - Status now shows actual system state (IDLE/ACTIVE/MONITORING/STANDBY) instead of misleading "last mode"
-    • **🔼🔽 DYNAMIC INDICATORS** - Real-time display of escalation/de-escalation levels with visual indicators
-    • **📊 EFFECTIVENESS DISPLAY** - Shows when system is EFFECTIVE (85%), ESCALATING L2 🔼, or DE-ESCALATING L3 🔽
-    • **✅ ACCURATE STATES** - "IDLE - COMFORT ZONE ✅" when in comfort zone, not "cooling_high mode" when actually idle
-
-    **v2.18.0 De-escalation System Actually Works:**
-    • **🚀 MAJOR FIX** - De-escalation now actually reduces fan speeds instead of just showing in status
-    • **📊 ACCURATE LOGS** - Debug messages now show actual fan behavior: "ECO MODE", "LOW POWER", etc.
-    • **🔧 FORMATTING FIX** - Fixed temperature distance display showing excessive decimal places (3.3000000000000007°C)
-    • **📊 CLEAN DISPLAY** - All distance values now rounded to 1 decimal place (3.3°C) for better readability
-    • **✨ USER EXPERIENCE** - Debug logs and status displays now show clean, professional temperature values
-    • **📝 CONSISTENCY** - Applied rounding to all distance_from_target display instances across the blueprint
-
-    **v2.17.12 Escalation Logic Dependency Fix:**
-    • **🚨 CRITICAL FIX** - Fixed template error "current_effectiveness is undefined" in escalation_level calculation
-    • **📋 VARIABLE ORDERING** - Moved escalation_level calculation after current_effectiveness is defined
-    • **🔧 TEMPLATE SAFETY** - Ensures effectiveness percentages exist before escalation logic runs
-    • **✅ DYNAMIC ADAPTATION READY** - Escalation system should now work with real effectiveness values
-
-    **v2.17.11 Template Variable Dependency Fix:**
-    • **🚨 CRITICAL FIX** - Fixed effectiveness always showing 0% by reading stale helper value instead of calculating fresh values
-    • **🔄 LOGIC REVERSAL** - Changed to always calculate effectiveness instead of reading old helper values first
-    • **📊 FRESH CALCULATION** - System now calculates effectiveness based on actual temperature progress every run
-    • **✅ WORKING PERCENTAGES** - Should finally show real effectiveness like 30%, 45%, 60% based on cooling performance
-
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
