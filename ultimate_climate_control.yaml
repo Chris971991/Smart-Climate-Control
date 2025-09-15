@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.0
+  name: Ultimate Smart Climate Control - v2.18.1
 
   description: |
-    **Ultimate Smart Climate Control v2.18.0**
+    **Ultimate Smart Climate Control v2.18.1**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,13 +40,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.18.1 Complete De-escalation System Implementation:**
+    • **🔄 ALL MODES FIXED** - De-escalation now works across ALL 6 temperature modes (cooling_high/medium/low, heating_high/medium/low)
+    • **⚡ UNIVERSAL FAN CONTROL** - Level 3 de-escalation switches to quiet/eco, Level 2 to low power, Level 1 to reduced power
+    • **📊 CONSISTENT BEHAVIOR** - All temperature tiers now have identical de-escalation logic for uniform performance
+    • **🎯 COMPLETE SYSTEM** - True adaptive cycle: escalate when struggling, de-escalate when effective, across all scenarios
+
     **v2.18.0 De-escalation System Actually Works:**
     • **🚀 MAJOR FIX** - De-escalation now actually reduces fan speeds instead of just showing in status
-    • **⚡ FAN SPEED CONTROL** - Level 3 de-escalation switches to quiet/eco mode, Level 2 to low power
     • **📊 ACCURATE LOGS** - Debug messages now show actual fan behavior: "ECO MODE", "LOW POWER", etc.
-    • **🔄 COMPLETE CYCLE** - System can now escalate AND de-escalate fan speeds based on effectiveness
-
-    **v2.17.13 Distance Display Precision Fix:**
     • **🔧 FORMATTING FIX** - Fixed temperature distance display showing excessive decimal places (3.3000000000000007°C)
     • **📊 CLEAN DISPLAY** - All distance values now rounded to 1 decimal place (3.3°C) for better readability
     • **✨ USER EXPERIENCE** - Debug logs and status displays now show clean, professional temperature values
@@ -3488,12 +3490,86 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
-                    # HIGH heating maximum fan selection
+                    # HIGH heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% set desired_max_fan = fan_speed_max %}
-                      {% if desired_max_fan in fans %}
-                        {{ desired_max_fan }}
+                      {# De-escalation takes priority over escalation #}
+                      {% if deescalation_level == 3 %}
+                        {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
+                        {% if 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'silence' in fans %}
+                          silence
+                        {% elif 'Silence' in fans %}
+                          Silence
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif deescalation_level == 2 %}
+                        {# Level 2: HIGH de-escalation - Reduce to medium power #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
+                        {% endif %}
+                      {% elif deescalation_level == 1 %}
+                        {# Level 1: LOW de-escalation - Reduce to high-medium power #}
+                        {% if '4' in fans %}
+                          4
+                        {% elif 'Level 4' in fans %}
+                          Level 4
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
+                        {% endif %}
+                      {% else %}
+                        {# Normal HIGH heating - maximum power #}
+                        {% set desired_max_fan = fan_speed_max %}
+                        {% if desired_max_fan in fans %}
+                          {{ desired_max_fan }}
                       {% elif '5' in fans %}
                         5
                       {% elif 'Level 5' in fans %}
@@ -3608,10 +3684,74 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
-                    # MEDIUM heating progressive fan selection (Level 3 → Level 4 → Level 5)
+                    # MEDIUM heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% if escalation_level == 0 %}
+                      {# De-escalation takes priority over escalation #}
+                      {% if deescalation_level == 3 %}
+                        {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
+                        {% if 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'silence' in fans %}
+                          silence
+                        {% elif 'Silence' in fans %}
+                          Silence
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif deescalation_level == 2 %}
+                        {# Level 2: HIGH de-escalation - Reduce to low-medium power #}
+                        {% if '2' in fans %}
+                          2
+                        {% elif 'Level 2' in fans %}
+                          Level 2
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[1] if fans|length > 1 else fans[0] }}
+                        {% endif %}
+                      {% elif deescalation_level == 1 %}
+                        {# Level 1: LOW de-escalation - Minor power reduction #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
+                        {% endif %}
+                      {% elif escalation_level == 0 %}
                         {# Level 0: Start moderate - Level 3 equivalent #}
                         {% set desired_medium_fan = fan_speed_medium %}
                         {% if desired_medium_fan in fans %}
@@ -3768,10 +3908,82 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
-                    # LOW heating progressive fan selection (Level 1 → Level 2 → Level 3)
+                    # LOW heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% if escalation_level == 0 %}
+                      {# De-escalation takes priority over escalation #}
+                      {% if deescalation_level == 3 %}
+                        {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
+                        {% if 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'silence' in fans %}
+                          silence
+                        {% elif 'Silence' in fans %}
+                          Silence
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif deescalation_level == 2 %}
+                        {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
+                        {% if 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'silence' in fans %}
+                          silence
+                        {% elif 'Silence' in fans %}
+                          Silence
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif deescalation_level == 1 %}
+                        {# Level 1: LOW de-escalation - Minimal reduction #}
+                        {% if 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif escalation_level == 0 %}
                         {# Level 0: Start gentle - Level 1 equivalent #}
                         {% if 'low' in fans %}
                           low
@@ -3911,12 +4123,86 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
-                    # HIGH cooling maximum fan selection
+                    # HIGH cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% set desired_max_fan = fan_speed_max %}
-                      {% if desired_max_fan in fans %}
-                        {{ desired_max_fan }}
+                      {# De-escalation takes priority over escalation #}
+                      {% if deescalation_level == 3 %}
+                        {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
+                        {% if 'quiet' in fans %}
+                          quiet
+                        {% elif 'Quiet' in fans %}
+                          Quiet
+                        {% elif 'silence' in fans %}
+                          silence
+                        {% elif 'Silence' in fans %}
+                          Silence
+                        {% elif '1' in fans %}
+                          1
+                        {% elif 'Level 1' in fans %}
+                          Level 1
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                      {% elif deescalation_level == 2 %}
+                        {# Level 2: HIGH de-escalation - Reduce to medium power #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'low' in fans %}
+                          low
+                        {% elif 'Low' in fans %}
+                          Low
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
+                        {% endif %}
+                      {% elif deescalation_level == 1 %}
+                        {# Level 1: LOW de-escalation - Reduce to high-medium power #}
+                        {% if '4' in fans %}
+                          4
+                        {% elif 'Level 4' in fans %}
+                          Level 4
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% elif 'auto' in fans %}
+                          auto
+                        {% elif 'Auto' in fans %}
+                          Auto
+                        {% else %}
+                          {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
+                        {% endif %}
+                      {% else %}
+                        {# Normal HIGH cooling - maximum power #}
+                        {% set desired_max_fan = fan_speed_max %}
+                        {% if desired_max_fan in fans %}
+                          {{ desired_max_fan }}
                       {% elif '5' in fans %}
                         5
                       {% elif 'Level 5' in fans %}
