@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.21.1
+  name: Ultimate Smart Climate Control - v2.21.2
 
   description: |
-    **Ultimate Smart Climate Control v2.21.1**
+    **Ultimate Smart Climate Control v2.21.2**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.21.2 Critical AC Auto-Shutoff Fix:**
+    • **🎯 FIXED AC STUCK ON** - AC now properly turns off when target temperature is reached in Smart mode
+    • **⏰ BYPASS RUNTIME LOCKOUT** - Emergency condition allows immediate shutoff when within 0.5°C of target
+    • **🔍 ENHANCED DEBUG** - Added detailed logging to diagnose AC shutoff conditions
+    • **🚑 EMERGENCY OVERRIDE** - AC will turn off if temperature is very close to target, regardless of other conditions
 
     **v2.21.1 Critical Manual Override Bug Fix:**
     • **🚫 FIXED FALSE OVERRIDES** - Manual override no longer incorrectly triggers in Smart mode during normal operation
@@ -8127,12 +8133,43 @@ action:
     
     # DEFAULT ACTION: Turn off AC when temperature reaches target and no conditions met
     default:
-      - condition: and
+      # Debug log to show why AC isn't turning off
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DEFAULT ACTION CHECK
+            • actual_ac_state: {{ actual_ac_state }}
+            • current_temp: {{ current_temp }}°C
+            • comfort_min_temp: {{ comfort_min_temp }}°C
+            • comfort_max_temp: {{ comfort_max_temp }}°C
+            • temp_in_range: {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
+            • should_turn_off: {{ actual_ac_state == 'on' and current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Enhanced condition with Smart mode priority - turn off AC when target reached
+      - condition: or
         conditions:
-          - condition: template
-            value_template: "{{ actual_ac_state == 'on' }}"
-          - condition: template
-            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+          # Primary condition: AC on and temperature in comfort zone
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ actual_ac_state == 'on' }}"
+              - condition: template
+                value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+              - condition: template
+                value_template: "{{ control_mode == 'Smart' }}"
+          # Emergency condition: AC on and very close to target in Smart mode (ignore comfort zone)
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ actual_ac_state == 'on' }}"
+              - condition: template
+                value_template: "{{ (current_temp - target_temp) | abs <= 0.5 }}"
+              - condition: template
+                value_template: "{{ control_mode == 'Smart' }}"
       - service: system_log.write
         data:
           message: >
