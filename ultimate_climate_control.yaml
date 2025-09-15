@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.21.2
+  name: Ultimate Smart Climate Control - v2.21.3
 
   description: |
-    **Ultimate Smart Climate Control v2.21.2**
+    **Ultimate Smart Climate Control v2.21.3**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.21.3 Root Cause Fix - False Manual Override Detection:**
+    • **🎯 ROOT CAUSE FIXED** - AC turn-off command failures no longer trigger false manual override detection
+    • **✓ VERIFICATION LOGIC** - Helper entity only updated to "off" after AC actually responds to shutdown command
+    • **⏰ SMART TIMING** - Added 3-second delay and state verification before marking AC as off
+    • **🚫 ELIMINATES AUTO-SWITCH** - No more automatic switching to Manual mode when temperature target is reached
 
     **v2.21.2 Critical AC Auto-Shutoff Fix:**
     • **🎯 FIXED AC STUCK ON** - AC now properly turns off when target temperature is reached in Smart mode
@@ -8185,6 +8191,18 @@ action:
         target:
           entity_id: !input climate_entities
         continue_on_error: true
+
+      # Wait a moment for AC to respond
+      - delay:
+          seconds: 3
+
+      # Only set helper to "off" if AC actually turned off or is turning off
+      - condition: template
+        value_template: >
+          {{
+            climate_list | selectattr('state', 'in', ['off', 'idle']) | list | length > 0 or
+            states(climate_list[0]) in ['off', 'idle']
+          }}
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
