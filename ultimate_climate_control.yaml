@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.21.0
+  name: Ultimate Smart Climate Control - v2.21.1
 
   description: |
-    **Ultimate Smart Climate Control v2.21.0**
+    **Ultimate Smart Climate Control v2.21.1**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.21.1 Critical Manual Override Bug Fix:**
+    • **🚫 FIXED FALSE OVERRIDES** - Manual override no longer incorrectly triggers in Smart mode during normal operation
+    • **⏰ SMART MODE TIMEOUT** - Reduced override timeout to 30 minutes in Smart mode (was 3 hours)
+    • **🔄 AUTO-RESET** - System automatically clears false overrides after 1.5 hours of normal operation
+    • **🎯 IMPROVED DETECTION** - Enhanced logic now correctly identifies actual manual changes vs normal automation
 
     **v2.21.0 Complete Ultra-Dynamic Message System:**
     • **🔥 ALL HEATING MODES** - HIGH/MEDIUM/LOW heating now have ultra-dynamic context-aware messages with scenario detection
@@ -2858,14 +2864,20 @@ action:
           {% set last_mode_state = states(helper_mode) | default('off') %}
           {% set actual_state = actual_ac_state %}
           {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 60 %}
+
           {# Only detect manual changes if enough time has passed since last automation change #}
           {% if time_since_change < 2 %}
             false
-          {# If AC state doesn't match what automation expects, user changed it manually #}
+          {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
+            {# AC turned on when automation expects it off - likely manual #}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
+            {# AC turned off when automation expects it running - likely manual #}
             true
+          {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'on' %}
+            {# AC is running as expected - this is NORMAL operation, not manual change #}
+            false
           {% else %}
             false
           {% endif %}
@@ -2883,6 +2895,16 @@ action:
           false
         {% elif control_mode == 'Manual' %}
           false
+        {% elif control_mode == 'Smart' %}
+          {# In Smart mode, be much less aggressive with manual override #}
+          {% set last_change = states(helper_change) %}
+          {% if last_change not in ['unknown', 'unavailable', ''] %}
+            {% set time_since_manual = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
+            {# Only override in Smart mode for very recent manual changes (30 minutes max) #}
+            {{ time_since_manual < 0.5 and manual_change_detected }}
+          {% else %}
+            false
+          {% endif %}
         {% else %}
           {% set last_change = states(helper_change) %}
           {% if last_change not in ['unknown', 'unavailable', ''] %}
@@ -8200,6 +8222,38 @@ action:
         {% endif %}
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  # Auto-reset false manual overrides in Smart mode when system is working normally
+  - if:
+      - condition: template
+        value_template: >
+          {{
+            control_mode == 'Smart' and
+            manual_override_active and
+            not manual_change_detected and
+            helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] and
+            ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600) > 1.5
+          }}
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔄 {{ room_name | upper }} AUTO-RESET: Clearing false manual override
+            • Smart mode detected with stale override ({{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600) | round(1) }}h old)
+            • System working normally - no actual manual changes detected
+            • Resuming automatic climate control
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Reset the helper_change timestamp to clear the false override
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
+        data:
+          datetime: "{{ (now() - timedelta(hours=25)) | as_timestamp | timestamp_custom('%Y-%m-%d %H:%M:%S') }}"
+        continue_on_error: true
 
   # Debug: No conditions matched
   - if:
