@@ -8269,7 +8269,7 @@ action:
             manual_override_active and
             not manual_change_detected and
             helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] and
-            ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600) > 1.5
+            ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) > 5
           }}
     then:
       - service: system_log.write
