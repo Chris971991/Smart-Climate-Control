@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.3
+  name: Ultimate Smart Climate Control - v2.17.4
 
   description: |
-    **Ultimate Smart Climate Control v2.17.3**
+    **Ultimate Smart Climate Control v2.17.4**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.17.4 Distance Calculation Fix:**
+    • **🚨 CRITICAL FIX** - Fixed distance_from_target calculation returning 0 when inside comfort zone but actively cooling/heating
+    • **📊 ACTIVE MODE TRACKING** - Now calculates distance to target when in cooling_medium/heating modes regardless of comfort zone
+    • **🎯 TARGET PURSUIT** - Properly tracks progress toward target temperature during continue mode operation
+    • **✅ ESCALATION ENABLED** - Dynamic escalation now works with correct distance calculations for effectiveness
 
     **v2.17.3 Dynamic Effectiveness Calculation Fix:**
     • **🚨 CRITICAL FIX** - Fixed effectiveness calculation stuck at 0% preventing dynamic escalation from working
@@ -2622,10 +2628,14 @@ action:
         {% endif %}
       
       distance_from_target: >
-        {% if current_temp > comfort_max_temp %}
-          {{ (current_temp - cooling_target_temp) | abs }}
+        {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] %}
+          {{ (current_temp - target_temp) | abs }}
+        {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] %}
+          {{ (current_temp - target_temp) | abs }}
+        {% elif current_temp > comfort_max_temp %}
+          {{ (current_temp - target_temp) | abs }}
         {% elif current_temp < comfort_min_temp %}
-          {{ (current_temp - heating_target_temp) | abs }}
+          {{ (current_temp - target_temp) | abs }}
         {% else %}
           0
         {% endif %}
