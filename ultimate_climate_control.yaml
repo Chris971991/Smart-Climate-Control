@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.1
+  name: Ultimate Smart Climate Control - v2.17.2
 
   description: |
-    **Ultimate Smart Climate Control v2.17.1**
+    **Ultimate Smart Climate Control v2.17.2**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,13 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.17.2 Adaptive Timer Reset Fix:**
+    • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
+    • **⏰ CONTINUE MODE PROTECTION** - Helper timestamps only update when starting new modes, not when continuing existing ones
+    • **🎯 VERIFIED SOLUTION** - Fixed 6 temperature mode conditions (heating_high/medium/low, cooling_high/medium/low)
+    • **📊 SMART HYSTERESIS** - Preserves mode transition timing for proper escalation and effectiveness calculations
+    • **✅ ADAPTIVE CONTROL ENABLED** - Now allows adaptive control to reach 5+ minutes and function properly
 
     **v2.17.1 Additional Timer Reset Fixes:**
     • **🚨 CRITICAL FIX** - Resolved remaining timer resets that were still causing cooling_medium mode to reset every few minutes
@@ -3556,6 +3563,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'heating_high' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3705,6 +3715,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'heating_medium' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3848,6 +3861,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'heating_low' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -3946,6 +3962,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'cooling_high' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -4095,6 +4114,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'cooling_medium' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -4238,6 +4260,9 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          # Only update helper entities when starting new mode (not continuing)
+          - condition: template
+            value_template: "{{ states(helper_mode) | default('off') != 'cooling_low' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
