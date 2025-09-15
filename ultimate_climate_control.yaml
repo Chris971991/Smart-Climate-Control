@@ -45,7 +45,7 @@ blueprint:
     • **⏰ MODE CHANGE DETECTION** - Timer resets now only occur on actual mode changes, not during "continue until target" operations
     • **🎯 ESCALATION ENABLED** - Dynamic fan control can now accumulate timing beyond 0.6 minutes to reach 5+ minute thresholds for escalation
     • **🔧 SMART HYSTERESIS PRESERVED** - Maintains intelligent continue-until-target logic while enabling proper timer accumulation
-    • **📊 6 CRITICAL MODES FIXED** - Applied mode change detection to off, manual, eco, cooling, heating, and stability modes
+    • **📊 9 CRITICAL MODES FIXED** - Applied mode change detection to off, manual, eco, cooling, heating, stability, and composite modes
 
     **v2.16.3 Manual Override Detection Fix:**
     • **🎯 FIXED STABILITY AUTO-OFF** - No longer interrupts continue mode when AC is pursuing target temperature
@@ -4411,10 +4411,10 @@ action:
                 {% else %}
                   off
                 {% endif %}
-          
-          # Update mode start time for effectiveness tracking (only if it exists)
+
+          # Update mode start time for effectiveness tracking (only if mode changed)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode not in ['cooling', 'heating', 'off'] }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -5060,17 +5060,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling"
-          
-          # Update mode start time for effectiveness tracking (only if it exists)
+
+          # Update mode start time for effectiveness tracking (only if mode changed)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
             continue_on_error: true
-      
+
       # Comfort zone - Eco mode or OFF mode (Power Saving)
       # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
       # OFF mode saves 40-60% more energy vs eco mode but allows temperature drift
@@ -5255,10 +5255,10 @@ action:
                   entity_id: !input helper_last_mode
                 data:
                   value: "off"
-              
-              # Update mode start time for effectiveness tracking
+
+              # Update mode start time for effectiveness tracking (only if mode changed)
               - condition: template
-                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'off' }}"
               - service: input_datetime.set_datetime
                 target:
                   entity_id: "{{ helper_mode_time }}"
