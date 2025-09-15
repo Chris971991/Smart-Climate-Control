@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.16.0
+  name: Ultimate Smart Climate Control - v2.16.1
 
   description: |
-    **Ultimate Smart Climate Control v2.16.0**
+    **Ultimate Smart Climate Control v2.16.1**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -133,7 +133,7 @@ blueprint:
     📍 Create via: Settings → Devices & Services → Helpers → Create Helper
     
     
-    3️⃣ PROXIMITY SENSORS - Set up via Integration:
+    **3. PROXIMITY SENSORS - Set up via Integration:**
     
     1. Go to Settings → Devices & Services → Integrations
     2. Click "+ ADD INTEGRATION" 
@@ -2868,6 +2868,7 @@ action:
           {% set last_mode_state = states(helper_mode) | default('off') %}
           {% set actual_state = actual_ac_state %}
           {# If AC state doesn't match what automation expects, user changed it manually #}
+          {# DEBUG: Check if detection logic is working correctly #}
           {% if last_mode_state == 'off' and actual_state == 'on' %}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
@@ -3420,6 +3421,8 @@ action:
               message: >
                 🔒 {{ room_name | upper }} MANUAL OVERRIDE: Respecting user changes
                 • Manual change detected: {{ manual_change_detected }}
+                • Last mode state: "{{ states(helper_mode) | default('off') }}"
+                • Actual AC state: "{{ actual_ac_state }}"
                 • Override timeout: {{ adaptive_override_timeout }} hours
                 • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }} hours
                 • AC will maintain user settings until timeout expires
