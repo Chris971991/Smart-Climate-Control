@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.19.0
+  name: Ultimate Smart Climate Control - v2.20.0
 
   description: |
-    **Ultimate Smart Climate Control v2.19.0**
+    **Ultimate Smart Climate Control v2.20.0**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.20.0 Ultra-Dynamic Context-Aware Status Messages:**
+    • **🚀 CONTEXTUAL STATES** - Messages adapt to situation: FINAL APPROACH 🎯, STRUGGLING ⚠️, CRUISING ✅, EMERGENCY 🆘
+    • **📊 REAL-TIME METRICS** - Shows actual fan speed, effectiveness %, ETA to target, trend rate (°C/min)
+    • **⚡ SMART INDICATORS** - Different messages for each scenario (near target, struggling, efficient, escalating, de-escalating)
+    • **🎯 PREDICTIVE INFO** - Calculates and displays estimated time to reach target based on current trend
+
     **v2.19.0 Enhanced Dynamic Status Display:**
     • **🎯 SMART STATUS** - Status now shows actual system state (IDLE/ACTIVE/MONITORING/STANDBY) instead of misleading "last mode"
     • **🔼🔽 DYNAMIC INDICATORS** - Real-time display of escalation/de-escalation levels with visual indicators
     • **📊 EFFECTIVENESS DISPLAY** - Shows when system is EFFECTIVE (85%), ESCALATING L2 🔼, or DE-ESCALATING L3 🔽
     • **✅ ACCURATE STATES** - "IDLE - COMFORT ZONE ✅" when in comfort zone, not "cooling_high mode" when actually idle
-
-    **v2.18.14 Critical Template & Logic Fixes:**
-    • **🔧 TEMPLATE REPAIR** - Fixed ALL template syntax errors (missing {% endif %}, incorrect indentation, extra tags)
-    • **⚡ LOGIC RESTORATION** - Fixed HIGH cooling/heating logic to properly de-escalate when moving out of HIGH temperature ranges
-    • **🎯 SMART DE-ESCALATION** - HIGH modes now transition to MEDIUM/LOW when appropriate, preventing over-cooling/heating
-    • **✅ PRODUCTION READY** - All 11 templates validated, dynamic system now works as intended
 
     **v2.18.0 De-escalation System Actually Works:**
     • **🚀 MAJOR FIX** - De-escalation now actually reduces fan speeds instead of just showing in status
@@ -4108,7 +4108,45 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "❄️ {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C above {{ cooling_high_temp }}°C (high threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set fan_display = selected_fan_mode | default('Auto') %}
+
+                {% if current_mode == 'cooling_high' %}
+                  {% if distance <= 0.5 %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C remaining)
+                ⚡ Fan: {{ fan_display }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+                  {% elif current_effectiveness < 40 and escalation_level > 0 %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (ESCALATING L{{ escalation_level }} - only {{ current_effectiveness }}% effective)
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ minutes{% endif %}
+                  {% elif escalation_level == 4 %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE 🆘
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
+                ⚠️ System at maximum capacity - consider manual intervention
+                  {% elif current_effectiveness >= 80 %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING ✅
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (STABLE - {{ current_effectiveness }}% effective)
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+                  {% else %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+                  {% endif %}
+                {% else %}
+                ❄️ {{ room_name | upper }} HIGH COOLING - INITIATED 🚀
+                📊 {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
+                ⚡ Fan: {{ fan_display }} (FULL POWER)
+                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
+                {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -4294,32 +4332,47 @@ action:
             data:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
-                {% if deescalation_level == 3 %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING → ECO MODE (DE-ESCALATION LEVEL 3)
-                {% elif deescalation_level == 2 %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING → LOW POWER (DE-ESCALATION LEVEL 2)
-                {% elif deescalation_level == 1 %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING → REDUCED POWER (DE-ESCALATION LEVEL 1)
-                {% elif escalation_level >= 2 %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING → HIGH POWER (ESCALATION LEVEL {{ escalation_level }})
-                {% elif escalation_level == 1 %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING → INCREASED POWER (ESCALATION LEVEL 1)
-                {% else %}
-                ❄️ {{ room_name | upper }} MEDIUM COOLING ACTIVATED
-                {% endif %}
+                {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set fan_display = selected_fan_mode | default('Auto') %}
+
                 {% if current_mode == 'cooling_medium' %}
-                📊 CONTINUE MODE: Already cooling medium, continuing until target
-                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                  {% if distance <= 0.3 %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
+                📊 {{ current_temp }}°C ≈ {{ target_temp }}°C (within {{ distance }}°C)
+                ⚡ Fan: {{ fan_display }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
+                ✅ Success! Temperature stabilized
+                  {% elif deescalation_level == 3 %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
+                📈 Ultra-efficient mode - saving energy while maintaining comfort
+                  {% elif current_effectiveness >= 85 and deescalation_level > 0 %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
+                📈 Trend: {{ temp_change_rate }}°C/min - Perfect balance of power & efficiency
+                  {% elif escalation_level >= 2 %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - BOOSTED ⚡
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (ESCALATION L{{ escalation_level }} - {{ current_effectiveness }}% effective)
+                ⚠️ Increased to Level {{ '5' if escalation_level >= 3 else '4' }} power for faster cooling
+                  {% elif current_effectiveness < 50 %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - UNDERPERFORMING ⚠️
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
+                📈 Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
+                  {% else %}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS 📊
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} - {{ current_effectiveness }}% effective
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+                  {% endif %}
                 {% else %}
-                🚀 START MODE: Starting MEDIUM cooling
-                • Trigger: {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C (threshold)
-                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
-                {% endif %}
-                • Last Mode: {{ current_mode }}
-                {% if deescalation_level > 0 %}
-                • De-escalation: Level {{ deescalation_level }}/3 - {{ 'ECO mode (quiet/Level 1)' if deescalation_level == 3 else 'LOW power (Level 2)' if deescalation_level == 2 else 'REDUCED power (Level 3)' }}
-                {% elif escalation_level > 0 %}
-                • Escalation: Level {{ escalation_level }}/4 - {{ 'Maximum power (Level 5)' if escalation_level >= 2 else 'Increased power (Level 4)' }}
+                🌊 {{ room_name | upper }} MEDIUM COOLING - ENGAGED 🎯
+                📊 {{ current_temp }}°C in medium range ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C)
+                ⚡ Fan: {{ fan_display }} (MEDIUM INTENSITY)
+                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -4542,16 +4595,43 @@ action:
             data:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
-                ❄️ {{ room_name | upper }} LOW COOLING ACTIVATED
+                {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set fan_display = selected_fan_mode | default('Auto') %}
+
                 {% if current_mode == 'cooling_low' %}
-                📊 CONTINUE MODE: Already cooling low, continuing until target
-                • Current: {{ current_temp }}°C → Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to go)
+                  {% if distance <= 0.2 %}
+                🌬️ {{ room_name | upper }} LOW COOLING - PRECISION MODE 🎯
+                📊 {{ current_temp }}°C ≈ {{ target_temp }}°C ({{ distance }}°C away)
+                ⚡ Fan: {{ fan_display }} (GENTLE)
+                ✨ Maintaining perfect comfort with minimal energy
+                  {% elif current_effectiveness >= 90 %}
+                🌬️ {{ room_name | upper }} LOW COOLING - PERFECT EFFICIENCY 💎
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} - {{ current_effectiveness }}% effective
+                🌿 Ideal conditions - minimal power, maximum comfort
+                  {% elif escalation_level > 0 %}
+                🌬️ {{ room_name | upper }} LOW COOLING - ASSISTED 📈
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} (ESCALATED L{{ escalation_level }} for minor boost)
+                📊 Temporarily increased for quicker response
+                  {% elif distance < 1.0 %}
+                🌬️ {{ room_name | upper }} LOW COOLING - FINE TUNING 🎚️
+                📊 {{ current_temp }}°C → {{ target_temp }}°C (just {{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} - {{ current_effectiveness }}% effective
+                📈 Nearly there{% if eta_minutes < 5 %} - ~{{ eta_minutes }} min remaining{% endif %}
+                  {% else %}
+                🌬️ {{ room_name | upper }} LOW COOLING - GENTLE PROGRESS 🍃
+                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                ⚡ Fan: {{ fan_display }} - {{ current_effectiveness }}% effective
+                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+                  {% endif %}
                 {% else %}
-                🚀 START MODE: Starting LOW cooling
-                • Trigger: {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C (threshold)
-                • Target: {{ target_temp }}°C ({{ (current_temp - target_temp) | round(1) }}°C to cool)
+                🌬️ {{ room_name | upper }} LOW COOLING - INITIALIZED 🌱
+                📊 {{ current_temp }}°C slightly above comfort (≥{{ cooling_low_temp }}°C)
+                ⚡ Fan: {{ fan_display }} (GENTLE START)
+                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
-                • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - service: climate.set_hvac_mode
@@ -4758,7 +4838,13 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                {% if current_mode == 'cooling_high' %}
+                🔥 {{ room_name | upper }} HIGH COOLING CONTINUING - Temperature {{ current_temp }}°C (pursuing {{ target_temp }}°C target, {{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
+                {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
@@ -6630,7 +6716,13 @@ action:
         sequence:
           - service: system_log.write
             data:
-              message: "🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C (high threshold)"
+              message: >
+                {% set current_mode = states(helper_mode) | default('off') %}
+                {% if current_mode == 'cooling_high' %}
+                🔥 {{ room_name | upper }} HIGH COOLING CONTINUING - Temperature {{ current_temp }}°C (pursuing {{ target_temp }}°C target, {{ (current_temp - target_temp) | round(1) }}°C to go)
+                {% else %}
+                🔥 {{ room_name | upper }} HIGH COOLING ACTIVATED - Temperature {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
+                {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           - condition: template
