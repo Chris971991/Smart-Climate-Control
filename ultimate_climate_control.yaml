@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.16.3
+  name: Ultimate Smart Climate Control - v2.16.4
 
   description: |
-    **Ultimate Smart Climate Control v2.16.3**
+    **Ultimate Smart Climate Control v2.16.4**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -3079,6 +3079,33 @@ action:
       should_deescalate: >
         {{ deescalation_level > 0 }}
   
+  # Debug: Log dynamic escalation timing configuration
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and dynamic_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DYNAMIC ESCALATION TIMING DEBUG
+
+            📊 User Configuration:
+                • Effectiveness Check Interval: {{ effectiveness_check_mins }} minutes
+                • Runtime: {{ time_in_current_mode | round(1) }} min ({{ (time_in_current_mode - effectiveness_check_mins) | round(1) }} min {{ 'over' if time_in_current_mode >= effectiveness_check_mins else 'under' }} threshold)
+
+            ⏰ Escalation Time Thresholds:
+                • Level 2 (1.5°C distance): {{ effectiveness_check_mins }}min → {{ 'READY' if time_in_current_mode >= effectiveness_check_mins else 'WAITING' }}
+                • Level 1 (1.0°C distance): {{ effectiveness_check_mins + 2 }}min → {{ 'READY' if time_in_current_mode >= (effectiveness_check_mins + 2) else 'WAITING' }}
+                • Level 1 (≤60% effectiveness): {{ effectiveness_check_mins + 5 }}min → {{ 'READY' if time_in_current_mode >= (effectiveness_check_mins + 5) else 'WAITING' }}
+
+            📈 Current Status:
+                • Distance from target: {{ distance_from_target }}°C
+                • Current effectiveness: {{ current_effectiveness }}%
+                • Escalation level: {{ escalation_level }}/4
+                • Should escalate: {{ should_escalate }}
+          level: debug
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.dynamic"
+
   # Debug: Log presence validation details
   - if:
       - condition: template
@@ -3184,7 +3211,7 @@ action:
                 • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
             {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Continue mode - pursuing target' if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min, target ±0.5°C){% endif %}
                 • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
-            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3{% endif %}
+            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min){% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
