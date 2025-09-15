@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.7
+  name: Ultimate Smart Climate Control - v2.18.8
 
   description: |
-    **Ultimate Smart Climate Control v2.18.7**
+    **Ultimate Smart Climate Control v2.18.8**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -4456,23 +4456,23 @@ action:
                           {{ desired_max_fan }}
                         {% elif '5' in fans %}
                           5
-                          {% elif 'Level 5' in fans %}
-                            Level 5
-                          {% elif 'high' in fans %}
-                            high
-                          {% elif 'High' in fans %}
-                            High
-                          {% elif 'turbo' in fans %}
-                            turbo
-                          {% elif 'Turbo' in fans %}
-                            Turbo
-                          {% elif 'max' in fans %}
-                            max
-                            {% elif 'Max' in fans %}
-                              Max
-                            {% else %}
-                              {{ fans[-1] if fans else 'Auto' }}
-                            {% endif %}
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% elif 'turbo' in fans %}
+                          turbo
+                        {% elif 'Turbo' in fans %}
+                          Turbo
+                        {% elif 'max' in fans %}
+                          max
+                        {% elif 'Max' in fans %}
+                          Max
+                        {% else %}
+                          {{ fans[-1] if fans else 'Auto' }}
+                        {% endif %}
                         {% endif %}
                       {% endif %}
 
