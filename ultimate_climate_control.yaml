@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.18.12
+  name: Ultimate Smart Climate Control - v2.18.13
 
   description: |
-    **Ultimate Smart Climate Control v2.18.12**
+    **Ultimate Smart Climate Control v2.18.13**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -3824,7 +3824,6 @@ action:
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
-                      {% endif %}
 
                 - service: climate.set_fan_mode
                   target:
@@ -4050,7 +4049,6 @@ action:
                           {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                      {% endif %}
                       {% endif %}
 
                 - service: climate.set_fan_mode
@@ -4709,7 +4707,6 @@ action:
                           {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                      {% endif %}
                       {% endif %}
 
                 - service: climate.set_fan_mode
