@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.5
+  name: Ultimate Smart Climate Control - v2.17.6
 
   description: |
-    **Ultimate Smart Climate Control v2.17.5**
+    **Ultimate Smart Climate Control v2.17.6**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.17.6 Temperature History Tracking Fix:**
+    • **🚨 CRITICAL FIX** - Fixed temperature history helper updating every minute instead of only when modes change
+    • **📊 PROPER BASELINE** - Temperature history now captures initial temp when mode starts for accurate progress tracking
+    • **🎯 EFFECTIVENESS CALCULATION** - Fixed effectiveness always showing 0% due to previous_temp matching current_temp
+    • **✅ ACCURATE METRICS** - Progress calculation now works correctly with proper initial vs current temperature comparison
+
     **v2.17.5 Effectiveness Helper Update Fix:**
     • **🚨 CRITICAL FIX** - Fixed effectiveness percentage showing 0% despite correct calculations and working escalation
     • **💾 HELPER PERSISTENCE** - Added missing service call to save calculated effectiveness score to helper entity
     • **📊 VISUAL FEEDBACK** - Users now see actual effectiveness percentages in logs and debug output
     • **✅ COMPLETE SYSTEM** - Dynamic escalation now fully functional with proper effectiveness tracking and display
-
-    **v2.17.4 Distance Calculation Fix:**
-    • **🚨 CRITICAL FIX** - Fixed distance_from_target calculation returning 0 when inside comfort zone but actively cooling/heating
-    • **📊 ACTIVE MODE TRACKING** - Now calculates distance to target when in cooling_medium/heating modes regardless of comfort zone
-    • **🎯 TARGET PURSUIT** - Properly tracks progress toward target temperature during continue mode operation
-    • **✅ ESCALATION ENABLED** - Dynamic escalation now works with correct distance calculations for effectiveness
 
     **v2.17.2 Adaptive Timer Reset Fix:**
     • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
@@ -3246,9 +3246,18 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
-  # Update temperature history and trend tracking
+  # Update temperature history when starting new mode (not during continue mode)
   - condition: template
-    value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+    value_template: >
+      {{
+        dynamic_enabled and
+        helper_temp_history not in [none, '', 'unavailable', 'unknown'] and
+        (
+          states(helper_mode) | default('off') != last_mode or
+          states(helper_mode) | default('off') == 'off' or
+          last_mode == 'off'
+        )
+      }}
   - service: input_number.set_value
     target:
       entity_id: "{{ helper_temp_history }}"
