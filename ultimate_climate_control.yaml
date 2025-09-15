@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.11
+  name: Ultimate Smart Climate Control - v2.17.12
 
   description: |
-    **Ultimate Smart Climate Control v2.17.11**
+    **Ultimate Smart Climate Control v2.17.12**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,13 +40,13 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.17.11 Template Variable Dependency Fix:**
-    • **🚨 CRITICAL FIX** - Fixed template error "distance_from_target is undefined" preventing effectiveness calculation
-    • **📋 VARIABLE ORDERING** - Moved effectiveness calculation after distance_from_target is defined in variables section
-    • **🔧 TEMPLATE SAFETY** - Ensures all temperature distance variables exist before effectiveness calculation runs
-    • **✅ CALCULATION READY** - Effectiveness should now show real percentages instead of 0% or template errors
+    **v2.17.12 Escalation Logic Dependency Fix:**
+    • **🚨 CRITICAL FIX** - Fixed template error "current_effectiveness is undefined" in escalation_level calculation
+    • **📋 VARIABLE ORDERING** - Moved escalation_level calculation after current_effectiveness is defined
+    • **🔧 TEMPLATE SAFETY** - Ensures effectiveness percentages exist before escalation logic runs
+    • **✅ DYNAMIC ADAPTATION READY** - Escalation system should now work with real effectiveness values
 
-    **v2.17.10 Template Variable Order Fix:**
+    **v2.17.11 Template Variable Dependency Fix:**
     • **🚨 CRITICAL FIX** - Fixed effectiveness always showing 0% by reading stale helper value instead of calculating fresh values
     • **🔄 LOGIC REVERSAL** - Changed to always calculate effectiveness instead of reading old helper values first
     • **📊 FRESH CALCULATION** - System now calculates effectiveness based on actual temperature progress every run
@@ -2611,6 +2611,60 @@ action:
           50  {# Default effectiveness #}
         {% endif %}
 
+      # Enhanced escalation logic with multiple triggers and graduated response
+      escalation_level: >
+        {% if not dynamic_enabled %}
+          0
+        {% else %}
+          {% set min_check_time = 3 %}  {# Minimum 3 minutes before any escalation #}
+          {% set emergency_threshold = 4.0 %}  {# Degrees from target for emergency escalation #}
+          {% set stall_threshold = 2.0 %}  {# Degrees for considering progress stalled #}
+
+          {# Level 0: No escalation needed #}
+          {% if time_in_current_mode < min_check_time %}
+            0
+          {% elif current_effectiveness >= 80 %}
+            0  {# Working well, no escalation needed #}
+          {% elif distance_from_target <= 1.0 %}
+            0  {# Close to target, no escalation needed #}
+
+          {# Level 4: EMERGENCY - Immediate maximum power #}
+          {% elif distance_from_target > emergency_threshold and time_in_current_mode >= min_check_time %}
+            4  {# Far from target - emergency escalation #}
+          {% elif current_effectiveness <= 10 and time_in_current_mode >= 5 %}
+            4  {# Completely ineffective after 5 minutes #}
+          {% elif last_mode == 'cooling' and calculated_trend == 'rising' and current_temp > (comfort_max_temp + 1.0) %}
+            4  {# Cooling but temperature rising above comfort zone #}
+          {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
+            4  {# Heating but temperature falling below comfort zone #}
+
+          {# Level 3: HIGH - Strong escalation needed #}
+          {% elif distance_from_target > 3.0 and time_in_current_mode >= 5 %}
+            3  {# Still far from target after 5 minutes #}
+          {% elif current_effectiveness <= 25 and time_in_current_mode >= 7 %}
+            3  {# Poor effectiveness after reasonable time #}
+          {% elif distance_from_target > stall_threshold and calculated_trend == 'stable' and time_in_current_mode >= 8 %}
+            3  {# Progress has stalled #}
+
+          {# Level 2: MEDIUM - Moderate escalation #}
+          {% elif distance_from_target > 2.0 and time_in_current_mode >= 8 %}
+            2  {# Moderate distance after longer time #}
+          {% elif current_effectiveness <= 40 and time_in_current_mode >= 10 %}
+            2  {# Below average effectiveness #}
+          {% elif distance_from_target > 1.5 and time_in_current_mode >= effectiveness_check_mins %}
+            2  {# Using original check time for moderate escalation #}
+
+          {# Level 1: LOW - Minor escalation #}
+          {% elif distance_from_target > 1.0 and time_in_current_mode >= (effectiveness_check_mins + 2) %}
+            1  {# Slight distance after extended time #}
+          {% elif current_effectiveness <= 60 and time_in_current_mode >= (effectiveness_check_mins + 5) %}
+            1  {# Mediocre effectiveness after extra time #}
+
+          {% else %}
+            0  {# No escalation needed #}
+          {% endif %}
+        {% endif %}
+
       # Hysteresis logic - prevent rapid switching at temperature boundaries
       last_transition: >
         {% if helper_last_transition %}
@@ -2639,59 +2693,6 @@ action:
         {% endif %}
       
       # Enhanced escalation logic with multiple triggers and graduated response
-      escalation_level: >
-        {% if not dynamic_enabled %}
-          0
-        {% else %}
-          {% set min_check_time = 3 %}  {# Minimum 3 minutes before any escalation #}
-          {% set emergency_threshold = 4.0 %}  {# Degrees from target for emergency escalation #}
-          {% set stall_threshold = 2.0 %}  {# Degrees for considering progress stalled #}
-          
-          {# Level 0: No escalation needed #}
-          {% if time_in_current_mode < min_check_time %}
-            0
-          {% elif current_effectiveness >= 80 %}
-            0  {# Working well, no escalation needed #}
-          {% elif distance_from_target <= 1.0 %}
-            0  {# Close to target, no escalation needed #}
-          
-          {# Level 4: EMERGENCY - Immediate maximum power #}
-          {% elif distance_from_target > emergency_threshold and time_in_current_mode >= min_check_time %}
-            4  {# Far from target - emergency escalation #}
-          {% elif current_effectiveness <= 10 and time_in_current_mode >= 5 %}
-            4  {# Completely ineffective after 5 minutes #}
-          {% elif last_mode == 'cooling' and calculated_trend == 'rising' and current_temp > (comfort_max_temp + 1.0) %}
-            4  {# Cooling but temperature rising above comfort zone #}
-          {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
-            4  {# Heating but temperature falling below comfort zone #}
-          
-          {# Level 3: HIGH - Strong escalation needed #}
-          {% elif distance_from_target > 3.0 and time_in_current_mode >= 5 %}
-            3  {# Still far from target after 5 minutes #}
-          {% elif current_effectiveness <= 25 and time_in_current_mode >= 7 %}
-            3  {# Poor effectiveness after reasonable time #}
-          {% elif distance_from_target > stall_threshold and calculated_trend == 'stable' and time_in_current_mode >= 8 %}
-            3  {# Progress has stalled #}
-          
-          {# Level 2: MEDIUM - Moderate escalation #}
-          {% elif distance_from_target > 2.0 and time_in_current_mode >= 8 %}
-            2  {# Moderate distance after longer time #}
-          {% elif current_effectiveness <= 40 and time_in_current_mode >= 10 %}
-            2  {# Below average effectiveness #}
-          {% elif distance_from_target > 1.5 and time_in_current_mode >= effectiveness_check_mins %}
-            2  {# Using original check time for moderate escalation #}
-          
-          {# Level 1: LOW - Minor escalation #}
-          {% elif distance_from_target > 1.0 and time_in_current_mode >= (effectiveness_check_mins + 2) %}
-            1  {# Slight distance after extended time #}
-          {% elif current_effectiveness <= 60 and time_in_current_mode >= (effectiveness_check_mins + 5) %}
-            1  {# Mediocre effectiveness after extra time #}
-          
-          {% else %}
-            0  {# No escalation needed #}
-          {% endif %}
-        {% endif %}
-      
       should_escalate: >
         {{ escalation_level > 0 }}
       
