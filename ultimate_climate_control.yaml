@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.12
+  name: Ultimate Smart Climate Control - v2.17.13
 
   description: |
-    **Ultimate Smart Climate Control v2.17.12**
+    **Ultimate Smart Climate Control v2.17.13**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -39,6 +39,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v2.17.13 Distance Display Precision Fix:**
+    • **🔧 FORMATTING FIX** - Fixed temperature distance display showing excessive decimal places (3.3000000000000007°C)
+    • **📊 CLEAN DISPLAY** - All distance values now rounded to 1 decimal place (3.3°C) for better readability
+    • **✨ USER EXPERIENCE** - Debug logs and status displays now show clean, professional temperature values
+    • **📝 CONSISTENCY** - Applied rounding to all distance_from_target display instances across the blueprint
 
     **v2.17.12 Escalation Logic Dependency Fix:**
     • **🚨 CRITICAL FIX** - Fixed template error "current_effectiveness is undefined" in escalation_level calculation
@@ -3103,7 +3109,7 @@ action:
                 • Level 1 (≤60% effectiveness): {{ effectiveness_check_mins + 5 }}min → {{ 'READY' if time_in_current_mode >= (effectiveness_check_mins + 5) else 'WAITING' }}
 
             📈 Current Status:
-                • Distance from target: {{ distance_from_target }}°C
+                • Distance from target: {{ distance_from_target | round(1) }}°C
                 • Current effectiveness: {{ current_effectiveness }}%
                 • Escalation level: {{ escalation_level }}/4
                 • Should escalate: {{ should_escalate }}
@@ -3214,7 +3220,7 @@ action:
                 • Cooling Triggers: {{ cooling_low_temp }}°C (low), {{ cooling_medium_temp }}°C (medium), {{ cooling_high_temp }}°C (high)
                 • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
             {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Continue mode - pursuing target' if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min, target ±0.5°C){% endif %}
-                • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target }}°C, Effectiveness: {{ current_effectiveness }}%
+                • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target | round(1) }}°C, Effectiveness: {{ current_effectiveness }}%
             {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min){% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -7132,7 +7138,7 @@ action:
             data:
               message: >
                 🔥 {{ room_name | upper }} SMART ESCALATION LEVEL {{ escalation_level }}/4 ACTIVATED
-                Effectiveness: {{ current_effectiveness }}% • Distance: {{ distance_from_target }}°C • Runtime: {{ time_in_current_mode }}min
+                Effectiveness: {{ current_effectiveness }}% • Distance: {{ distance_from_target | round(1) }}°C • Runtime: {{ time_in_current_mode }}min
                 Reason: {% if escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
                 {% elif escalation_level == 3 %}🔥 HIGH - {{ 'Still far after 5min' if distance_from_target > 3 else 'Poor effectiveness' if current_effectiveness <= 25 else 'Progress stalled' }}
                 {% elif escalation_level == 2 %}⚡ MEDIUM - {{ 'Moderate distance' if distance_from_target > 2 else 'Below average performance' }}
