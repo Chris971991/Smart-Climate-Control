@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.7
+  name: Ultimate Smart Climate Control - v2.17.8
 
   description: |
-    **Ultimate Smart Climate Control v2.17.7**
+    **Ultimate Smart Climate Control v2.17.8**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.17.8 Temperature History Condition Simplification:**
+    • **🚨 CRITICAL FIX** - Removed dynamic_enabled condition blocking temperature history capture during new mode starts
+    • **🔧 SIMPLIFIED LOGIC** - Temperature history capture now only checks if helper entity exists, not dynamic setting
+    • **📊 ALWAYS CAPTURE** - Temperature baseline captured reliably when transitioning to new cooling/heating modes
+    • **✅ EFFECTIVENESS WORKING** - Final fix to ensure effectiveness calculation gets proper initial temperature data
+
     **v2.17.7 Temperature History Capture Timing Fix:**
     • **🚨 CRITICAL FIX** - Fixed temperature history being captured AFTER mode was already updated, causing comparison to fail
     • **⏰ PROPER SEQUENCING** - Temperature history now captured BEFORE mode helper update in all 6 temperature modes
     • **📊 WORKING BASELINE** - Initial temperature properly stored when starting new cooling/heating modes
     • **✅ EFFECTIVENESS FIXED** - Progress calculation finally works with correct initial temp vs current temp comparison
-
-    **v2.17.6 Temperature History Tracking Fix:**
-    • **🚨 CRITICAL FIX** - Fixed temperature history helper updating every minute instead of only when modes change
-    • **📊 PROPER BASELINE** - Temperature history now captures initial temp when mode starts for accurate progress tracking
-    • **🎯 EFFECTIVENESS CALCULATION** - Fixed effectiveness always showing 0% due to previous_temp matching current_temp
-    • **✅ ACCURATE METRICS** - Progress calculation now works correctly with proper initial vs current temperature comparison
 
     **v2.17.2 Adaptive Timer Reset Fix:**
     • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
@@ -3590,7 +3590,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'heating_high' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
@@ -3750,7 +3750,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'heating_medium' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
@@ -3904,7 +3904,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'heating_low' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
@@ -4013,7 +4013,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_high' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
@@ -4173,7 +4173,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_medium' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
@@ -4327,7 +4327,7 @@ action:
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_low' }}"
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
           - service: input_number.set_value
             target:
               entity_id: "{{ helper_temp_history }}"
