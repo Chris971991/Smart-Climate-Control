@@ -58,38 +58,6 @@ blueprint:
     • **📊 FRESH CALCULATION** - System now calculates effectiveness based on actual temperature progress every run
     • **✅ WORKING PERCENTAGES** - Should finally show real effectiveness like 30%, 45%, 60% based on cooling performance
 
-    **v2.17.2 Adaptive Timer Reset Fix:**
-    • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
-    • **⏰ CONTINUE MODE PROTECTION** - Helper timestamps only update when starting new modes, not when continuing existing ones
-    • **🎯 VERIFIED SOLUTION** - Fixed 6 temperature mode conditions (heating_high/medium/low, cooling_high/medium/low)
-    • **📊 SMART HYSTERESIS** - Preserves mode transition timing for proper escalation and effectiveness calculations
-    • **✅ ADAPTIVE CONTROL ENABLED** - Now allows adaptive control to reach 5+ minutes and function properly
-
-    **v2.17.1 Additional Timer Reset Fixes:**
-    • **🚨 CRITICAL FIX** - Resolved remaining timer resets that were still causing cooling_medium mode to reset every few minutes
-    • **📊 COMPLETE COVERAGE** - Fixed adaptive_off, smart_*, and multiple cooling mode timer reset locations
-    • **⏰ SYSTEMATIC APPROACH** - Applied replace_all to ensure all cooling mode timer conditions include mode change detection
-    • **🎯 VERIFIED PATTERN** - Targeted exact timer reset locations causing "running 0 min" resets observed in logs
-    • **🔧 14+ LOCATIONS FIXED** - Comprehensive mode change detection applied across all major timer reset points
-
-    **v2.17.0 Dynamic Escalation Timer Fix:**
-
-    **v2.16.3 Manual Override Detection Fix:**
-    • **🎯 FIXED STABILITY AUTO-OFF** - No longer interrupts continue mode when AC is pursuing target temperature
-    • **📍 TARGET DISTANCE CHECK** - Stability detection now requires being within 0.5°C of actual target, not just comfort zone
-    • **🔄 CONTINUE MODE PROTECTION** - Prevents premature auto-off when in cooling_low/medium/high or heating modes
-    • **🌡️ ENHANCED DEBUG** - Shows "Continue mode active - pursuing target" status during target pursuit
-    • **⚡ PREVENTS SHORT CYCLING** - AC now continues from trigger (24.1°C) to actual target (22°C) without interruption
-
-    **v2.14.3 Fan Speed Inheritance Fix:**
-    • **🎮 MANUAL MODE OPTIONS** - Choose between Pure Manual, Safety Timeout, Presence Aware, or Extreme Protection behaviors
-    • **⏰ SAFETY TIMEOUT** - Optional timeout to prevent AC running forever in Manual mode (default 8 hours)
-    • **🚪 PRESENCE AWARE** - Optional mode where Manual respects presence but ignores temperature
-    • **🛡️ EXTREME PROTECTION** - Manual mode that only intervenes for extreme temperatures
-    • **🎯 AUTO-DETECTION** - Automatically switches to Manual when user changes AC (from HA or remote)
-    • **⏱️ SEPARATE TIMEOUTS** - Different timeouts for manual override vs manual mode safety
-    • **✅ BACKWARD COMPATIBLE** - Default "Safety Timeout" mode prevents energy waste while respecting control
-
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
