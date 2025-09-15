@@ -4474,7 +4474,7 @@ action:
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
-                    {% endif %}
+                        {% endif %}
 
                 - service: climate.set_fan_mode
                   target:
