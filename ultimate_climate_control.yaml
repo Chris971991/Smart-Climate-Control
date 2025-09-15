@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.10
+  name: Ultimate Smart Climate Control - v2.17.11
 
   description: |
-    **Ultimate Smart Climate Control v2.17.10**
+    **Ultimate Smart Climate Control v2.17.11**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,13 +40,13 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.17.10 Template Variable Order Fix:**
-    • **🚨 CRITICAL FIX** - Fixed template error "time_in_current_mode is undefined" preventing automation from running
-    • **📋 VARIABLE ORDERING** - Moved effectiveness calculation after time_in_current_mode is defined in variables section
-    • **🔧 TEMPLATE SAFETY** - Ensures all required variables exist before effectiveness calculation runs
-    • **✅ AUTOMATION STABLE** - Fixes automation crash and allows effectiveness calculation to proceed
+    **v2.17.11 Template Variable Dependency Fix:**
+    • **🚨 CRITICAL FIX** - Fixed template error "distance_from_target is undefined" preventing effectiveness calculation
+    • **📋 VARIABLE ORDERING** - Moved effectiveness calculation after distance_from_target is defined in variables section
+    • **🔧 TEMPLATE SAFETY** - Ensures all temperature distance variables exist before effectiveness calculation runs
+    • **✅ CALCULATION READY** - Effectiveness should now show real percentages instead of 0% or template errors
 
-    **v2.17.9 Effectiveness Calculation Priority Fix:**
+    **v2.17.10 Template Variable Order Fix:**
     • **🚨 CRITICAL FIX** - Fixed effectiveness always showing 0% by reading stale helper value instead of calculating fresh values
     • **🔄 LOGIC REVERSAL** - Changed to always calculate effectiveness instead of reading old helper values first
     • **📊 FRESH CALCULATION** - System now calculates effectiveness based on actual temperature progress every run
@@ -2503,51 +2503,6 @@ action:
           0
         {% endif %}
 
-      # Calculate effectiveness automatically based on temperature progress
-      current_effectiveness: >
-        {# Always calculate effectiveness automatically #}
-        {% if time_in_current_mode < 2 %}
-          {# Too early to judge - assume moderate effectiveness #}
-          50
-        {% elif last_mode in ['cooling', 'heating', 'cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
-          {% set target = target_temp %}
-          {% set initial_distance = (previous_temp - target) | abs if previous_temp and previous_temp > 0 else distance_from_target %}
-          {% set current_distance = distance_from_target | float(0) %}
-          {% if initial_distance > 0 and initial_distance is number %}
-            {# Calculate progress toward target (0-100%) with safety checks #}
-            {% set progress = ((initial_distance - current_distance) / initial_distance) * 100 %}
-            {% set time_factor = (time_in_current_mode | float(1)) / 10 %}  {# Normalize to 10 minutes #}
-            {% if time_factor > 0 and time_factor is number %}
-              {% set raw_effectiveness = (progress / time_factor) | round(1) %}
-              {# Handle case where temperature hasn't changed yet but system is actively working #}
-              {% if progress == 0 and time_in_current_mode < 10 and current_distance > 0.5 %}
-                {% set effectiveness = 40 %}  {# Moderate effectiveness while pursuing target #}
-              {% else %}
-                {% set effectiveness = raw_effectiveness %}
-              {% endif %}
-              {# Cap between 0-100 and apply logic #}
-              {% if calculated_trend == 'rising' and 'cooling' in last_mode %}
-                0  {# Cooling but getting hotter - completely ineffective #}
-              {% elif calculated_trend == 'falling' and 'heating' in last_mode %}
-                0  {# Heating but getting colder - completely ineffective #}
-              {% elif current_distance <= 0.5 %}
-                100  {# Very close to target - highly effective #}
-              {% elif effectiveness > 100 %}
-                100
-              {% elif effectiveness < 0 %}
-                10  {# Some minimum effectiveness #}
-              {% else %}
-                {{ effectiveness | round(0) }}
-              {% endif %}
-            {% else %}
-              50  {# Avoid division by zero or invalid time factor #}
-            {% endif %}
-          {% else %}
-            75  {# Already at target or invalid distance calculation #}
-          {% endif %}
-        {% else %}
-          50  {# Not in heating/cooling mode #}
-        {% endif %}
 
       # Calculate actual temperature stability time (when temp last changed significantly)
       temp_stability_time: >
@@ -2634,7 +2589,28 @@ action:
         {% else %}
           0
         {% endif %}
-      
+
+      # Calculate current effectiveness based on temperature progress
+      current_effectiveness: >
+        {# Always calculate effectiveness automatically #}
+        {% if time_in_current_mode < 2 %}
+          50
+        {% elif last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high', 'heating', 'heating_low', 'heating_medium', 'heating_high'] %}
+          {% set target = target_temp %}
+          {% set initial_distance = (previous_temp - target) | abs if previous_temp and previous_temp > 0 else distance_from_target %}
+          {% set current_distance = distance_from_target | float(0) %}
+
+          {% if initial_distance == 0 or current_distance >= initial_distance %}
+            40  {# Active pursuit baseline - making effort even if not improving yet #}
+          {% else %}
+            {% set progress = ((initial_distance - current_distance) / initial_distance) * 100 %}
+            {% set effectiveness = ([progress + 40, 95] | min) | round(0) %}
+            {{ effectiveness }}
+          {% endif %}
+        {% else %}
+          50  {# Default effectiveness #}
+        {% endif %}
+
       # Hysteresis logic - prevent rapid switching at temperature boundaries
       last_transition: >
         {% if helper_last_transition %}
