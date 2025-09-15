@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.17.8
+  name: Ultimate Smart Climate Control - v2.17.9
 
   description: |
-    **Ultimate Smart Climate Control v2.17.8**
+    **Ultimate Smart Climate Control v2.17.9**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,17 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.17.9 Effectiveness Calculation Priority Fix:**
+    • **🚨 CRITICAL FIX** - Fixed effectiveness always showing 0% by reading stale helper value instead of calculating fresh values
+    • **🔄 LOGIC REVERSAL** - Changed to always calculate effectiveness instead of reading old helper values first
+    • **📊 FRESH CALCULATION** - System now calculates effectiveness based on actual temperature progress every run
+    • **✅ WORKING PERCENTAGES** - Should finally show real effectiveness like 30%, 45%, 60% based on cooling performance
+
     **v2.17.8 Temperature History Condition Simplification:**
     • **🚨 CRITICAL FIX** - Removed dynamic_enabled condition blocking temperature history capture during new mode starts
     • **🔧 SIMPLIFIED LOGIC** - Temperature history capture now only checks if helper entity exists, not dynamic setting
     • **📊 ALWAYS CAPTURE** - Temperature baseline captured reliably when transitioning to new cooling/heating modes
     • **✅ EFFECTIVENESS WORKING** - Final fix to ensure effectiveness calculation gets proper initial temperature data
-
-    **v2.17.7 Temperature History Capture Timing Fix:**
-    • **🚨 CRITICAL FIX** - Fixed temperature history being captured AFTER mode was already updated, causing comparison to fail
-    • **⏰ PROPER SEQUENCING** - Temperature history now captured BEFORE mode helper update in all 6 temperature modes
-    • **📊 WORKING BASELINE** - Initial temperature properly stored when starting new cooling/heating modes
-    • **✅ EFFECTIVENESS FIXED** - Progress calculation finally works with correct initial temp vs current temp comparison
 
     **v2.17.2 Adaptive Timer Reset Fix:**
     • **🚨 CRITICAL FIX** - Fixed adaptive timer resetting to 0.0min every minute, preventing 5+ minute escalation
@@ -2281,11 +2281,9 @@ action:
         {% endif %}
       # Calculate effectiveness automatically based on temperature progress
       current_effectiveness: >
-        {% if helper_effectiveness and states(helper_effectiveness) != 'unavailable' %}
-          {# Use manual helper if available #}
-          {{ states(helper_effectiveness) | float(50) }}
-        {% else %}
-          {# Calculate effectiveness automatically with error handling #}
+        {# Always calculate effectiveness automatically #}
+        {% set auto_calculated = 50 %}  {# Default fallback #}
+        {% if true %}
           {% if time_in_current_mode < 2 %}
             {# Too early to judge - assume moderate effectiveness #}
             50
