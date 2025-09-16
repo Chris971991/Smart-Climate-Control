@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.3
+  name: Ultimate Smart Climate Control - v2.22.4
 
   description: |
-    **Ultimate Smart Climate Control v2.22.3**
+    **Ultimate Smart Climate Control v2.22.4**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -3140,6 +3140,7 @@ action:
                 • People: {{ 'Someone home' if anyone_home else 'Nobody home' }}{% if approaching_home %} (approaching){% endif %}
                 • Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
                 • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_since_change | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_since_change | round(0) }} min ago){% endif %}
+                • Fan Speed: {{ state_attr(climate_list[0], 'fan_mode') | default('Unknown') | title }}
                 • Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('Unknown') | title }}
                 • Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
             
