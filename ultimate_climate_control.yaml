@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.2
+  name: Ultimate Smart Climate Control - v2.22.3
 
   description: |
-    **Ultimate Smart Climate Control v2.22.2**
+    **Ultimate Smart Climate Control v2.22.3**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -3724,8 +3724,12 @@ action:
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
                         {% elif deescalation_level == 2 %}
-                        {# Level 2: HIGH de-escalation - Reduce to low-medium power #}
-                        {% if '2' in fans %}
+                        {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
+                        {% if 'auto' in fans %}
+                          auto
+                          {% elif 'Auto' in fans %}
+                          Auto
+                          {% elif '2' in fans %}
                           2
                           {% elif 'Level 2' in fans %}
                           Level 2
@@ -3737,10 +3741,6 @@ action:
                           quiet
                           {% elif 'Quiet' in fans %}
                           Quiet
-                          {% elif 'auto' in fans %}
-                          auto
-                          {% elif 'Auto' in fans %}
-                          Auto
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
@@ -4455,8 +4455,12 @@ action:
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
                         {% elif deescalation_level == 2 %}
-                        {# Level 2: HIGH de-escalation - Reduce to low-medium power #}
-                        {% if '2' in fans %}
+                        {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
+                        {% if 'auto' in fans %}
+                          auto
+                          {% elif 'Auto' in fans %}
+                          Auto
+                          {% elif '2' in fans %}
                           2
                           {% elif 'Level 2' in fans %}
                           Level 2
@@ -4468,10 +4472,6 @@ action:
                           quiet
                           {% elif 'Quiet' in fans %}
                           Quiet
-                          {% elif 'auto' in fans %}
-                          auto
-                          {% elif 'Auto' in fans %}
-                          Auto
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
