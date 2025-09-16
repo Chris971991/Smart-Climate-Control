@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.21.5
+  name: Ultimate Smart Climate Control - v2.22.0
 
   description: |
-    **Ultimate Smart Climate Control v2.21.5**
+    **Ultimate Smart Climate Control v2.22.0**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,17 +40,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.0 Automatic Manual Mode Switching COMPLETELY DISABLED:**
+    • **🚫 NO AUTO-MANUAL** - Will NEVER automatically switch to Manual mode for any reason
+    • **🎮 FULL AUTOMATION** - Automation continues working even if user manually adjusts AC
+    • **✅ USER CONTROL** - Only YOU can switch to Manual mode via dashboard
+    • **🔧 REMOVED LOGIC** - Disabled auto-switch on manual changes AND vacant room scenarios
+
     **v2.21.4 Code Cleanup - Removed Band-Aid Fixes:**
     • **🧹 REMOVED AUTO-RESET** - No longer needed with proper root cause fix
     • **⏰ REVERTED TIMEOUTS** - Smart mode now uses normal override timeouts (proper fix prevents false triggers)
-    • **📊 SIMPLIFIED LOGIC** - Removed aggressive Smart mode special cases and emergency overrides
-    • **✨ CLEAN SOLUTION** - Code now uses proper state verification instead of workaround mechanisms
-
-    **v2.21.3 Root Cause Fix - False Manual Override Detection:**
-    • **🎯 ROOT CAUSE FIXED** - AC turn-off command failures no longer trigger false manual override detection
-    • **✓ VERIFICATION LOGIC** - Helper entity only updated to "off" after AC actually responds to shutdown command
-    • **⏰ SMART TIMING** - Added 3-second delay and state verification before marking AC as off
-    • **🚫 ELIMINATES AUTO-SWITCH** - No more automatic switching to Manual mode when temperature target is reached
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
@@ -1825,7 +1823,7 @@ blueprint:
             **How it works:**
 
             • **Room becomes occupied** → Switch to Auto/Smart mode after configurable delay
-            • **Room becomes vacant** → Switch to Manual mode and turn AC off after delay
+            • **Room becomes vacant** → Turn AC off after delay (stays in current mode)
 
             **REQUIREMENTS:**
 
@@ -1842,7 +1840,7 @@ blueprint:
         adaptive_occupied_delay:
           name: Occupied Delay (minutes)
           description: |
-            **How long to wait** after detecting room presence before switching from Manual to Auto/Smart mode.
+            **How long to wait** after detecting room presence before switching to Auto/Smart mode (only if currently in Manual).
 
             • **Shorter delays:** More responsive but may switch too frequently
             • **Longer delays:** Less responsive but avoids unnecessary switching
@@ -1860,7 +1858,7 @@ blueprint:
         adaptive_vacant_delay:
           name: Vacant Delay (minutes)
           description: |
-            **How long to wait** after room becomes vacant before switching to Manual mode and turning AC off.
+            **How long to wait** after room becomes vacant before turning AC off.
 
             • **Shorter delays:** Better energy savings but may turn off too quickly
             • **Longer delays:** More comfort for brief departures but wastes energy
@@ -2903,39 +2901,8 @@ action:
           {{ anyone_home or approaching_home }}
         {% endif %}
   
-  # Detect manual AC changes and auto-switch to Manual mode
-  - if:
-      - condition: template
-        value_template: "{{ control_mode_helper and control_mode != 'Manual' }}"
-      - condition: template
-        value_template: "{{ manual_change_detected }}"
-    then:
-      - service: system_log.write
-        data:
-          message: >
-            🎮 {{ room_name | upper }} MANUAL OVERRIDE DETECTED
-            • AC was manually changed (helper_mode: {{ states(helper_mode) | default('off') }}, actual: {{ actual_ac_state }})
-            • Time since last automation change: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
-            • Switching to Manual mode to respect user control
-            • Override protection: {{ adaptive_override_timeout }} hours
-          level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-      # Switch to Manual mode
-      - condition: template
-        value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
-      - service: input_select.select_option
-        target:
-          entity_id: "{{ control_mode_helper }}"
-        data:
-          option: "Manual"
-
-      # Update last change time for override protection
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ helper_change }}"
-        data:
-          datetime: "{{ now() }}"
+  # DISABLED: No longer auto-switching to Manual mode when manual changes detected
+  # The automation will continue to work normally even if user manually adjusts AC
 
       # Set last mode to manual
       - service: input_text.set_value
@@ -6350,17 +6317,12 @@ action:
                       • Actual Vacant Time: {{ vacant_time | round(1) }} min ({{ vacant_time | round(1) - adaptive_vacant_delay | round(1) }}min over threshold)
                       • Last Presence Detected: {{ as_timestamp(last_presence) | timestamp_custom('%H:%M:%S') }}
                       {% endif %}
-                      • Actions: 1) Switch to Manual mode 2) Turn off {{ climate_list | length }} climate entities
+                      • Actions: Turn off {{ climate_list | length }} climate entities (NO LONGER switching to Manual mode)
                     level: info
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-                
-                - service: input_select.select_option
-                  target:
-                    entity_id: "{{ control_mode_helper }}"
-                  data:
-                    option: "Manual"
-                
-                # Turn off all climate entities
+
+                # DISABLED: No longer switching to Manual mode when room becomes vacant
+                # Just turn off all climate entities
                 - repeat:
                     for_each: "{{ climate_list }}"
                     sequence:
@@ -6397,7 +6359,7 @@ action:
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
                   data:
-                    message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: VACANT actions completed - mode set to Manual, all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
+                    message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
                 
@@ -6406,7 +6368,7 @@ action:
                 - service: "{{ notification_service }}"
                   data:
                     title: "{{ room_name }} Adaptive Climate Control"
-                    message: "Room vacant - switched to Manual mode and turned AC off"
+                    message: "Room vacant - turned AC off"
 
             # REMOVED: Manual mode should NEVER turn off AC based on presence
             # Users in Manual mode have full control - presence doesn't matter
