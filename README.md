@@ -1,12 +1,15 @@
-# Ultimate Smart Climate Control Blueprint v2.8.23
+# Ultimate Smart Climate Control Blueprint v2.22.5
 
 ## Overview
 A comprehensive Home Assistant blueprint for advanced climate control featuring **complete 3-tier temperature escalation**, intelligent presence detection, power efficiency optimization, and extensive customization options. This system provides automated climate management with LOW/MEDIUM/HIGH heating and cooling modes, smart fan speed control, and sophisticated presence-based automation.
 
 ## Key Features
 
-### 🌡️ **Complete 3-Tier Temperature System (v2.8.23)**
+### 🌡️ **Complete 3-Tier Temperature System with Stall Detection (v2.22.5)**
 - **Intelligent Escalation**: LOW → MEDIUM → HIGH for both heating and cooling
+- **Near-Target Stall Detection**: Automatically detects when system gets stuck close to target
+- **Dynamic Escalation Logic**: Increases power when progress stalls for extended periods
+- **Smart Priority System**: Escalation overrides de-escalation during stall scenarios
 - **Graduated Fan Speeds**: Automatic selection from gentle to maximum power
 - **Smart Thresholds**: Weather-compensated with automatic adjustments
 - **Precise Control**: Temperature boundaries with hysteresis to prevent oscillation
@@ -47,6 +50,14 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
   - BLE_PLUS: BLE + at least one other sensor
 - **Presence Timeout**: Configurable delay (5-120 min) before actions
 - **Room-Specific Logic**: Each room can have different presence behavior
+
+### 🎯 **Advanced Stall Detection & Recovery (NEW in v2.22.5)**
+- **Near-Target Stall Detection**: Identifies when system is stuck ≤0.8°C from target for 15+ minutes
+- **Intelligent Escalation Override**: Level 1 escalation takes priority over maximum de-escalation during stalls
+- **Reduced De-escalation Sensitivity**: Level 3 (minimum power) now triggers at ≤0.3°C (was 0.5°C)
+- **Smart Priority Logic**: Prevents "Silence" mode from blocking final temperature approach
+- **Progressive Recovery**: Gentle power increase (Level 2 de-escalation) instead of maximum reduction
+- **Real-World Example**: System stuck at 22.4°C → 22.0°C for 50+ minutes now escalates to complete cooling
 
 ### ⚡ Power Efficiency & Energy Savings
 
@@ -279,7 +290,7 @@ Ensure you have a weather integration configured:
 ### Step 5: Create Automation
 1. Go to Settings → Automations & Scenes
 2. Click "Create Automation" → "Use Blueprint"
-3. Select "Ultimate Smart Climate Control - v2.8.21"
+3. Select "Ultimate Smart Climate Control - v2.22.5"
 4. Configure all settings according to your preferences
 5. **Important**: Test with debug logging enabled initially
 
@@ -727,50 +738,50 @@ Additional:
 
 ## Version History
 
-### **v2.8.23** (Current) - Anti-Short Cycling & Target-Based Control
-- **🎯 TARGET-BASED LOGIC** - Revolutionary hysteresis system prevents short cycling by continuing operation until comfort zone center (target temperature) is reached
-- **🔄 SMART CONTINUATION** - Once AC activates, continues cooling/heating until actual target (e.g., 22°C) instead of stopping when temperature drops below trigger threshold
-- **⚡ ENHANCED EFFICIENCY** - All 6 modes (cooling/heating LOW/MEDIUM/HIGH) now use "continue until target" logic to maximize energy efficiency
-- **🔍 IMPROVED DEBUG** - Debug logging clearly shows hysteresis decisions ("continue until target" vs "start condition") for transparent operation
-- **🛡️ CYCLING PROTECTION** - Eliminates rapid on/off cycling that wastes energy, increases wear, and reduces comfort
-- **⚙️ COMPREHENSIVE TESTING** - Validated with 1066 template expressions and 961 conditional blocks working correctly
+### **v2.22.5** (Current) - Near-Target Stall Detection & Recovery
+- **🎯 NEAR-TARGET STALL DETECTION** - Revolutionary logic detects when system gets stuck ≤0.8°C from target for 15+ minutes
+- **⚡ INTELLIGENT ESCALATION** - Level 1 escalation automatically triggers to provide gentle push to final temperature
+- **🔄 SMART PRIORITY SYSTEM** - Escalation takes priority over de-escalation during stall scenarios to prevent "Silence" mode blocking
+- **🛡️ REDUCED DE-ESCALATION SENSITIVITY** - Level 3 maximum de-escalation now triggers at ≤0.3°C (was 0.5°C) with 90% effectiveness requirement
+- **📊 PROGRESSIVE RECOVERY** - Added Level 2 de-escalation for 0.3-0.8°C range instead of jumping to maximum reduction
+- **🔧 ALL 6 FAN SELECTION BLOCKS UPDATED** - Near-target stall override implemented across all heating/cooling modes
+- **✅ REAL-WORLD VALIDATED** - Fixes actual user issue: system stuck at 22.4°C → 22.0°C for 50+ minutes now completes cooling
 
-### **v2.8.22** - Critical Bug Fixes & Reliability Improvements
-- **🐛 CRITICAL FIX** - Time calculation logic now uses helper entity instead of climate entity for accurate runtime lockout
-- **🔧 VARIABLE FIX** - Corrected undefined variable references (eco_offset → eco_mode_setpoint_offset)
-- **🛡️ ENHANCED VALIDATION** - Improved input validation for proximity/direction sensor entities
-- **⚠️ SAFER TEMPLATES** - Better error handling for temperature averaging and state access patterns
-- **🔄 OPTIMIZED HELPERS** - Enhanced helper entity updates with proper existence checks and error handling
-- **⚙️ ROBUST SERVICES** - Added service call error handling with continue_on_error for critical operations
+### **v2.22.4** - Manual Override Elimination & Current Mode Display Fix
+- **🚫 COMPLETE MANUAL MODE REMOVAL** - Eliminated ALL automatic switching to Manual mode throughout entire codebase
+- **🎮 DASHBOARD CONTROL ONLY** - Manual mode now ONLY accessible via explicit user dashboard selection
+- **🔧 FIXED CURRENT MODE DISPLAY** - Shows "OFF" when AC actually off instead of misleading "IDLE" status
+- **🛠️ ROOT CAUSE FIXES** - Removed band-aid solutions, implemented clean fixes for manual override false triggers
+- **⏰ REDUCED OVERRIDE TIMEOUT** - Manual override auto-reset reduced from 1.5h to 5min in Smart mode
+- **🔄 CLEAN ARCHITECTURE** - Eliminated workaround code, restored sophisticated control logic
 
-### **v2.8.21** - Complete 3-Tier Implementation
-- **🎯 COMPLETE SYSTEM** - Fully implemented LOW/MEDIUM/HIGH for heating and cooling
-- **🔥 RESTRUCTURED HEATING** - Proper temperature escalation: LOW (19.9°C), MEDIUM (19.0°C), HIGH (18.0°C)
-- **❄️ ENHANCED COOLING** - Optimized thresholds: LOW (24.1°C), MEDIUM (25.0°C), HIGH (26.0°C)
-- **🧠 SMART FAN CONTROL** - Automatic fan speed detection and selection for all AC types
-- **📊 COMPREHENSIVE DEBUG** - Complete threshold evaluation and decision logging
-- **⚙️ DYNAMIC INTEGRATION** - Full compatibility with effectiveness tracking and escalation
-- **🌡️ HYSTERESIS PROTECTION** - Temperature boundary protection prevents rapid cycling
-- **🔄 STABILITY DETECTION** - Automatic shutdown when temperature equilibrium reached
-- **🏠 ADAPTIVE CONTROL** - Automatic mode switching based on room occupancy patterns
-- **📱 EXTENSIVE PRESENCE** - Multiple sensor validation modes (ANY/ALL/SMART/MAJORITY/BLE_PLUS)
+### **v2.22.3** - Manual Override False Detection Fix
+- **🐛 FIXED FALSE MANUAL OVERRIDE** - Resolved incorrect detection during routine checks and temperature changes
+- **🎯 PRECISE DETECTION** - Manual override now only triggers on actual user AC setting changes
+- **🚀 IMPROVED RESPONSIVENESS** - Eliminated blocking delays during normal operation
+- **📊 ACCURATE DEBUG LOGGING** - Debug messages now correctly reflect actual system state
 
-### **v2.8.20** - Foundation Implementation
-- Three-tier system framework established
-- New cooling LOW mode for gentle temperature control
-- Enhanced debug output with all 6 thresholds
-- Weather compensation integration
+### **v2.22.2** - YAML Structure & Manual Override Fixes
+- **🔧 CRITICAL YAML FIX** - Resolved parsing error from orphaned variables block
+- **🚫 MANUAL MODE DISABLE #1** - First phase of removing automatic manual mode switching
+- **⚡ FAN SPEED PRIORITY FIX** - Fixed de-escalation Level 2 to prioritize "auto" over numeric speeds
+- **📊 ENHANCED DEBUG** - Added current fan speed to status logs for better monitoring
 
-### **v2.8.19** - Logic Refinements
-- Fixed heating threshold naming and behavior alignment
-- Improved temperature escalation logic
+### **v2.22.1** - Foundation Stability & Logic Improvements
+- **🛡️ STABILITY IMPROVEMENTS** - Enhanced error handling and template safety
+- **🔧 LOGIC REFINEMENTS** - Improved conditional logic flow and variable validation
+- **📋 DEBUG ENHANCEMENTS** - Better diagnostic information and troubleshooting support
 
-### **v2.8.18** - Boundary Optimization
-- Resolved threshold overlap issues at comfort zone edges
-- Enhanced temperature boundary logic
+### **v2.22.0** - Major Architecture Evolution
+- **🏗️ CODEBASE MODERNIZATION** - Complete overhaul of control logic architecture
+- **🌡️ ENHANCED TEMPERATURE CONTROL** - Improved threshold management and hysteresis
+- **📱 BETTER PRESENCE DETECTION** - Refined sensor validation and room detection
+- **⚙️ DYNAMIC ADAPTATION** - Advanced effectiveness tracking and power management
 
-### **Previous Major Versions**
-- **v2.8.16**: Runtime lockout debug enhancements
+### **Previous Major Versions (v2.8.x - v2.21.x)**
+- **v2.8.23**: Anti-short cycling & target-based control
+- **v2.8.22**: Critical bug fixes & reliability improvements
+- **v2.8.21**: Complete 3-tier implementation
 - **v2.8.x**: Dynamic adaptation, stability detection, presence validation
 - **v2.7.x**: Weather compensation, scheduling features
 - **v2.6.x**: Smart mode, proximity control, window detection
