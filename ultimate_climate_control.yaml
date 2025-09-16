@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.4
+  name: Ultimate Smart Climate Control - v2.22.5
 
   description: |
-    **Ultimate Smart Climate Control v2.22.4**
+    **Ultimate Smart Climate Control v2.22.5**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -2588,10 +2588,10 @@ action:
           {# Level 0: No escalation needed #}
           {% if time_in_current_mode < min_check_time %}
             0
-          {% elif current_effectiveness >= 80 %}
-            0  {# Working well, no escalation needed #}
-          {% elif distance_from_target <= 1.0 %}
-            0  {# Close to target, no escalation needed #}
+          {% elif current_effectiveness >= 80 and distance_from_target > 0.8 %}
+            0  {# Working well and not too close, no escalation needed #}
+          {% elif distance_from_target <= 1.0 and time_in_current_mode < 15 %}
+            0  {# Close to target but haven't been stuck long enough #}
 
           {# Level 4: EMERGENCY - Immediate maximum power #}
           {% elif distance_from_target > emergency_threshold and time_in_current_mode >= min_check_time %}
@@ -2620,6 +2620,8 @@ action:
             2  {# Using original check time for moderate escalation #}
 
           {# Level 1: LOW - Minor escalation #}
+          {% elif distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
+            1  {# NEAR-TARGET STALL: Very close but stuck for extended time - gentle push needed #}
           {% elif distance_from_target > 1.0 and time_in_current_mode >= (effectiveness_check_mins + 2) %}
             1  {# Slight distance after extended time #}
           {% elif current_effectiveness <= 60 and time_in_current_mode >= (effectiveness_check_mins + 5) %}
@@ -2989,16 +2991,18 @@ action:
             0  {# No clear trend to predict #}
           
           {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
-          {% elif distance_from_target <= close_threshold and current_effectiveness >= 80 %}
-            3  {# Very close and working well - switch to maintenance #}
-          {% elif distance_from_target <= 0.5 %}
-            3  {# Extremely close to target #}
+          {% elif distance_from_target <= close_threshold and current_effectiveness >= 90 %}
+            3  {# Very close and working exceptionally well - switch to maintenance #}
+          {% elif distance_from_target <= 0.3 %}
+            3  {# Extremely close to target - final approach mode #}
           {% elif last_mode == 'cooling' and calculated_trend == 'falling' and (current_temp - cooling_target_temp) <= 1.0 %}
             3  {# Cooling and approaching target closely #}
           {% elif last_mode == 'heating' and calculated_trend == 'rising' and (heating_target_temp - current_temp) <= 1.0 %}
             3  {# Heating and approaching target closely #}
           
           {# Level 2: HIGH de-escalation - Reduce to medium power #}
+          {% elif distance_from_target <= 0.8 and current_effectiveness >= 80 %}
+            2  {# Very close and highly effective - reduce power but not to minimum #}
           {% elif distance_from_target <= approaching_threshold and current_effectiveness >= 60 %}
             2  {# Approaching and working reasonably well #}
           {% elif distance_from_target <= 1.5 and calculated_trend != 'stable' %}
@@ -3476,8 +3480,10 @@ action:
                     # HIGH heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -3698,8 +3704,10 @@ action:
                     # MEDIUM heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -3949,8 +3957,10 @@ action:
                     # LOW heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4202,8 +4212,10 @@ action:
                     # HIGH cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4429,8 +4441,10 @@ action:
                     # MEDIUM cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4687,8 +4701,10 @@ action:
                     # LOW cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority over escalation #}
-                      {% if deescalation_level == 3 %}
+                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {# De-escalation takes priority over escalation unless near-target stall detected #}
+                      {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
