@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.1
+  name: Ultimate Smart Climate Control - v2.22.2
 
   description: |
-    **Ultimate Smart Climate Control v2.22.1**
+    **Ultimate Smart Climate Control v2.22.2**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -2900,7 +2900,11 @@ action:
         {% else %}
           {{ anyone_home or approaching_home }}
         {% endif %}
-  
+
+  # Continue to next actions - variables calculated successfully
+  - condition: template
+    value_template: "{{ true }}"  # Always continue
+
   # DISABLED: No longer auto-switching to Manual mode when manual changes detected
   # The automation will continue to work normally even if user manually adjusts AC
 
