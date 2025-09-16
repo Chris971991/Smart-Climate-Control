@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.5
+  name: Ultimate Smart Climate Control - v2.22.6
 
   description: |
-    **Ultimate Smart Climate Control v2.22.5**
+    **Ultimate Smart Climate Control v2.22.6**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,15 +40,16 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.22.0 Automatic Manual Mode Switching COMPLETELY DISABLED:**
-    • **🚫 NO AUTO-MANUAL** - Will NEVER automatically switch to Manual mode for any reason
-    • **🎮 FULL AUTOMATION** - Automation continues working even if user manually adjusts AC
-    • **✅ USER CONTROL** - Only YOU can switch to Manual mode via dashboard
-    • **🔧 REMOVED LOGIC** - Disabled auto-switch on manual changes AND vacant room scenarios
+    **v2.22.6 Continue Mode Auto-Off Fix - Prevents Temperature Overshoot:**
+    • **🎯 EXACT TARGET EXIT** - All continue modes now exit immediately when hitting exact target (±0.1°C)
+    • **🛡️ OVERSHOOT PREVENTION** - Stops AC at 22.0°C instead of continuing to cool/heat past target
+    • **🔧 ALL MODES FIXED** - Applied to all 12 continue conditions (HIGH/MEDIUM/LOW cooling & heating)
+    • **⚡ IMMEDIATE SHUTDOWN** - No more waiting for stability timeout when target is achieved
 
-    **v2.21.4 Code Cleanup - Removed Band-Aid Fixes:**
-    • **🧹 REMOVED AUTO-RESET** - No longer needed with proper root cause fix
-    • **⏰ REVERTED TIMEOUTS** - Smart mode now uses normal override timeouts (proper fix prevents false triggers)
+    **v2.22.5 Near-Target Stall Detection & Recovery:**
+    • **🎯 STALL DETECTION** - Detects when system is stuck ≤0.8°C from target for 15+ minutes
+    • **⚡ ESCALATION OVERRIDE** - Automatically increases power when progress stalls near target
+    • **🛡️ REDUCED SENSITIVITY** - Level 3 de-escalation now at ≤0.3°C (was 0.5°C) with 90%+ effectiveness
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
@@ -3409,7 +3410,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_high' %}
                 {# Continue HIGH only if still below HIGH threshold or within 1°C of target #}
-                {{ current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0) }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0) }}
+                {% endif %}
               {% else %}
                 {# Not heating high - start if threshold exceeded and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_high_temp }}
@@ -3633,7 +3638,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_medium' %}
                 {# Already heating medium - continue until target reached or escalation needed #}
-                {{ current_temp < target_temp and current_temp > heating_high_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp < target_temp and current_temp > heating_high_temp }}
+                {% endif %}
               {% else %}
                 {# Not heating medium - start if in medium range and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
@@ -3886,7 +3895,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_low' %}
                 {# Already heating low - continue until target reached or escalation needed #}
-                {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                {% endif %}
               {% else %}
                 {# Not heating low - start if in low range and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
@@ -4141,7 +4154,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_high' %}
                 {# Continue HIGH only if still above HIGH threshold or within 1°C of target #}
-                {{ current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0) }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0) }}
+                {% endif %}
               {% else %}
                 {# Not cooling high - start if threshold exceeded and conditions met #}
                 {{ should_activate and enable_cooling and current_temp >= cooling_high_temp }}
@@ -4365,7 +4382,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_medium' %}
                 {# Already cooling medium - continue until target reached or escalation needed #}
-                {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                {% endif %}
               {% else %}
                 {# Not cooling medium - start if in medium range and conditions met #}
                 {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
@@ -4630,7 +4651,11 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_low' %}
                 {# Already cooling low - continue until target reached or escalation needed #}
-                {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                {% endif %}
               {% else %}
                 {# Not cooling low - start if in low range and conditions met #}
                 {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
@@ -5420,7 +5445,11 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached or moved to higher tier #}
-                {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                {% endif %}
               {% else %}
                 {# Not cooling - start if low threshold exceeded and below medium #}
                 {{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
@@ -5611,7 +5640,11 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached or moved to higher tier #}
-                {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                {% endif %}
               {% else %}
                 {# Not cooling - start if medium threshold exceeded and below high #}
                 {{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
@@ -6828,7 +6861,11 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached #}
-                {{ current_temp > target_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp > target_temp }}
+                {% endif %}
               {% else %}
                 {# Not cooling - start if high threshold exceeded #}
                 {% set last_transition_val = states(helper_last_transition) if helper_last_transition else 'none' %}
@@ -7215,7 +7252,11 @@ action:
             value_template: >
               {% if last_mode == 'heating' %}
                 {# Already heating - continue until target reached or moved to higher tier #}
-                {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                {% endif %}
               {% else %}
                 {# Not heating - start if low threshold exceeded and above medium #}
                 {{ current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
@@ -7450,7 +7491,11 @@ action:
             value_template: >
               {% if last_mode == 'heating_medium' %}
                 {# Already heating medium - continue until target reached or moved to higher tier #}
-                {{ current_temp < target_temp and current_temp > heating_high_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp < target_temp and current_temp > heating_high_temp }}
+                {% endif %}
               {% else %}
                 {# Not heating medium - start if medium threshold exceeded and above high #}
                 {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }}
@@ -7615,7 +7660,11 @@ action:
             value_template: >
               {% if last_mode == 'heating_high' %}
                 {# Already heating high - continue until target reached #}
-                {{ current_temp < target_temp }}
+                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% else %}
+                  {{ current_temp < target_temp }}
+                {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
                 {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
