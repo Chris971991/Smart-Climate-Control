@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.0
+  name: Ultimate Smart Climate Control - v2.22.1
 
   description: |
-    **Ultimate Smart Climate Control v2.22.0**
+    **Ultimate Smart Climate Control v2.22.1**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -2903,13 +2903,6 @@ action:
   
   # DISABLED: No longer auto-switching to Manual mode when manual changes detected
   # The automation will continue to work normally even if user manually adjusts AC
-
-      # Set last mode to manual
-      - service: input_text.set_value
-        target:
-          entity_id: "{{ helper_mode }}"
-        data:
-          value: "manual"
 
   # Update presence helper only when room presence FIRST becomes detected (state change from False → True)
   - variables:
