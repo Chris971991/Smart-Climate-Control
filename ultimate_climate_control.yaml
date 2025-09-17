@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.8
+  name: Ultimate Smart Climate Control - v2.22.9
 
   description: |
-    **Ultimate Smart Climate Control v2.22.8**
+    **Ultimate Smart Climate Control v2.22.9**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,15 +40,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.9 Manual Override Detection Fix - False Positive Resolved:**
+    • **🕰️ TIMESTAMP UPDATE** - Auto-off now properly updates helper_last_change timestamp
+    • **🛡️ FALSE POSITIVE FIX** - Prevents "recent manual change" when automation turns off AC
+    • **⚙️ ACCURATE DETECTION** - Override detection now correctly identifies automatic vs manual actions
+    • **👍 CONSISTENT BEHAVIOR** - Auto-off follows same pattern as all other state changes
+
     **v2.22.8 Critical Auto-Off Fix - AC Now Stops at Target:**
     • **🎯 TARGET SHUTDOWN** - AC now properly turns OFF when reaching/passing target temperature
     • **🔧 LOGIC GAP FIXED** - Added explicit turn-off when no conditions match but target achieved
-    • **⚡ PREVENTS OVERCOOLING** - Stops AC at 22.0°C instead of continuing to 21.7°C or below
-    • **📊 DEBUG LOGGING** - Shows "TARGET REACHED - TURNING OFF" for clear status
-
-    **v2.22.7 Critical Stall Detection Fix - Circular Dependency Resolved:**
-    • **🔧 STALL OVERRIDE FIX** - Removed circular dependency between escalation level and stall detection
-    • **⚡ DIRECT DETECTION** - Stall conditions now checked independently for immediate response
     • **⚡ ESCALATION OVERRIDE** - Automatically increases power when progress stalls near target
     • **🛡️ REDUCED SENSITIVITY** - Level 3 de-escalation now at ≤0.3°C (was 0.5°C) with 90%+ effectiveness
     
@@ -8266,6 +8266,21 @@ action:
           entity_id: !input helper_last_mode
         data:
           value: "off"
+        continue_on_error: true
+
+      # Update timestamp to prevent false manual override detection
+      - condition: template
+        value_template: >
+          {{
+            helper_change is defined and
+            helper_change not in ['', 'unavailable', 'unknown'] and
+            states(helper_change) not in ['unavailable', 'unknown']
+          }}
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
         continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
