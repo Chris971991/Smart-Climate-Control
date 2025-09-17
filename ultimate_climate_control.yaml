@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.7
+  name: Ultimate Smart Climate Control - v2.22.8
 
   description: |
-    **Ultimate Smart Climate Control v2.22.7**
+    **Ultimate Smart Climate Control v2.22.8**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,15 +40,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.8 Critical Auto-Off Fix - AC Now Stops at Target:**
+    • **🎯 TARGET SHUTDOWN** - AC now properly turns OFF when reaching/passing target temperature
+    • **🔧 LOGIC GAP FIXED** - Added explicit turn-off when no conditions match but target achieved
+    • **⚡ PREVENTS OVERCOOLING** - Stops AC at 22.0°C instead of continuing to 21.7°C or below
+    • **📊 DEBUG LOGGING** - Shows "TARGET REACHED - TURNING OFF" for clear status
+
     **v2.22.7 Critical Stall Detection Fix - Circular Dependency Resolved:**
     • **🔧 STALL OVERRIDE FIX** - Removed circular dependency between escalation level and stall detection
     • **⚡ DIRECT DETECTION** - Stall conditions now checked independently for immediate response
-    • **🎯 RELIABLE RECOVERY** - System properly overrides de-escalation when stuck near target
-    • **📊 ENHANCED DEBUG** - Added detailed escalation debug output for troubleshooting
-
-    **v2.22.6 Continue Mode Auto-Off Fix - Prevents Temperature Overshoot:**
-    • **🎯 EXACT TARGET EXIT** - All continue modes now exit immediately when hitting exact target (±0.1°C)
-    • **🛡️ OVERSHOOT PREVENTION** - Stops AC at 22.0°C instead of continuing to cool/heat past target
     • **⚡ ESCALATION OVERRIDE** - Automatically increases power when progress stalls near target
     • **🛡️ REDUCED SENSITIVITY** - Level 3 de-escalation now at ≤0.3°C (was 0.5°C) with 90%+ effectiveness
     
@@ -8215,6 +8215,57 @@ action:
           entity_id: !input helper_last_change
         data:
           datetime: "{{ now() }}"
+        continue_on_error: true
+
+  # Turn off AC if it's running but temperature has reached/passed target
+  - if:
+      - condition: template
+        value_template: >
+          {{
+            actual_ac_state == 'on' and
+            last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
+            (
+              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= cooling_target_temp + 0.1) or
+              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= heating_target_temp - 0.1)
+            )
+          }}
+    then:
+      # Log the turn-off action
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🎯 {{ room_name | upper }} TARGET REACHED - TURNING OFF
+
+                ✅ Conditions Met:
+                    • Current: {{ current_temp }}°C
+                    • Target: {{ cooling_target_temp if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] else heating_target_temp }}°C
+                    • Mode: {{ last_mode }}
+                    • Action: Turning AC OFF (target achieved)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Turn off the AC
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+
+      # Update helper to show AC is now off
+      - condition: template
+        value_template: >
+          {{
+            helper_mode is defined and
+            helper_mode not in ['', 'unavailable', 'unknown'] and
+            states(helper_mode) not in ['unavailable', 'unknown']
+          }}
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
         continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
