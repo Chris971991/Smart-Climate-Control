@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.6
+  name: Ultimate Smart Climate Control - v2.22.7
 
   description: |
-    **Ultimate Smart Climate Control v2.22.6**
+    **Ultimate Smart Climate Control v2.22.7**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,14 +40,15 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.7 Critical Stall Detection Fix - Circular Dependency Resolved:**
+    • **🔧 STALL OVERRIDE FIX** - Removed circular dependency between escalation level and stall detection
+    • **⚡ DIRECT DETECTION** - Stall conditions now checked independently for immediate response
+    • **🎯 RELIABLE RECOVERY** - System properly overrides de-escalation when stuck near target
+    • **📊 ENHANCED DEBUG** - Added detailed escalation debug output for troubleshooting
+
     **v2.22.6 Continue Mode Auto-Off Fix - Prevents Temperature Overshoot:**
     • **🎯 EXACT TARGET EXIT** - All continue modes now exit immediately when hitting exact target (±0.1°C)
     • **🛡️ OVERSHOOT PREVENTION** - Stops AC at 22.0°C instead of continuing to cool/heat past target
-    • **🔧 ALL MODES FIXED** - Applied to all 12 continue conditions (HIGH/MEDIUM/LOW cooling & heating)
-    • **⚡ IMMEDIATE SHUTDOWN** - No more waiting for stability timeout when target is achieved
-
-    **v2.22.5 Near-Target Stall Detection & Recovery:**
-    • **🎯 STALL DETECTION** - Detects when system is stuck ≤0.8°C from target for 15+ minutes
     • **⚡ ESCALATION OVERRIDE** - Automatically increases power when progress stalls near target
     • **🛡️ REDUCED SENSITIVITY** - Level 3 de-escalation now at ≤0.3°C (was 0.5°C) with 90%+ effectiveness
     
@@ -3158,7 +3159,8 @@ action:
                 • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
             {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Continue mode - pursuing target' if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min, target ±0.5°C){% endif %}
                 • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target | round(1) }}°C, Effectiveness: {{ current_effectiveness }}%
-            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min){% endif %}
+            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min)
+                • Stall Check: distance={{ distance_from_target | round(1) }}≤0.8? time={{ time_in_current_mode | round(1) }}≥15min? trend={{ calculated_trend }} rate={{ temp_change_rate | round(2) }}°C/min{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
   
@@ -3196,7 +3198,31 @@ action:
             • cooling_medium: {{ cooling_medium_temp }}°C
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-  
+
+  - condition: template
+    value_template: "{{ debug_enabled and dynamic_enabled }}"
+  - service: system_log.write
+    data:
+      message: >
+        🔍 {{ room_name | upper }} ESCALATION DEBUG
+
+        📊 Escalation Conditions:
+            • distance_from_target: {{ distance_from_target | round(1) }}°C
+            • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
+            • current_effectiveness: {{ current_effectiveness }}%
+            • calculated_trend: {{ calculated_trend }}
+            • temp_change_rate: {{ temp_change_rate | round(2) }}°C/min
+
+        🎯 Stall Detection (Level 1):
+            • Distance ≤ 0.8°C: {{ distance_from_target <= 0.8 }}
+            • Time ≥ 15min: {{ time_in_current_mode >= 15 }}
+            • Stable/slow: {{ calculated_trend == 'stable' or temp_change_rate | abs < 0.1 }}
+            • SHOULD TRIGGER: {{ distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) }}
+
+        ⚡ Result: Escalation Level = {{ escalation_level }}
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
   - condition: template
     value_template: "{{ debug_enabled }}"
   - service: system_log.write
@@ -3486,7 +3512,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
@@ -3714,7 +3740,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
@@ -3971,7 +3997,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
@@ -4230,7 +4256,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
@@ -4463,7 +4489,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
@@ -4727,7 +4753,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and escalation_level >= 1 %}
+                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
                       {# De-escalation takes priority over escalation unless near-target stall detected #}
                       {% if deescalation_level == 3 and not near_target_stall %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
