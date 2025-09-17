@@ -1,11 +1,11 @@
-# Ultimate Smart Climate Control Blueprint v2.22.14
+# Ultimate Smart Climate Control Blueprint v2.22.15
 
 ## Overview
 A comprehensive Home Assistant blueprint for advanced climate control featuring **complete 3-tier temperature escalation**, intelligent presence detection, power efficiency optimization, and extensive customization options. This system provides automated climate management with LOW/MEDIUM/HIGH heating and cooling modes, smart fan speed control, and sophisticated presence-based automation.
 
 ## Key Features
 
-### 🌡️ **Complete 3-Tier Temperature System with Stall Detection (v2.22.14)**
+### 🌡️ **Complete 3-Tier Temperature System with Stall Detection (v2.22.15)**
 - **Intelligent Escalation**: LOW → MEDIUM → HIGH for both heating and cooling
 - **Near-Target Stall Detection**: Automatically detects when system gets stuck close to target
 - **Dynamic Escalation Logic**: Increases power when progress stalls for extended periods
@@ -738,7 +738,20 @@ Additional:
 
 ## Version History
 
-### **v2.22.14** (Current) - Critical Auto-Off & Fan Speed Display Fixes
+### **v2.22.15** (Current) - Repository Cleanup & Documentation Enhancement
+
+**📋 COMPREHENSIVE DOCUMENTATION**
+- **Complete Configuration Reference**: Added detailed explanations of all 40+ blueprint options
+- **Step-by-Step Setup Guide**: Enhanced setup-new-room-guide.md with comprehensive instructions
+- **Configuration Examples**: Added basic, advanced, cooling-only, and multi-zone setup templates
+- **User-Friendly Explanations**: Detailed descriptions of every input option with ranges and best practices
+
+**🗂️ REPOSITORY CLEANUP**
+- **Removed Unused Files**: Cleaned up 6 unused template files for better project structure
+- **Streamlined Documentation**: Focused on active blueprint-based setup approach
+- **Improved Navigation**: Cleaner repository structure for easier user experience
+
+### **v2.22.14** - Critical Auto-Off & Fan Speed Display Fixes
 - **🎯 AUTO-OFF TARGET FIX** - AC now properly cools to 22°C instead of stopping early at 23.8°C due to wrong target temperature
 - **📊 DISTANCE CALCULATION FIX** - Shows actual distance (1.8°C) instead of incorrect 0.0°C when system mode is "off"
 - **⚡ FAN SPEED DISPLAY FIX** - Debug messages show actual fan speeds ("Silence", "3", "5") instead of confusing "Auto" labels

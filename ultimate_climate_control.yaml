@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.14
+  name: Ultimate Smart Climate Control - v2.22.15
 
   description: |
-    **Ultimate Smart Climate Control v2.22.14**
+    **Ultimate Smart Climate Control v2.22.15**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,14 +40,14 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.22.14 Critical Auto-Off & Fan Speed Display Fixes:**
-    • **🎯 AUTO-OFF TARGET FIX** - AC now properly cools to 22°C instead of stopping early at 23.8°C
-    • **📊 DISTANCE CALCULATION FIX** - Shows actual distance (1.8°C) instead of incorrect 0.0°C
-    • **⚡ FAN SPEED DISPLAY FIX** - Debug shows actual fan speeds ("Silence", "3", "5") instead of "Auto"
-    • **🛠️ TEMPLATE ERROR FIX** - Resolved UndefinedError preventing automation execution
-    • **🔧 VARIABLE SCOPE FIX** - Proper dependency order ensures all escalation/de-escalation features work
+    **v2.22.15 Repository Cleanup & Documentation Enhancement:**
+    • **📋 COMPREHENSIVE SETUP GUIDE** - Complete configuration reference explaining all 40+ blueprint options
+    • **🗂️ REPOSITORY CLEANUP** - Removed 6 unused template files for cleaner project structure
+    • **📖 ENHANCED DOCUMENTATION** - Step-by-step instructions with configuration examples for all scenarios
+    • **⚙️ CONFIGURATION EXAMPLES** - Basic, advanced, cooling-only, and multi-zone setup templates
+    • **🔧 USER-FRIENDLY GUIDE** - Detailed explanations of every input option with ranges and best practices
 
-    **v2.22.10 Manual Override Smart Detection - Automation Action Aware:**
+    **v2.22.14 Critical Auto-Off & Fan Speed Display Fixes:**
     • **🤖 AUTOMATION AWARENESS** - Manual detection now recognizes when automation should take action
     • **🛡️ FALSE TRIGGER FIX** - Prevents manual override when automation activates cooling/heating
     • **📊 SMART LOGIC** - Added automation_should_act variable to distinguish expected vs unexpected changes
