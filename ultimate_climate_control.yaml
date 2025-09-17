@@ -2844,7 +2844,7 @@ action:
           {% if time_since_change < 2 %}
             false
           {# If automation should be acting now, don't treat state changes as manual #}
-          {% elif automation_should_act %}
+          {% elif smart_presence_active and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp)) %}
             false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
@@ -2908,17 +2908,6 @@ action:
           {{ anyone_home or approaching_home }}
         {% endif %}
 
-      # Check if automation should take action (determines if state changes are expected)
-      automation_should_act: >
-        {{
-          should_activate and
-          smart_presence_active and
-          (
-            (current_temp >= cooling_low_temp) or
-            (current_temp <= heating_low_temp) or
-            (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on')
-          )
-        }}
 
   # Continue to next actions - variables calculated successfully
   - condition: template
@@ -8349,7 +8338,7 @@ action:
         {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
             • Override Helper: {{ states(adaptive_override_helper) }}
         {% endif %}
-            • DEBUG: manual_change_detected={{ manual_change_detected }}, automation_should_act={{ automation_should_act }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
+            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
         {% if adaptive_override_timeout > 0 %}
         {% set last_change = states(helper_change) %}
         {% if last_change not in ['unknown', 'unavailable', ''] %}
