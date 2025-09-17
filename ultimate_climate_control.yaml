@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.13
+  name: Ultimate Smart Climate Control - v2.22.14
 
   description: |
-    **Ultimate Smart Climate Control v2.22.13**
+    **Ultimate Smart Climate Control v2.22.14**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -2877,45 +2877,6 @@ action:
       debug_manual_detection: >
         DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac_state={{ actual_ac_state }}
 
-      # Calculate expected fan speed for debug display
-      calculated_fan_speed: >
-        {% set fans = state_attr(climate_list[0], 'fan_modes') | list if climate_list | length > 0 else [] %}
-        {% set current_mode = states(helper_mode) | default('off') %}
-        {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-
-        {% if current_mode in ['cooling_high', 'heating_high'] %}
-          {# HIGH mode fan selection logic #}
-          {% if deescalation_level == 3 and not near_target_stall %}
-            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif deescalation_level == 2 %}
-            {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}{% endif %}
-          {% elif deescalation_level == 1 %}
-            {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}{% endif %}
-          {% else %}
-            {% set desired_max_fan = fan_speed_max %}
-            {% if desired_max_fan in fans %}{{ desired_max_fan }}{% elif '5' in fans %}5{% elif 'Level 5' in fans %}Level 5{% elif 'turbo' in fans %}turbo{% elif 'Turbo' in fans %}Turbo{% elif 'max' in fans %}max{% elif 'Max' in fans %}Max{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif 'Auto' in fans %}Auto{% elif 'auto' in fans %}auto{% else %}{{ fans[-1] if fans else 'Auto' }}{% endif %}
-          {% endif %}
-        {% elif current_mode in ['cooling_medium', 'heating_medium'] %}
-          {# MEDIUM mode fan selection logic #}
-          {% if deescalation_level == 3 and not near_target_stall %}
-            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif deescalation_level == 2 %}
-            {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
-          {% elif deescalation_level == 1 %}
-            {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else fans[-1] }}{% endif %}
-          {% else %}
-            {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[-2] if fans|length > 1 else fans[0] }}{% endif %}
-          {% endif %}
-        {% elif current_mode in ['cooling_low', 'heating_low'] %}
-          {# LOW mode fan selection logic #}
-          {% if deescalation_level >= 2 and not near_target_stall %}
-            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% else %}
-            {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
-          {% endif %}
-        {% else %}
-          Auto
-        {% endif %}
 
       should_activate: >
         {% if control_mode == 'Manual' %}
@@ -3059,6 +3020,67 @@ action:
       
       should_deescalate: >
         {{ deescalation_level > 0 }}
+
+      # Calculate expected fan speed for debug display
+      calculated_fan_speed: >
+        {% set fans = state_attr(climate_list[0], 'fan_modes') | list if climate_list | length > 0 else [] %}
+        {% set current_mode = states(helper_mode) | default('off') %}
+        {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
+
+        {# Predict what mode will activate if currently off #}
+        {% if current_mode == 'off' %}
+          {% if current_temp >= cooling_high_temp %}
+            {% set predicted_mode = 'cooling_high' %}
+          {% elif current_temp >= cooling_medium_temp %}
+            {% set predicted_mode = 'cooling_medium' %}
+          {% elif current_temp >= cooling_low_temp %}
+            {% set predicted_mode = 'cooling_low' %}
+          {% elif current_temp <= heating_high_temp %}
+            {% set predicted_mode = 'heating_high' %}
+          {% elif current_temp <= heating_medium_temp %}
+            {% set predicted_mode = 'heating_medium' %}
+          {% elif current_temp <= heating_low_temp %}
+            {% set predicted_mode = 'heating_low' %}
+          {% else %}
+            {% set predicted_mode = 'off' %}
+          {% endif %}
+        {% else %}
+          {% set predicted_mode = current_mode %}
+        {% endif %}
+
+        {% if predicted_mode in ['cooling_high', 'heating_high'] %}
+          {# HIGH mode fan selection logic #}
+          {% if deescalation_level == 3 and not near_target_stall %}
+            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
+          {% elif deescalation_level == 2 %}
+            {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}{% endif %}
+          {% elif deescalation_level == 1 %}
+            {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}{% endif %}
+          {% else %}
+            {% set desired_max_fan = fan_speed_max %}
+            {% if desired_max_fan in fans %}{{ desired_max_fan }}{% elif '5' in fans %}5{% elif 'Level 5' in fans %}Level 5{% elif 'turbo' in fans %}turbo{% elif 'Turbo' in fans %}Turbo{% elif 'max' in fans %}max{% elif 'Max' in fans %}Max{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif 'Auto' in fans %}Auto{% elif 'auto' in fans %}auto{% else %}{{ fans[-1] if fans else 'Auto' }}{% endif %}
+          {% endif %}
+        {% elif predicted_mode in ['cooling_medium', 'heating_medium'] %}
+          {# MEDIUM mode fan selection logic #}
+          {% if deescalation_level == 3 and not near_target_stall %}
+            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
+          {% elif deescalation_level == 2 %}
+            {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
+          {% elif deescalation_level == 1 %}
+            {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else fans[-1] }}{% endif %}
+          {% else %}
+            {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[-2] if fans|length > 1 else fans[0] }}{% endif %}
+          {% endif %}
+        {% elif predicted_mode in ['cooling_low', 'heating_low'] %}
+          {# LOW mode fan selection logic #}
+          {% if deescalation_level >= 2 and not near_target_stall %}
+            {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
+          {% else %}
+            {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
+          {% endif %}
+        {% else %}
+          Auto
+        {% endif %}
   
   # Debug: Log dynamic escalation timing configuration
   - if:
