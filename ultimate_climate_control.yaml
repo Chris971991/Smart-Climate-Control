@@ -2833,18 +2833,6 @@ action:
           false
         {% endif %}
       
-      # Check if automation should take action (determines if state changes are expected)
-      automation_should_act: >
-        {{
-          should_activate and
-          smart_presence_active and
-          (
-            (current_temp >= cooling_low_temp) or
-            (current_temp <= heating_low_temp) or
-            (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on')
-          )
-        }}
-
       # Check if user manually changed AC settings (from HA or remote)
       manual_change_detected: >
         {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
@@ -2919,6 +2907,18 @@ action:
         {% else %}
           {{ anyone_home or approaching_home }}
         {% endif %}
+
+      # Check if automation should take action (determines if state changes are expected)
+      automation_should_act: >
+        {{
+          should_activate and
+          smart_presence_active and
+          (
+            (current_temp >= cooling_low_temp) or
+            (current_temp <= heating_low_temp) or
+            (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on')
+          )
+        }}
 
   # Continue to next actions - variables calculated successfully
   - condition: template
