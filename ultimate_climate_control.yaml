@@ -40,17 +40,18 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.14 Critical Auto-Off & Fan Speed Display Fixes:**
+    • **🎯 AUTO-OFF TARGET FIX** - AC now properly cools to 22°C instead of stopping early at 23.8°C
+    • **📊 DISTANCE CALCULATION FIX** - Shows actual distance (1.8°C) instead of incorrect 0.0°C
+    • **⚡ FAN SPEED DISPLAY FIX** - Debug shows actual fan speeds ("Silence", "3", "5") instead of "Auto"
+    • **🛠️ TEMPLATE ERROR FIX** - Resolved UndefinedError preventing automation execution
+    • **🔧 VARIABLE SCOPE FIX** - Proper dependency order ensures all escalation/de-escalation features work
+
     **v2.22.10 Manual Override Smart Detection - Automation Action Aware:**
     • **🤖 AUTOMATION AWARENESS** - Manual detection now recognizes when automation should take action
     • **🛡️ FALSE TRIGGER FIX** - Prevents manual override when automation activates cooling/heating
     • **📊 SMART LOGIC** - Added automation_should_act variable to distinguish expected vs unexpected changes
     • **🔍 ENHANCED DEBUG** - Shows automation intent in debug logs for better troubleshooting
-
-    **v2.22.9 Manual Override Detection Fix - False Positive Resolved:**
-    • **🕰️ TIMESTAMP UPDATE** - Auto-off now properly updates helper_last_change timestamp
-    • **🛡️ FALSE POSITIVE FIX** - Prevents "recent manual change" when automation turns off AC
-    • **⚡ ESCALATION OVERRIDE** - Automatically increases power when progress stalls near target
-    • **🛡️ REDUCED SENSITIVITY** - Level 3 de-escalation now at ≤0.3°C (was 0.5°C) with 90%+ effectiveness
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control

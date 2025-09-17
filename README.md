@@ -1,11 +1,11 @@
-# Ultimate Smart Climate Control Blueprint v2.22.5
+# Ultimate Smart Climate Control Blueprint v2.22.14
 
 ## Overview
 A comprehensive Home Assistant blueprint for advanced climate control featuring **complete 3-tier temperature escalation**, intelligent presence detection, power efficiency optimization, and extensive customization options. This system provides automated climate management with LOW/MEDIUM/HIGH heating and cooling modes, smart fan speed control, and sophisticated presence-based automation.
 
 ## Key Features
 
-### 🌡️ **Complete 3-Tier Temperature System with Stall Detection (v2.22.5)**
+### 🌡️ **Complete 3-Tier Temperature System with Stall Detection (v2.22.14)**
 - **Intelligent Escalation**: LOW → MEDIUM → HIGH for both heating and cooling
 - **Near-Target Stall Detection**: Automatically detects when system gets stuck close to target
 - **Dynamic Escalation Logic**: Increases power when progress stalls for extended periods
@@ -738,7 +738,16 @@ Additional:
 
 ## Version History
 
-### **v2.22.5** (Current) - Near-Target Stall Detection & Recovery
+### **v2.22.14** (Current) - Critical Auto-Off & Fan Speed Display Fixes
+- **🎯 AUTO-OFF TARGET FIX** - AC now properly cools to 22°C instead of stopping early at 23.8°C due to wrong target temperature
+- **📊 DISTANCE CALCULATION FIX** - Shows actual distance (1.8°C) instead of incorrect 0.0°C when system mode is "off"
+- **⚡ FAN SPEED DISPLAY FIX** - Debug messages show actual fan speeds ("Silence", "3", "5") instead of confusing "Auto" labels
+- **🛠️ TEMPLATE ERROR FIX** - Resolved UndefinedError preventing automation execution due to variable scope issues
+- **🔧 VARIABLE SCOPE FIX** - Proper dependency order ensures all escalation/de-escalation features work correctly
+- **🎯 ESCALATION SYSTEM VERIFIED** - Confirmed working optimally with 1-minute intervals for responsive performance adjustment
+- **✅ BACKWARD COMPATIBLE** - All fixes maintain existing configurations without requiring user changes
+
+### **v2.22.5** - Near-Target Stall Detection & Recovery
 - **🎯 NEAR-TARGET STALL DETECTION** - Revolutionary logic detects when system gets stuck ≤0.8°C from target for 15+ minutes
 - **⚡ INTELLIGENT ESCALATION** - Level 1 escalation automatically triggers to provide gentle push to final temperature
 - **🔄 SMART PRIORITY SYSTEM** - Escalation takes priority over de-escalation during stall scenarios to prevent "Silence" mode blocking
