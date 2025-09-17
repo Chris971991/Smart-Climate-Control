@@ -2844,7 +2844,7 @@ action:
           {% if time_since_change < 2 %}
             false
           {# If automation should be acting now, don't treat state changes as manual #}
-          {% elif smart_presence_active and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp)) %}
+          {% elif smart_presence_active and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp) or (actual_state == 'on' and current_temp > comfort_min_temp and current_temp < comfort_max_temp + 2)) %}
             false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
