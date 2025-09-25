@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.15
+  name: Ultimate Smart Climate Control - v2.22.16
 
   description: |
-    **Ultimate Smart Climate Control v2.22.15**
+    **Ultimate Smart Climate Control v2.22.16**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -40,18 +40,19 @@ blueprint:
 
     **VERSION UPDATES:**
 
+    **v2.22.16 Critical Smart Mode Presence Fix:**
+    • **🐛 FIXED AC ON WITHOUT PRESENCE** - AC no longer turns on when room is empty in Smart mode
+    • **✅ FIXED CONTINUE MODE** - Added should_activate check to all 6 heating/cooling continue conditions
+    • **🔧 FIXED MANUAL OVERRIDE** - Corrected logic to use room_presence_detected instead of smart_presence_active
+    • **🚪 IMMEDIATE SHUTOFF** - AC now turns off immediately when room becomes empty in Smart mode
+    • **🛡️ NO FALSE OVERRIDES** - Manual Override only activates for actual manual changes, not automation actions
+
     **v2.22.15 Repository Cleanup & Documentation Enhancement:**
     • **📋 COMPREHENSIVE SETUP GUIDE** - Complete configuration reference explaining all 40+ blueprint options
     • **🗂️ REPOSITORY CLEANUP** - Removed 6 unused template files for cleaner project structure
     • **📖 ENHANCED DOCUMENTATION** - Step-by-step instructions with configuration examples for all scenarios
     • **⚙️ CONFIGURATION EXAMPLES** - Basic, advanced, cooling-only, and multi-zone setup templates
     • **🔧 USER-FRIENDLY GUIDE** - Detailed explanations of every input option with ranges and best practices
-
-    **v2.22.14 Critical Auto-Off & Fan Speed Display Fixes:**
-    • **🤖 AUTOMATION AWARENESS** - Manual detection now recognizes when automation should take action
-    • **🛡️ FALSE TRIGGER FIX** - Prevents manual override when automation activates cooling/heating
-    • **📊 SMART LOGIC** - Added automation_should_act variable to distinguish expected vs unexpected changes
-    • **🔍 ENHANCED DEBUG** - Shows automation intent in debug logs for better troubleshooting
     
     📖 **For complete changelog and version history, visit:**
     🔗 https://github.com/Chris971991/Smart-Climate-Control
@@ -2835,7 +2836,7 @@ action:
           {% if time_since_change < 2 %}
             false
           {# If automation should be acting now, don't treat state changes as manual #}
-          {% elif smart_presence_active and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp) or (actual_state == 'on' and current_temp > comfort_min_temp and current_temp < comfort_max_temp + 2)) %}
+          {% elif room_presence_detected and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp) or (actual_state == 'on' and current_temp > comfort_min_temp and current_temp < comfort_max_temp + 2)) %}
             false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
@@ -3496,7 +3497,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0) }}
+                  {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start if threshold exceeded and conditions met #}
@@ -3724,7 +3725,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp < target_temp and current_temp > heating_high_temp }}
+                  {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating medium - start if in medium range and conditions met #}
@@ -3981,7 +3982,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                  {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating low - start if in low range and conditions met #}
@@ -4240,7 +4241,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0) }}
+                  {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
                 {# Not cooling high - start if threshold exceeded and conditions met #}
@@ -4468,7 +4469,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                  {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start if in medium range and conditions met #}
@@ -4737,7 +4738,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                  {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling low - start if in low range and conditions met #}
