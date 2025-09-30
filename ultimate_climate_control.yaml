@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.2
+  name: Ultimate Smart Climate Control - v3.0.3
 
   description: |
-    **Ultimate Smart Climate Control v3.0.2**
+    **Ultimate Smart Climate Control v3.0.3**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -47,7 +47,12 @@ blueprint:
 
     **VERSION UPDATES:**
 
-    **v2.22.16 Critical Smart Mode Presence Fix:**
+    **v3.0.3 Critical Smart Mode Continue Fix:**
+    • Fixed Smart mode hysteresis logic to respect presence during "continue until target" phase
+    • AC now turns off immediately when presence is lost, even during active cooling/heating cycles
+    • All 6 temperature modes (LOW/MEDIUM/HIGH heating & cooling) now check presence before continuing
+
+    **v3.0.2 Smart Mode Presence Detection Fix:**
     • **🐛 FIXED AC ON WITHOUT PRESENCE** - AC no longer turns on when room is empty in Smart mode
     • **✅ FIXED CONTINUE MODE** - Added should_activate check to all 6 heating/cooling continue conditions
     • **🔧 FIXED MANUAL OVERRIDE** - Corrected logic to use room_presence_detected instead of smart_presence_active
@@ -3506,6 +3511,8 @@ action:
                 {# Continue HIGH only if still below HIGH threshold or within 1°C of target #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
                 {% endif %}
@@ -3734,6 +3741,8 @@ action:
                 {# Already heating medium - continue until target reached or escalation needed #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
@@ -3991,6 +4000,8 @@ action:
                 {# Already heating low - continue until target reached or escalation needed #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
@@ -4250,6 +4261,8 @@ action:
                 {# Continue HIGH only if still above HIGH threshold or within 1°C of target #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
                 {% endif %}
@@ -4478,6 +4491,8 @@ action:
                 {# Already cooling medium - continue until target reached or escalation needed #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
@@ -4747,6 +4762,8 @@ action:
                 {# Already cooling low - continue until target reached or escalation needed #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif control_mode == 'Smart' and not smart_presence_active %}
+                  False  {# EXIT: Smart mode requires presence to continue #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}

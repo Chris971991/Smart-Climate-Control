@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.2
+# Ultimate Smart Climate Control Blueprint v3.0.3
 
 ## 🎉 NEW: Automated Setup Wizard!
 
@@ -812,7 +812,35 @@ Additional:
 
 ## Version History
 
-### **v2.22.15** (Current) - Repository Cleanup & Documentation Enhancement
+### **v3.0.3** (Current) - Critical Smart Mode Continue Fix
+
+**🐛 CRITICAL FIX: SMART MODE HYSTERESIS**
+- **✅ FIXED CONTINUE CONDITION** - Smart mode now respects presence during "continue until target" phase
+- **🚪 IMMEDIATE SHUTOFF** - AC turns off when presence is lost, even during active cooling/heating cycles
+- **🎯 ALL 6 MODES FIXED** - Added presence check to LOW/MEDIUM/HIGH heating & cooling continue conditions
+- **🔧 PROPER LOGIC** - `control_mode == 'Smart' and not smart_presence_active` returns False to exit cycle
+- **📊 REAL-WORLD IMPACT** - Master Bedroom AC no longer runs when room is empty just because house presence is detected
+- **✅ BACKWARD COMPATIBLE** - Auto and Manual modes unchanged, only Smart mode behavior improved
+
+### **v3.0.2** - Smart Mode Presence Detection Fix
+- **🐛 FIXED** - Smart mode no longer activates AC when user is in different room (e.g., AC in Master Bedroom when user in Office)
+- **✅ ROOM-LEVEL PRESENCE** - Smart mode now only activates based on room presence detection
+- **🏠 HOUSE-LEVEL PRESERVED** - Auto mode still uses house presence for whole-home automation
+- **🔧 LOGIC UPDATE** - Added control mode check before house presence check in `smart_presence_active` variable
+
+### **v3.0.1** - Packages Configuration Auto-Add Fix
+- **🔧 FIXED** - Packages configuration now properly added to configuration.yaml automatically
+- **📝 TEXT-BASED EDITING** - Uses text editing instead of YAML parsing to preserve `!include_dir_named` tags
+- **✅ ZERO CONFIGURATION** - True automatic setup without manual configuration.yaml editing
+
+### **v3.0.0** - Automated Setup Wizard Release
+- **🎉 HACS INTEGRATION** - Complete Setup Wizard for automated helper creation
+- **⏱️ 2-MINUTE SETUP** - Full room configuration in ~2 minutes vs 30-60 minutes manual
+- **📦 PACKAGE-BASED HELPERS** - Safe, isolated YAML files in `/config/packages/` directory
+- **🎨 DASHBOARD GENERATOR** - Auto-generates animated Mushroom card YAML
+- **🛡️ SAFE APPROACH** - Won't affect existing helpers or automations
+
+### **v2.22.15** - Repository Cleanup & Documentation Enhancement
 
 **📋 COMPREHENSIVE DOCUMENTATION**
 - **Complete Configuration Reference**: Added detailed explanations of all 40+ blueprint options
