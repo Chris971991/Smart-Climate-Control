@@ -1,0 +1,894 @@
+"""Config flow for Smart Climate Control Setup Wizard - Complete Guided Setup."""
+from __future__ import annotations
+
+import logging
+from typing import Any
+import yaml
+import json
+import os
+import asyncio
+
+import voluptuous as vol
+
+from homeassistant import config_entries
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import entity_registry as er, selector
+import homeassistant.helpers.config_validation as cv
+
+_LOGGER = logging.getLogger(__name__)
+
+DOMAIN = "smart_climate_setup_wizard"
+
+# Helper definitions matching the blueprint requirements
+HELPER_DEFINITIONS = {
+    # ========================================
+    # REQUIRED HELPERS (Always Created)
+    # ========================================
+    "last_mode": {
+        "domain": "input_text",
+        "name": "{room} Climate Last Mode",
+        "icon": "mdi:thermostat",
+        "initial": "off",
+        "max_length": 255,
+    },
+    "last_change": {
+        "domain": "input_datetime",
+        "name": "{room} Climate Last Change",
+        "icon": "mdi:clock-outline",
+        "has_date": True,
+        "has_time": True,
+    },
+
+    # ========================================
+    # DYNAMIC ADAPTATION HELPERS
+    # ========================================
+    "effectiveness_score": {
+        "domain": "input_number",
+        "name": "{room} Climate Effectiveness Score",
+        "icon": "mdi:speedometer",
+        "min": 0,
+        "max": 100,
+        "step": 0.1,
+        "initial": 0,
+        "unit_of_measurement": "%",
+        "mode": "box",
+    },
+    "temp_history": {
+        "domain": "input_number",
+        "name": "{room} Climate Temperature History",
+        "icon": "mdi:thermometer",
+        "min": 0,
+        "max": 50,
+        "step": 0.1,
+        "initial": 0,
+        "unit_of_measurement": "°C",
+        "mode": "box",
+    },
+    "trend_direction": {
+        "domain": "input_text",
+        "name": "{room} Climate Trend Direction",
+        "icon": "mdi:trending-up",
+        "initial": "stable",
+        "max_length": 50,
+    },
+    "mode_start_time": {
+        "domain": "input_datetime",
+        "name": "{room} Climate Mode Start Time",
+        "icon": "mdi:clock-start",
+        "has_date": True,
+        "has_time": True,
+    },
+    "temp_stable_since": {
+        "domain": "input_datetime",
+        "name": "{room} Temperature Stable Since",
+        "icon": "mdi:thermometer-check",
+        "has_date": True,
+        "has_time": True,
+    },
+    "last_transition": {
+        "domain": "input_text",
+        "name": "{room} Climate Last Transition",
+        "icon": "mdi:swap-horizontal",
+        "initial": "none",
+        "max_length": 100,
+    },
+
+    # ========================================
+    # MANUAL OVERRIDE HELPERS
+    # ========================================
+    "manual_override": {
+        "domain": "input_boolean",
+        "name": "{room} Climate Manual Override",
+        "icon": "mdi:hand-back-right",
+        "initial": False,
+    },
+    "proximity_override": {
+        "domain": "input_boolean",
+        "name": "{room} Climate Proximity Override",
+        "icon": "mdi:alert-octagon",
+        "initial": False,
+    },
+
+    # ========================================
+    # CONTROL MODE HELPERS
+    # ========================================
+    "control_mode": {
+        "domain": "input_select",
+        "name": "{room} Climate Control Mode",
+        "icon": "mdi:tune",
+        "options": ["Auto", "Smart", "Manual"],
+        "initial": "Auto",
+    },
+
+    # ========================================
+    # SMART MODE / PRESENCE HELPERS
+    # ========================================
+    "presence_detected": {
+        "domain": "input_datetime",
+        "name": "{room} Presence Last Detected",
+        "icon": "mdi:account-clock",
+        "has_date": True,
+        "has_time": True,
+    },
+}
+
+# Feature groups for optional helpers
+FEATURE_HELPERS = {
+    "dynamic_adaptation": [
+        "effectiveness_score",
+        "temp_history",
+        "trend_direction",
+        "mode_start_time",
+        "temp_stable_since",
+        "last_transition",
+    ],
+    "manual_override": ["manual_override", "proximity_override"],
+    "control_mode": ["control_mode"],
+    "smart_mode": ["presence_detected"],
+}
+
+
+def sanitize_room_name(room_name: str) -> str:
+    """Convert room name to valid entity ID format."""
+    return room_name.lower().replace(" ", "_").replace("-", "_")
+
+
+class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Smart Climate Control Setup Wizard - Complete Guided Setup."""
+
+    VERSION = 2
+
+    def __init__(self):
+        """Initialize the config flow."""
+        self._room_data = {}
+        self._created_helpers = []
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 0: Check packages configuration (or auto-configure it)."""
+        # Check if packages are configured
+        packages_configured = await self._check_packages_configured()
+
+        if not packages_configured:
+            # Automatically add packages configuration
+            try:
+                await self._add_packages_configuration()
+                # Show success message and ask user to restart
+                return self.async_show_form(
+                    step_id="packages_added",
+                    data_schema=vol.Schema({}),
+                    description_placeholders={
+                        "step": "Setup Complete - Restart Required",
+                    },
+                )
+            except Exception as err:
+                _LOGGER.error("Failed to add packages configuration: %s", err)
+                # Fall through to manual instructions
+
+        # Packages are configured, proceed to room name
+        return await self.async_step_room_name()
+
+    async def async_step_packages_added(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show message that packages were added and restart is needed."""
+        return self.async_abort(
+            reason="packages_configured",
+            description_placeholders={
+                "message": "Packages configuration has been added to configuration.yaml. Please restart Home Assistant, then run this wizard again to create your climate control setup."
+            }
+        )
+
+    async def async_step_room_name(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 1: Room Name."""
+        errors = {}
+
+        if user_input is not None:
+            room_name = user_input["room_name"]
+            sanitized_name = sanitize_room_name(room_name)
+
+            # Check if this room already exists
+            await self.async_set_unique_id(f"climate_helpers_{sanitized_name}")
+            self._abort_if_unique_id_configured()
+
+            # Store room name
+            self._room_data = {"room_name": room_name}
+            return await self.async_step_features()
+
+        data_schema = vol.Schema(
+            {
+                vol.Required("room_name"): cv.string,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="room_name",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "step": "1 of 5",
+            },
+        )
+
+    async def async_step_features(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 2: Feature Selection."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+            return await self.async_step_climate_entities()
+
+        data_schema = vol.Schema(
+            {
+                vol.Optional("enable_dynamic_adaptation", default=True): cv.boolean,
+                vol.Optional("enable_manual_override", default=True): cv.boolean,
+                vol.Optional("enable_control_mode", default=True): cv.boolean,
+                vol.Optional("enable_smart_mode", default=True): cv.boolean,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="features",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "2 of 5",
+            },
+        )
+
+    async def async_step_climate_entities(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 3: Select Climate Entities (A/C units)."""
+        errors = {}
+
+        if user_input is not None:
+            if not user_input.get("climate_entities"):
+                errors["base"] = "no_climate_entities"
+            else:
+                # Check if these climate entities are already used
+                selected_entities = user_input["climate_entities"]
+                conflicts = await self._check_climate_entity_conflicts(selected_entities)
+
+                if conflicts:
+                    errors["base"] = "climate_entities_in_use"
+                    errors["conflicting_rooms"] = ", ".join(conflicts)
+                else:
+                    self._room_data.update(user_input)
+                    return await self.async_step_sensors()
+
+        # Get all climate entities
+        climate_entities = self.hass.states.async_entity_ids("climate")
+
+        if not climate_entities:
+            # No climate entities found!
+            return self.async_abort(reason="no_climate_entities")
+
+        data_schema = vol.Schema(
+            {
+                vol.Required("climate_entities"): selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="climate",
+                        multiple=True,
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="climate_entities",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "3 of 5",
+            },
+        )
+
+    async def async_step_sensors(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 4: Select Optional Sensors."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+            return await self.async_step_temperature()
+
+        # Build schema with optional sensors
+        data_schema_dict = {}
+
+        # Temperature sensor (optional)
+        data_schema_dict[vol.Optional("temperature_sensor")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="sensor",
+                device_class="temperature",
+            )
+        )
+
+        # Presence sensors (optional, only if smart mode enabled)
+        if self._room_data.get("enable_smart_mode", True):
+            data_schema_dict[vol.Optional("room_presence_sensors")] = selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["binary_sensor", "sensor"],
+                    multiple=True,
+                )
+            )
+
+        data_schema = vol.Schema(data_schema_dict)
+
+        return self.async_show_form(
+            step_id="sensors",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "4 of 5",
+            },
+        )
+
+    async def async_step_temperature(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 5: Temperature Settings."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+
+            # NOW CREATE EVERYTHING!
+            try:
+                # Create all helpers
+                await self._create_helpers(self.hass, self._room_data)
+
+                # Create the automation
+                automation_id = await self._create_automation(self.hass, self._room_data)
+
+                # Store automation ID
+                self._room_data["automation_id"] = automation_id
+
+                # Generate dashboard card YAML
+                dashboard_card = self._generate_dashboard_card(self._room_data)
+                self._room_data["dashboard_card_yaml"] = dashboard_card
+
+                # Create config entry
+                return self.async_create_entry(
+                    title=f"{self._room_data['room_name']} Climate Control",
+                    data=self._room_data,
+                )
+            except Exception as err:
+                _LOGGER.error("Error creating setup: %s", err, exc_info=True)
+                errors["base"] = "creation_failed"
+
+        data_schema = vol.Schema(
+            {
+                vol.Optional("target_temperature", default=22): vol.All(
+                    vol.Coerce(float), vol.Range(min=16, max=30)
+                ),
+                vol.Optional("comfort_zone_width", default=2.0): vol.All(
+                    vol.Coerce(float), vol.Range(min=0.5, max=5.0)
+                ),
+                vol.Optional("enable_heating", default=True): cv.boolean,
+                vol.Optional("enable_cooling", default=True): cv.boolean,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="temperature",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "5 of 5",
+            },
+        )
+
+    async def _check_climate_entity_conflicts(self, selected_entities: list[str]) -> list[str]:
+        """Check if climate entities are already used in other integrations."""
+        conflicts = []
+
+        # Check all existing config entries for this integration
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            existing_entities = entry.data.get("climate_entities", [])
+
+            # Check for overlap
+            overlap = set(selected_entities) & set(existing_entities)
+            if overlap:
+                conflicts.append(entry.data.get("room_name", "Unknown Room"))
+
+        return conflicts
+
+    async def _check_helper_exists(self, entity_id: str) -> bool:
+        """Check if a helper entity already exists."""
+        return self.hass.states.get(entity_id) is not None
+
+    async def _check_packages_configured(self) -> bool:
+        """Check if packages are configured in configuration.yaml."""
+        try:
+            config_path = self.hass.config.path("configuration.yaml")
+
+            def read_config():
+                if not os.path.exists(config_path):
+                    return {}
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return yaml.safe_load(f) or {}
+
+            config = await self.hass.async_add_executor_job(read_config)
+
+            # Check if homeassistant.packages exists
+            homeassistant_config = config.get("homeassistant", {})
+            return "packages" in homeassistant_config
+
+        except Exception as err:
+            _LOGGER.error("Failed to check packages configuration: %s", err)
+            return False
+
+    async def _add_packages_configuration(self) -> None:
+        """Add packages configuration to configuration.yaml."""
+        config_path = self.hass.config.path("configuration.yaml")
+
+        def modify_config():
+            # Read existing configuration
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = yaml.safe_load(f) or {}
+            else:
+                config = {}
+
+            # Add packages configuration
+            if "homeassistant" not in config:
+                config["homeassistant"] = {}
+
+            if "packages" not in config["homeassistant"]:
+                config["homeassistant"]["packages"] = "!include_dir_named packages"
+
+            # Write back with proper formatting
+            with open(config_path, "w", encoding="utf-8") as f:
+                # Use custom representer for the !include_dir_named tag
+                yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+            _LOGGER.info("Added packages configuration to configuration.yaml")
+
+        await self.hass.async_add_executor_job(modify_config)
+
+    async def _create_helpers(
+        self, hass: HomeAssistant, config: dict[str, Any]
+    ) -> None:
+        """Create all required helper entities via YAML package file."""
+        room_name = config["room_name"]
+        sanitized_name = sanitize_room_name(room_name)
+
+        # Check if helpers already exist
+        test_helper_id = f"input_text.climate_last_mode_{sanitized_name}"
+        if await self._check_helper_exists(test_helper_id):
+            _LOGGER.warning(
+                "Helpers for %s already exist! This may cause conflicts.", room_name
+            )
+            raise ValueError(
+                f"Helper entities for '{room_name}' already exist. "
+                "Please use a different room name or delete existing helpers first."
+            )
+
+        # Always create base helpers
+        base_helpers = ["last_mode", "last_change"]
+        helpers_to_create = base_helpers.copy()
+
+        # Add optional helpers based on features
+        if config.get("enable_dynamic_adaptation", True):
+            helpers_to_create.extend(FEATURE_HELPERS["dynamic_adaptation"])
+
+        if config.get("enable_manual_override", True):
+            helpers_to_create.extend(FEATURE_HELPERS["manual_override"])
+
+        if config.get("enable_control_mode", True):
+            helpers_to_create.extend(FEATURE_HELPERS["control_mode"])
+
+        if config.get("enable_smart_mode", True):
+            helpers_to_create.extend(FEATURE_HELPERS["smart_mode"])
+
+        # Build YAML configuration for all helpers
+        helpers_config = {}
+        created_helpers = []
+
+        for helper_key in helpers_to_create:
+            helper_def = HELPER_DEFINITIONS[helper_key]
+            entity_id = f"{helper_def['domain']}.climate_{helper_key}_{sanitized_name}"
+            domain = helper_def["domain"]
+            object_id = f"climate_{helper_key}_{sanitized_name}"
+
+            # Initialize domain dict if needed
+            if domain not in helpers_config:
+                helpers_config[domain] = {}
+
+            # Build helper configuration
+            helper_config = {
+                "name": helper_def["name"].format(room=room_name),
+            }
+
+            if helper_def.get("icon"):
+                helper_config["icon"] = helper_def["icon"]
+
+            if domain == "input_text":
+                helper_config["initial"] = helper_def.get("initial", "")
+                helper_config["max"] = helper_def.get("max_length", 255)
+
+            elif domain == "input_datetime":
+                helper_config["has_date"] = helper_def.get("has_date", True)
+                helper_config["has_time"] = helper_def.get("has_time", True)
+
+            elif domain == "input_number":
+                helper_config["min"] = helper_def.get("min", 0)
+                helper_config["max"] = helper_def.get("max", 100)
+                helper_config["step"] = helper_def.get("step", 1)
+                helper_config["initial"] = helper_def.get("initial", 0)
+                helper_config["mode"] = helper_def.get("mode", "box")
+                if "unit_of_measurement" in helper_def:
+                    helper_config["unit_of_measurement"] = helper_def["unit_of_measurement"]
+
+            elif domain == "input_boolean":
+                helper_config["initial"] = helper_def.get("initial", False)
+
+            elif domain == "input_select":
+                helper_config["options"] = helper_def.get("options", [])
+                if helper_def.get("initial"):
+                    helper_config["initial"] = helper_def["initial"]
+
+            helpers_config[domain][object_id] = helper_config
+            created_helpers.append(entity_id)
+
+        # Write YAML package file
+        try:
+            packages_dir = os.path.join(hass.config.config_dir, "packages")
+            os.makedirs(packages_dir, exist_ok=True)
+
+            package_file = os.path.join(packages_dir, f"climate_control_{sanitized_name}.yaml")
+
+            def write_package():
+                with open(package_file, "w", encoding="utf-8") as f:
+                    yaml.dump(helpers_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+            await hass.async_add_executor_job(write_package)
+            _LOGGER.info("Created package file: %s", package_file)
+
+            # Reload all input helper domains
+            reload_tasks = []
+            for domain in helpers_config.keys():
+                _LOGGER.info("Reloading %s...", domain)
+                reload_tasks.append(hass.services.async_call(domain, "reload", blocking=False))
+
+            await asyncio.gather(*reload_tasks, return_exceptions=True)
+
+            self._created_helpers = created_helpers
+            _LOGGER.info(
+                "Successfully created %d helpers for room: %s",
+                len(created_helpers),
+                room_name,
+            )
+
+        except Exception as err:
+            _LOGGER.error("Failed to create helpers package: %s", err)
+            raise
+
+    async def _create_automation(
+        self, hass: HomeAssistant, config: dict[str, Any]
+    ) -> str:
+        """Create automation with blueprint."""
+        room_name = config["room_name"]
+        sanitized_name = sanitize_room_name(room_name)
+
+        # Build helper entity IDs
+        helpers = {
+            "helper_last_mode": f"input_text.climate_last_mode_{sanitized_name}",
+            "helper_last_change": f"input_datetime.climate_last_change_{sanitized_name}",
+        }
+
+        # Add optional helpers based on enabled features
+        if config.get("enable_control_mode", True):
+            helpers["helper_control_mode"] = f"input_select.climate_control_mode_{sanitized_name}"
+
+        if config.get("enable_smart_mode", True):
+            helpers["helper_presence_detected"] = f"input_datetime.climate_presence_detected_{sanitized_name}"
+            helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
+
+        if config.get("enable_dynamic_adaptation", True):
+            helpers["helper_temp_history"] = f"input_number.climate_temp_history_{sanitized_name}"
+            helpers["helper_trend_direction"] = f"input_text.climate_trend_direction_{sanitized_name}"
+            helpers["helper_mode_start_time"] = f"input_datetime.climate_mode_start_time_{sanitized_name}"
+            helpers["helper_effectiveness_score"] = f"input_number.climate_effectiveness_score_{sanitized_name}"
+            helpers["helper_temp_stable_since"] = f"input_datetime.climate_temp_stable_since_{sanitized_name}"
+            helpers["helper_last_transition"] = f"input_text.climate_last_transition_{sanitized_name}"
+
+        if config.get("enable_manual_override", True):
+            if "helper_proximity_override" not in helpers:
+                helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
+
+        # Build automation config
+        automation_config = {
+            "id": f"climate_control_{sanitized_name}",
+            "alias": f"{room_name} Climate Control",
+            "description": f"Smart climate control for {room_name} - Created by Smart Climate Control Setup Wizard",
+            "use_blueprint": {
+                "path": "Chris971991/ultimate_climate_control.yaml",
+                "input": {
+                    "room_name": room_name,
+                    "climate_entities": config["climate_entities"],
+                    **helpers,
+                    "target_temperature": config.get("target_temperature", 22),
+                    "comfort_zone_width": config.get("comfort_zone_width", 2.0),
+                    "enable_heating_mode": config.get("enable_heating", True),
+                    "enable_cooling_mode": config.get("enable_cooling", True),
+                },
+            },
+        }
+
+        # Add optional sensors
+        if config.get("temperature_sensor"):
+            automation_config["use_blueprint"]["input"]["temperature_sensor"] = config["temperature_sensor"]
+
+        if config.get("room_presence_sensors"):
+            automation_config["use_blueprint"]["input"]["room_presence_sensors"] = config["room_presence_sensors"]
+
+        # Read existing automations
+        automations_file = hass.config.path("automations.yaml")
+
+        def read_automations():
+            try:
+                if os.path.exists(automations_file):
+                    with open(automations_file, "r", encoding="utf-8") as f:
+                        return yaml.safe_load(f) or []
+                else:
+                    return []
+            except Exception as err:
+                _LOGGER.error("Failed to read automations.yaml: %s", err)
+                return []
+
+        automations = await hass.async_add_executor_job(read_automations)
+
+        # Check for automation ID conflict
+        automation_id = automation_config["id"]
+        existing_ids = [auto.get("id") for auto in automations if auto.get("id")]
+
+        if automation_id in existing_ids:
+            # Automation with this ID already exists!
+            _LOGGER.error(
+                "Automation ID '%s' already exists in automations.yaml", automation_id
+            )
+            raise ValueError(
+                f"Automation for '{room_name}' already exists. "
+                "Please delete the existing automation or use a different room name."
+            )
+
+        # Add new automation
+        automations.append(automation_config)
+
+        # Write back
+        def write_automations():
+            try:
+                with open(automations_file, "w", encoding="utf-8") as f:
+                    yaml.dump(automations, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                _LOGGER.info("Added automation to automations.yaml: %s", automation_config["id"])
+            except Exception as err:
+                _LOGGER.error("Failed to write automations.yaml: %s", err)
+                raise
+
+        await hass.async_add_executor_job(write_automations)
+
+        # Reload automations
+        try:
+            await hass.services.async_call("automation", "reload", blocking=True)
+            _LOGGER.info("Reloaded automations")
+        except Exception as err:
+            _LOGGER.error("Failed to reload automations: %s", err)
+            raise
+
+        return automation_config["id"]
+
+    def _generate_dashboard_card(self, config: dict[str, Any]) -> str:
+        """Generate Mushroom card YAML for dashboard."""
+        room_name = config["room_name"]
+        sanitized_name = sanitize_room_name(room_name)
+
+        # Get the climate entity (first one if multiple)
+        climate_entities = config.get("climate_entities", [])
+        climate_entity = climate_entities[0] if climate_entities else "climate.your_ac"
+
+        # Only generate if control mode is enabled
+        if not config.get("enable_control_mode", True):
+            return ""
+
+        control_mode_entity = f"input_select.climate_control_mode_{sanitized_name}"
+
+        card_yaml = f"""type: custom:mushroom-select-card
+entity: {control_mode_entity}
+name: {room_name} Climate
+icon: mdi:air-conditioner
+fill_container: false
+layout: horizontal
+card_mod:
+  style: |
+    ha-card {{
+      background-color: rgba(0,0,0,0.35) !important;
+      border-radius: 20px !important;
+      height: 56px !important;
+      min-height: 56px !important;
+    }}
+    .primary {{
+      color: white !important;
+    }}
+    mushroom-select {{
+      --select-height: 40px !important;
+    }}
+    mushroom-shape-icon {{
+      {{% set mode = states('{control_mode_entity}') %}}
+      {{% set ac_state = states('{climate_entity}') %}}
+      {{% if mode == 'Auto' %}}
+        --card-mod-icon: mdi:robot;
+      {{% elif mode == 'Manual' %}}
+        --card-mod-icon: mdi:hand-back-right;
+      {{% elif mode == 'Smart' %}}
+        --card-mod-icon: mdi:brain;
+      {{% else %}}
+        --card-mod-icon: mdi:air-conditioner;
+      {{% endif %}}
+
+      {{% if ac_state == 'off' %}}
+        --icon-color: rgb(158, 158, 158) !important;
+        --shape-color: rgba(158, 158, 158, 0.2) !important;
+      {{% else %}}
+        {{% if mode == 'Auto' %}}
+          animation: spin 3s ease-in-out infinite alternate;
+        {{% elif mode == 'Manual' %}}
+          animation: wave 1s ease-in-out infinite;
+        {{% elif mode == 'Smart' %}}
+          animation: pulse 2s ease-in-out infinite;
+        {{% endif %}}
+      {{% endif %}}
+      display: flex;
+    }}
+    @keyframes spin {{
+      0%, 100% {{ transform: rotate(0deg); }}
+      50% {{ transform: rotate(360deg); }}
+    }}
+    @keyframes wave {{
+      0%, 100% {{ transform: rotate(0deg); }}
+      25% {{ transform: rotate(-15deg); }}
+      75% {{ transform: rotate(15deg); }}
+    }}
+    @keyframes pulse {{
+      0%, 100% {{
+        transform: scale(1);
+        opacity: 1;
+      }}
+      50% {{
+        transform: scale(1.1);
+        opacity: 0.8;
+      }}
+    }}"""
+
+        return card_yaml
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Get the options flow for this handler."""
+        return OptionsFlowHandler(config_entry)
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for the integration."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            # Check if user wants to show dashboard card
+            if user_input.get("show_dashboard_card", False):
+                return await self.async_step_show_card()
+
+            return self.async_create_entry(title="", data=user_input)
+
+        # Get dashboard card if available
+        has_card = bool(self.config_entry.data.get("dashboard_card_yaml"))
+
+        schema_dict = {
+            vol.Optional(
+                "enable_dynamic_adaptation",
+                default=self.config_entry.data.get(
+                    "enable_dynamic_adaptation", True
+                ),
+            ): cv.boolean,
+            vol.Optional(
+                "enable_manual_override",
+                default=self.config_entry.data.get(
+                    "enable_manual_override", True
+                ),
+            ): cv.boolean,
+            vol.Optional(
+                "enable_control_mode",
+                default=self.config_entry.data.get("enable_control_mode", True),
+            ): cv.boolean,
+            vol.Optional(
+                "enable_smart_mode",
+                default=self.config_entry.data.get(
+                    "enable_smart_mode", True
+                ),
+            ): cv.boolean,
+        }
+
+        # Add option to show dashboard card if it exists
+        if has_card:
+            schema_dict[vol.Optional("show_dashboard_card", default=False)] = cv.boolean
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(schema_dict),
+        )
+
+    async def async_step_show_card(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show the dashboard card YAML."""
+        dashboard_card = self.config_entry.data.get("dashboard_card_yaml", "")
+        room_name = self.config_entry.data.get("room_name", "Unknown Room")
+
+        if not dashboard_card:
+            return self.async_abort(reason="no_card_available")
+
+        # Create notification with card YAML
+        await self.hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": f"🎨 {room_name} Dashboard Card",
+                "message": f"""## Dashboard Control Card for {room_name}
+
+Copy this YAML and add it to your dashboard:
+
+```yaml
+{dashboard_card}
+```
+
+**To add to your dashboard:**
+1. Go to your dashboard
+2. Click Edit (top right)
+3. Click Add Card
+4. Search for "Manual" card
+5. Paste the YAML above
+6. Save!
+
+**Note:** Requires `mushroom` and `card-mod` custom cards (install via HACS)""",
+                "notification_id": f"climate_card_{self.config_entry.entry_id}",
+            },
+        )
+
+        return self.async_abort(reason="card_shown")

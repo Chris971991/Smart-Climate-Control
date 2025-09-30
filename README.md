@@ -1,4 +1,19 @@
-# Ultimate Smart Climate Control Blueprint v2.22.15
+# Ultimate Smart Climate Control Blueprint v3.0.0
+
+## 🎉 NEW: Automated Setup Wizard!
+
+**The easiest way to set up climate control just got even easier!** Install the companion **Smart Climate Control Setup Wizard** HACS integration for:
+
+✅ **2-Minute Setup** - Complete room configuration in ~2 minutes (vs 30-60 minutes manual)
+✅ **Zero Manual Helper Creation** - All 13 helper entities created automatically
+✅ **Automatic Packages Configuration** - Wizard adds packages support to your configuration.yaml
+✅ **Blueprint Automation Created** - Complete automation configured and ready to use
+✅ **Dashboard Card Generator** - Auto-generates animated Mushroom card YAML for mode control
+✅ **Safe & Non-Destructive** - Won't affect existing helpers or automations
+
+**Installation:** See [Setup Wizard Installation](#setup-wizard-installation-method-1-recommended) below!
+
+---
 
 ## Overview
 A comprehensive Home Assistant blueprint for advanced climate control featuring **complete 3-tier temperature escalation**, intelligent presence detection, power efficiency optimization, and extensive customization options. This system provides automated climate management with LOW/MEDIUM/HIGH heating and cooling modes, smart fan speed control, and sophisticated presence-based automation.
@@ -95,15 +110,74 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 
 ## Installation Guide
 
-### Step 1: Blueprint Installation
+### Method 1: Setup Wizard Installation (⭐ RECOMMENDED - Automated!)
 
-#### Option A: Direct Import (Recommended)
+The **Smart Climate Control Setup Wizard** is a complete 5-step guided setup that creates EVERYTHING automatically - helpers AND automation! No manual configuration needed!
+
+#### Step 1: Install Setup Wizard via HACS
+1. Open HACS in Home Assistant
+2. Go to **Integrations**
+3. Click ⋮ Menu (top right) → **Custom Repositories**
+4. Add repository:
+   - **URL**: `https://github.com/Chris971991/Smart-Climate-Control`
+   - **Category**: Integration
+5. Click **Add**
+6. Find "Smart Climate Control Setup Wizard" and click **Download**
+7. **Restart Home Assistant**
+
+#### Step 2: Run the Automated Setup Wizard
+1. Go to Settings → Devices & Services
+2. Click **Add Integration**
+3. Search for "Smart Climate Control Setup Wizard"
+4. **The wizard will automatically:**
+   - Check if packages are configured in configuration.yaml
+   - **Add packages configuration automatically if missing** (restart required)
+   - After restart, guide you through 5-step room setup:
+
+**5-Step Wizard Process:**
+- **Step 0 (Automatic):** Checks/adds packages configuration to configuration.yaml
+- **Step 1:** Enter room name (e.g., "Master Bedroom", "Living Room")
+- **Step 2:** Select features (all recommended - Dynamic Adaptation, Manual Override, Control Mode, Smart Mode)
+- **Step 3:** Select your A/C units (supports multiple units per room)
+- **Step 4:** Select optional sensors:
+  - Temperature sensor for accurate readings
+  - BLE sensors (e.g., sensor.phone_ble_area)
+  - Motion sensors (PIR, mmWave)
+  - Any occupancy detection sensors
+- **Step 5:** Configure temperature settings (target temp, comfort zone, enable heating/cooling)
+5. Click **Submit** - Everything created automatically!
+
+**What gets created automatically:**
+- ✅ Packages configuration in configuration.yaml (if needed)
+- ✅ All 13 helper entities in /config/packages/climate_control_[room].yaml
+- ✅ Complete blueprint automation in automations.yaml
+- ✅ Dashboard card YAML (animated Mushroom card for mode control)
+- ✅ Fully configured and ready to use!
+
+**Features:**
+- 🛡️ **Safe & Non-Destructive:** Won't affect existing helpers or automations
+- 📦 **Package-Based Helpers:** Clean, isolated helper entities
+- 🎨 **Dashboard Card:** Auto-generated animated Mushroom card YAML
+- ♻️ **Reload Services:** Helpers available immediately (no full restart needed)
+- 🔄 **Repeatable:** Set up multiple rooms easily
+
+**Repeat for each room you want to control.**
+
+**✅ Total Time: ~2 minutes per room vs 30-60 minutes manual setup!**
+
+---
+
+### Method 2: Manual Installation (Advanced Users)
+
+#### Step 1: Blueprint Installation
+
+**Option A: Direct Import (Recommended)**
 1. Go to Settings → Automations & Scenes → Blueprints Tab
-2. Click "Import Blueprint" 
+2. Click "Import Blueprint"
 3. Paste this URL: `https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml`
 4. Click "Preview Blueprint" then "Import Blueprint"
 
-#### Option B: Manual Installation
+**Option B: Manual Installation**
 1. Download `ultimate_climate_control.yaml`
 2. Place in your Home Assistant config directory:
    ```
@@ -112,7 +186,7 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 3. Restart Home Assistant
 4. Go to Settings → Automations → Blueprints → Import Blueprint
 
-### Step 2: Required Helper Entities
+#### Step 2: Required Helper Entities
 **⚠️ CRITICAL: Each automation instance (room) needs its own unique set of helpers**
 
 Create via Settings → Devices & Services → Helpers → Create Helper

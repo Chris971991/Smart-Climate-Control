@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Climate Control Setup - Checking Configuration",
+        "description": "Checking your Home Assistant configuration...\n\nThe wizard will automatically configure packages support if needed."
+      },
+      "packages_added": {
+        "title": "✅ Packages Configuration Added",
+        "description": "**Packages support has been added to your configuration.yaml!**\n\nThe following line was added:\n```yaml\nhomeassistant:\n  packages: !include_dir_named packages\n```\n\n**Next Step:** Please restart Home Assistant, then run this wizard again to create your climate control setup."
+      },
+      "room_name": {
+        "title": "Smart Climate Control Setup (Step 1 of 5)",
+        "description": "Welcome to the Smart Climate Control Setup Wizard!\n\nThis wizard will guide you through creating a complete climate control automation for your room.\n\n**What will be created:**\n• Helper entities for tracking and automation\n• Complete blueprint automation\n• Fully configured climate control system\n\n**Let's get started!**\n\nEnter the room name you want to control:",
+        "data": {
+          "room_name": "Room Name (e.g., Living Room, Bedroom, Office)"
+        }
+      },
+      "features": {
+        "title": "Select Features (Step 2 of 5)",
+        "description": "Choose which features to enable for **{room_name}**.\n\n**All features are recommended for best performance!**\n\nThese determine which helper entities will be created and which automation features will be available.",
+        "data": {
+          "enable_dynamic_adaptation": "✅ Dynamic Adaptation (effectiveness tracking, power escalation)",
+          "enable_manual_override": "✅ Manual Override Detection (detects manual AC changes)",
+          "enable_control_mode": "✅ Control Mode Selection (Auto/Smart/Manual switching)",
+          "enable_smart_mode": "✅ Smart Mode (presence detection and timeout logic)"
+        }
+      },
+      "climate_entities": {
+        "title": "Select Climate Entities (Step 3 of 5)",
+        "description": "Select the A/C unit(s) for **{room_name}**.\n\nYou can select multiple A/C units if your room has more than one.\n\n**Tip:** If you don't see your A/C, make sure it's properly integrated in Home Assistant first.",
+        "data": {
+          "climate_entities": "A/C Units (select one or more)"
+        }
+      },
+      "sensors": {
+        "title": "Select Sensors (Step 4 of 5)",
+        "description": "Configure optional sensors for **{room_name}**.\n\n**All sensors are optional but recommended for best accuracy!**\n\n**Temperature Sensor:** External thermometer for more accurate readings\n\n**Room Presence Sensors:** Add your BLE sensors (e.g., sensor.phone_ble_area), motion sensors (PIR), mmWave sensors, or any occupancy detection sensors. You can select multiple sensors for better accuracy!",
+        "data": {
+          "temperature_sensor": "Temperature Sensor (optional)",
+          "room_presence_sensors": "Room Presence Sensors - BLE, Motion, mmWave, etc. (optional, multiple)"
+        }
+      },
+      "temperature": {
+        "title": "Temperature Settings (Step 5 of 5)",
+        "description": "Configure basic temperature settings for **{room_name}**.\n\n**Almost there!** Click Submit to create everything.\n\n**What happens next:**\n1. All helper entities will be created automatically\n2. Your blueprint automation will be configured\n3. Climate control will be ready to use immediately!",
+        "data": {
+          "target_temperature": "Target Temperature (°C)",
+          "comfort_zone_width": "Comfort Zone Width (±°C)",
+          "enable_heating": "Enable Heating Mode",
+          "enable_cooling": "Enable Cooling Mode"
+        }
+      }
+    },
+    "error": {
+      "create_failed": "Failed to create helper entities. Check logs for details.",
+      "creation_failed": "Failed to create climate control setup. Check logs for details.",
+      "no_climate_entities": "Please select at least one A/C unit.",
+      "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)"
+    },
+    "abort": {
+      "already_configured": "Climate control for this room already exists.",
+      "no_climate_entities": "No climate entities found in Home Assistant. Please add A/C integrations first.",
+      "packages_configured": "Packages configuration has been added to configuration.yaml. Please restart Home Assistant, then run this wizard again to create your climate control setup."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "description": "**Note:** Changing these options will NOT automatically create or delete helpers or modify the automation.\n\nTo update your setup, you'll need to:\n1. Manually create/delete helpers as needed\n2. Update the automation configuration\n\nThis is mainly for tracking which features you enabled.",
+        "data": {
+          "enable_dynamic_adaptation": "Dynamic Adaptation (effectiveness tracking, escalation)",
+          "enable_manual_override": "Manual Override Detection",
+          "enable_control_mode": "Control Mode Selection (Auto/Smart/Manual)",
+          "enable_smart_mode": "Smart Mode (presence detection, timeout logic)",
+          "show_dashboard_card": "🎨 Show Dashboard Card YAML (if you lost it or want to copy it again)"
+        }
+      }
+    },
+    "abort": {
+      "no_card_available": "No dashboard card available for this room (control mode may not be enabled).",
+      "card_shown": "Dashboard card YAML has been sent as a notification! Check your notifications."
+    }
+  }
+}

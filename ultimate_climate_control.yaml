@@ -1,14 +1,21 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v2.22.16
+  name: Ultimate Smart Climate Control - v3.0.0
 
   description: |
-    **Ultimate Smart Climate Control v2.22.16**
+    **Ultimate Smart Climate Control v3.0.0**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
     Advanced power-efficient climate automation with **adaptive fan control**, **proximity-based pre-conditioning** and **intelligent presence detection**. Control multiple A/C units with full customization of temperatures, distances, and operating modes.
 
-    **🎯 NEW: ENHANCED ADAPTIVE FAN CONTROL:**
+    **🎉 NEW IN v3.0.0: AUTOMATED SETUP WIZARD!**
+
+    • **Zero Manual Setup:** Use the companion Setup Wizard HACS integration for automated helper creation
+    • **2-Minute Setup:** Complete room setup in ~2 minutes instead of 30-60 minutes
+    • **Package-Based Helpers:** Clean, isolated helper entities using Home Assistant packages
+    • **Dashboard Card Generator:** Auto-generates animated Mushroom card YAML for mode control
+
+    **🎯 ENHANCED ADAPTIVE FAN CONTROL:**
 
     • **Progressive Escalation:** Temperature tiers now adapt fan speeds based on actual cooling/heating effectiveness
     • **All 5 Fan Levels:** Intelligent use of Level 1→2→3→4→5 based on performance, not just temperature
