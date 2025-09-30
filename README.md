@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.5
+# Ultimate Smart Climate Control Blueprint v3.0.6
 
 ## 🎉 NEW: Automated Setup Wizard!
 
@@ -812,7 +812,17 @@ Additional:
 
 ## Version History
 
-### **v3.0.5** (Current) - Blueprint Description Overhaul
+### **v3.0.6** (Current) - Critical START Condition Presence Fix
+
+**🐛 CRITICAL FIX: START CONDITION PRESENCE DETECTION**
+- **✅ FIXED START CONDITIONS** - heating_low, cooling_low, and cooling_medium now require `should_activate` before starting
+- **🚫 PREVENTS UNWANTED ACTIVATION** - AC will NOT turn on when temperature thresholds are met if nobody is in the room
+- **🎯 3 MODES FIXED** - Added explicit `should_activate and` check to START conditions
+- **🔧 PROPER LOGIC** - Continue conditions already worked (v3.0.3/v3.0.4), now START conditions match
+- **📊 REAL-WORLD IMPACT** - AC won't activate at 18:13 when temp jumps from 24.0°C to 25.0°C with nobody present
+- **✅ BACKWARD COMPATIBLE** - heating_high, cooling_high, heating_medium already had the check, now all 6 modes consistent
+
+### **v3.0.5** - Blueprint Description Overhaul
 
 **📋 DOCUMENTATION IMPROVEMENTS**
 - **✨ STREAMLINED DESCRIPTION** - Reduced from 160 lines to 50 lines (70% reduction)
