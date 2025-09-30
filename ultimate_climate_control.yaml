@@ -1,165 +1,79 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.4
+  name: Ultimate Smart Climate Control - v3.0.5
 
   description: |
-    **Ultimate Smart Climate Control v3.0.4**
+    **Ultimate Smart Climate Control v3.0.5**
 
-    🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
+    🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
-    Advanced power-efficient climate automation with **adaptive fan control**, **proximity-based pre-conditioning** and **intelligent presence detection**. Control multiple A/C units with full customization of temperatures, distances, and operating modes.
+    ---
 
-    **🎉 NEW IN v3.0.0: AUTOMATED SETUP WIZARD!**
+    ## 🚀 EASY SETUP - Use the Setup Wizard!
 
-    • **Zero Manual Setup:** Use the companion Setup Wizard HACS integration for automated helper creation
-    • **2-Minute Setup:** Complete room setup in ~2 minutes instead of 30-60 minutes
-    • **Package-Based Helpers:** Clean, isolated helper entities using Home Assistant packages
-    • **Dashboard Card Generator:** Auto-generates animated Mushroom card YAML for mode control
+    **⚠️ Don't create helpers manually!** Install the companion **Setup Wizard** for automated setup:
 
-    **🎯 ENHANCED ADAPTIVE FAN CONTROL:**
+    ✅ **2-Minute Setup** - Complete automation in ~2 minutes
+    ✅ **Zero Manual Work** - All 13 helpers created automatically
+    ✅ **Dashboard Card Generator** - Animated control card included
+    ✅ **Safe & Isolated** - Package-based helpers won't affect existing setup
 
-    • **Progressive Escalation:** Temperature tiers now adapt fan speeds based on actual cooling/heating effectiveness
-    • **All 5 Fan Levels:** Intelligent use of Level 1→2→3→4→5 based on performance, not just temperature
-    • **Smart Tier Logic:** LOW starts gentle (Level 1), escalates within tier; MEDIUM starts moderate (Level 3), escalates to max; HIGH uses maximum immediately
-    • **Both Heating & Cooling:** Same intelligent escalation applies to all temperature scenarios
-    • **Performance-Based:** Fan speed increases only when actually needed based on real-world effectiveness
+    **Install via HACS:**
+    Settings → HACS → Integrations → ⋮ Menu → Custom Repositories
+    Add: `https://github.com/Chris971991/Smart-Climate-Control` (Category: Integration)
 
-    **POWER SAVING FEATURES:**
+    *Advanced users can still create helpers manually - see [Documentation](https://github.com/Chris971991/Smart-Climate-Control)*
 
-    • **Energy Optimization:** Configured to turn OFF in comfort zone (saves 40-60% energy)
-    • **Smart Tolerance:** Wider temperature tolerance (±2°C) with extended cycling protection
-    • **Adaptive Efficiency:** Progressive fan ramping prevents over-powered responses, maximizing efficiency
+    ---
 
-    **UNIVERSAL COMPATIBILITY:**
+    ## ✨ Key Features
 
-    **Auto-detects and adapts** to different A/C models:
+    **🎮 3 Control Modes:**
+    - **Auto:** House-wide automation with home/away detection
+    - **Smart:** Room-specific presence with BLE/PIR/mmWave sensors (immediate shutoff when leaving)
+    - **Manual:** Full user control with emergency temperature overrides only
 
-    • **HVAC modes:** auto ↔ heat_cool, supports all Daikin variants
-    • **Fan speeds:** Level 5 ↔ 5, Auto ↔ auto, Quiet ↔ Silence
-    • **Swing modes:** Both ↔ both, Vertical ↔ vertical, 3D ↔ both
+    **🧠 Intelligent Automation:**
+    - Room-specific presence detection (BLE, motion, door sensors, adjacent room support)
+    - Dynamic 5-level fan escalation based on actual effectiveness (Level 1→5)
+    - Temperature stability auto-off (prevents wasted runtime)
+    - Proximity pre-conditioning (cools/heats before you arrive home)
+    - Near-target stall detection (pushes through final degrees)
 
-    **SMART MODE PRESENCE:**
+    **⚡ Energy Efficiency:**
+    - 40-60% energy savings vs always-on operation
+    - Smart hysteresis prevents short-cycling and equipment wear
+    - Graduated temperature tiers (LOW/MEDIUM/HIGH with escalation)
+    - Eco mode for unoccupied rooms (off/eco/maintain options)
+    - Comfort zone idle (no unnecessary cooling/heating)
 
-    **Room-specific climate control** based on occupancy:
+    **🔧 Advanced Capabilities:**
+    - Universal A/C compatibility (auto-detects HVAC modes, fan speeds, swing modes)
+    - Multi-zone support (control 1 or multiple units simultaneously)
+    - Weather compensation (adjusts thresholds based on outdoor temperature)
+    - Time-based scheduling (morning/day/evening/night + weekends)
+    - Window detection with auto-shutoff
+    - Manual override protection (respects user changes for 3+ hours)
 
-    • **Room occupied:** Normal temperature control
-    • **Room empty (timeout):** Configurable eco/off/maintain behavior
-    • **Away from house:** Global away mode (separate setting)
+    ---
 
-    **VERSION UPDATES:**
+    ## 🆕 Latest Update - v3.0.5
 
-    **v3.0.4 Critical Smart Mode Timeout Fix:**
-    • Fixed Smart mode to ignore presence timeout grace period during active cycles
-    • smart_presence_active now checks control mode BEFORE timeout check
-    • AC immediately exits when room presence becomes false in Smart mode
-    • Presence timeout grace period now only applies to Auto mode (as intended)
+    **Blueprint Description Overhaul:** Streamlined description focuses on features with prominent Setup Wizard promotion. Manual setup instructions moved to documentation.
 
-    **v3.0.3 Critical Smart Mode Continue Fix:**
-    • Fixed Smart mode hysteresis logic to respect presence during "continue until target" phase
-    • AC now turns off immediately when presence is lost, even during active cooling/heating cycles
-    • All 6 temperature modes (LOW/MEDIUM/HIGH heating & cooling) now check presence before continuing
+    📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
-    **v3.0.2 Smart Mode Presence Detection Fix:**
-    • **🐛 FIXED AC ON WITHOUT PRESENCE** - AC no longer turns on when room is empty in Smart mode
-    • **✅ FIXED CONTINUE MODE** - Added should_activate check to all 6 heating/cooling continue conditions
-    • **🔧 FIXED MANUAL OVERRIDE** - Corrected logic to use room_presence_detected instead of smart_presence_active
-    • **🚪 IMMEDIATE SHUTOFF** - AC now turns off immediately when room becomes empty in Smart mode
-    • **🛡️ NO FALSE OVERRIDES** - Manual Override only activates for actual manual changes, not automation actions
+    ---
 
-    **v2.22.15 Repository Cleanup & Documentation Enhancement:**
-    • **📋 COMPREHENSIVE SETUP GUIDE** - Complete configuration reference explaining all 40+ blueprint options
-    • **🗂️ REPOSITORY CLEANUP** - Removed 6 unused template files for cleaner project structure
-    • **📖 ENHANCED DOCUMENTATION** - Step-by-step instructions with configuration examples for all scenarios
-    • **⚙️ CONFIGURATION EXAMPLES** - Basic, advanced, cooling-only, and multi-zone setup templates
-    • **🔧 USER-FRIENDLY GUIDE** - Detailed explanations of every input option with ranges and best practices
-    
-    📖 **For complete changelog and version history, visit:**
-    🔗 https://github.com/Chris971991/Smart-Climate-Control
+    ## 🔗 Quick Links
 
-    **CONTROL MODES:**
+    🚀 [Setup Wizard Installation](https://github.com/Chris971991/Smart-Climate-Control#setup-wizard-installation-method-1-recommended)
+    📖 [Complete Documentation](https://github.com/Chris971991/Smart-Climate-Control/blob/main/README.md)
+    📋 [Configuration Guide](https://github.com/Chris971991/Smart-Climate-Control/blob/main/setup-new-room-guide.md)
+    🐛 [Report Issues](https://github.com/Chris971991/Smart-Climate-Control/issues)
 
-    • **AUTO MODE:**
-      Full automation with occupancy detection and presence-based control.
-      System automatically adjusts temperature when you're home or away.
+    ---
 
-    • **MANUAL MODE:**
-      Full manual control with no automation.
-      You control temperature, fan speed, and on/off manually.
-
-    • **SMART MODE:**
-      Aggressive presence detection and advanced occupancy sensing.
-      Uses motion sensors, door sensors, phone presence, and predictive algorithms
-      to optimize temperature before occupancy and maintain comfort during use.
-      
-      **NEW:** Temperature Stability Auto-Off - automatically turns off AC when
-      temperature equilibrium is reached (configurable tolerance & duration).
-
-    **KEY FEATURES:**
-
-    • **Smart Mode Control** - Auto/Manual/Smart modes with presence timeout
-    • **Room-Specific Presence** - BLE/PIR sensors for accurate occupancy
-    • **Proximity Zones** - Different behaviors based on distance from home
-    • **Eco Mode** - Reduces energy use by 30-40% vs on/off cycling
-    • **Smart Pre-conditioning** - Activates when approaching home
-    • **Multi-Zone Support** - Control 1 or many A/C units
-    • **Gradual Adjustments** - Prevents aggressive cycling
-    • **Runtime Protection** - Extends equipment life
-
-    **REQUIRED SETUP** - Create unique helpers for EACH room/automation:
-
-    **1. Input Text Helper** (unique per room):
-    • Living Room: `input_text.climate_last_mode_living_room`
-    • Bedroom: `input_text.climate_last_mode_bedroom`
-    • Office: `input_text.climate_last_mode_office`
-    • Icon: `mdi:air-conditioner`
-
-    **2. Input DateTime Helper** (unique per room):
-    • Living Room: `input_datetime.climate_last_change_living_room`
-    • Bedroom: `input_datetime.climate_last_change_bedroom`
-    • Office: `input_datetime.climate_last_change_office`
-    • Has date: **Yes** ✅
-    • Has time: **Yes** ✅
-    • Icon: `mdi:clock-outline`
-
-    **OPTIONAL: SMART MODE HELPERS** (for advanced control):
-    • `input_select.climate_control_mode_[room]` (Auto/Manual/Smart modes)
-    • `input_datetime.presence_last_detected_[room]` (presence timeout tracking)
-    • `input_boolean.climate_proximity_override_[room]` (emergency override)
-
-    **OPTIONAL: DYNAMIC ADAPTATION HELPERS** (for smart escalation):
-    • `input_number.climate_temp_history_[room]` (temperature tracking)
-    • `input_text.climate_trend_direction_[room]` (rising/falling/stable)
-    • `input_datetime.climate_mode_start_time_[room]` (when current mode started)
-    • `input_number.climate_effectiveness_score_[room]` (0-100, how well it's working)
-
-    **OPTIONAL: STABILITY & HYSTERESIS HELPERS** (for v2.1+ features):
-    • `input_datetime.temp_stable_since_[room]` (tracks when temp became stable)
-    • `input_text.climate_last_transition_[room]` (for hysteresis tracking)
-    
-    
-    📍 Create via: Settings → Devices & Services → Helpers → Create Helper
-    
-    
-    **3. PROXIMITY SENSORS - Set up via Integration:**
-    
-    1. Go to Settings → Devices & Services → Integrations
-    2. Click "+ ADD INTEGRATION" 
-    3. Search for and select "Proximity"
-    4. Configure:
-       • Name: "Home"
-       • Zone: Select your "Home" zone
-       • Devices: Select your person entities
-       • Tolerance: 50m (prevents GPS jitter updates)
-    
-    This creates:
-    • sensor.home_nearest_distance (distance in meters)
-    • sensor.home_nearest_direction_of_travel (towards/away/stationary/arrived)
-    
-    
-    **OPTIONAL: Energy Tracking Helpers:**
-    
-    • `input_number.climate_power_saving_score` (efficiency %)
-    • `sensor.climate_runtime_today` (daily runtime tracking)
-    • `sensor.climate_efficiency_rating` (efficiency score)
+    **Blueprint Direct Import:** `https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml`
   domain: automation
   source_url: https://github.com/yourusername/ultimate-climate-control
   input:

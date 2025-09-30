@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.4
+# Ultimate Smart Climate Control Blueprint v3.0.5
 
 ## 🎉 NEW: Automated Setup Wizard!
 
@@ -812,7 +812,16 @@ Additional:
 
 ## Version History
 
-### **v3.0.4** (Current) - Critical Smart Mode Timeout Fix
+### **v3.0.5** (Current) - Blueprint Description Overhaul
+
+**📋 DOCUMENTATION IMPROVEMENTS**
+- **✨ STREAMLINED DESCRIPTION** - Reduced from 160 lines to 50 lines (70% reduction)
+- **🚀 SETUP WIZARD PROMOTION** - Prominent callout directing users to automated setup
+- **📖 FEATURE-FOCUSED** - Highlights capabilities instead of manual instructions
+- **🔗 BETTER NAVIGATION** - Quick links to Setup Wizard, docs, and support
+- **✅ PROFESSIONAL PRESENTATION** - Clean, scannable format with clear sections
+
+### **v3.0.4** - Critical Smart Mode Timeout Fix
 
 **🐛 CRITICAL FIX: PRESENCE TIMEOUT GRACE PERIOD**
 - **✅ FIXED TIMEOUT LOGIC** - Smart mode now checks control mode BEFORE presence timeout
