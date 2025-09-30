@@ -455,24 +455,50 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         config_path = self.hass.config.path("configuration.yaml")
 
         def modify_config():
-            # Read existing configuration
+            # Read existing configuration as text
             if os.path.exists(config_path):
                 with open(config_path, "r", encoding="utf-8") as f:
-                    config = yaml.safe_load(f) or {}
+                    lines = f.readlines()
             else:
-                config = {}
+                lines = []
+
+            # Check if homeassistant section exists
+            has_homeassistant = False
+            homeassistant_line = -1
+            has_packages = False
+
+            for i, line in enumerate(lines):
+                if line.strip().startswith("homeassistant:"):
+                    has_homeassistant = True
+                    homeassistant_line = i
+                if "packages:" in line:
+                    has_packages = True
+                    break
+
+            if has_packages:
+                _LOGGER.info("Packages already configured in configuration.yaml")
+                return
 
             # Add packages configuration
-            if "homeassistant" not in config:
-                config["homeassistant"] = {}
+            if has_homeassistant:
+                # Find the indentation level of items under homeassistant
+                indent = "  "  # Default 2 spaces
+                # Insert after homeassistant: line
+                insert_line = homeassistant_line + 1
+                # Find correct position (after existing homeassistant items)
+                while insert_line < len(lines) and lines[insert_line].startswith(indent) and not lines[insert_line].strip() == "":
+                    insert_line += 1
 
-            if "packages" not in config["homeassistant"]:
-                config["homeassistant"]["packages"] = "!include_dir_named packages"
+                lines.insert(insert_line, f"{indent}packages: !include_dir_named packages\n")
+            else:
+                # Add homeassistant section at the beginning
+                lines.insert(0, "homeassistant:\n")
+                lines.insert(1, "  packages: !include_dir_named packages\n")
+                lines.insert(2, "\n")
 
-            # Write back with proper formatting
+            # Write back
             with open(config_path, "w", encoding="utf-8") as f:
-                # Use custom representer for the !include_dir_named tag
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                f.writelines(lines)
 
             _LOGGER.info("Added packages configuration to configuration.yaml")
 

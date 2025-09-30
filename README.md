@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.0
+# Ultimate Smart Climate Control Blueprint v3.0.1
 
 ## 🎉 NEW: Automated Setup Wizard!
 
