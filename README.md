@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.3
+# Ultimate Smart Climate Control Blueprint v3.0.4
 
 ## 🎉 NEW: Automated Setup Wizard!
 
@@ -812,7 +812,17 @@ Additional:
 
 ## Version History
 
-### **v3.0.3** (Current) - Critical Smart Mode Continue Fix
+### **v3.0.4** (Current) - Critical Smart Mode Timeout Fix
+
+**🐛 CRITICAL FIX: PRESENCE TIMEOUT GRACE PERIOD**
+- **✅ FIXED TIMEOUT LOGIC** - Smart mode now checks control mode BEFORE presence timeout
+- **🚪 IMMEDIATE SHUTOFF** - AC exits immediately when `room_presence_detected` becomes false
+- **⏱️ NO GRACE PERIOD IN SMART MODE** - Presence timeout only applies to Auto mode (as intended)
+- **🔧 PROPER LOGIC ORDER** - `smart_presence_active` returns `room_presence_detected` directly for Smart mode
+- **📊 REAL-WORLD IMPACT** - AC no longer continues running for 5+ minutes after leaving room
+- **✅ BACKWARD COMPATIBLE** - Auto mode still has presence timeout grace period, Manual mode unchanged
+
+### **v3.0.3** - Critical Smart Mode Continue Fix
 
 **🐛 CRITICAL FIX: SMART MODE HYSTERESIS**
 - **✅ FIXED CONTINUE CONDITION** - Smart mode now respects presence during "continue until target" phase

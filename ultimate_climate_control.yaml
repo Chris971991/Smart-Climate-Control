@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.3
+  name: Ultimate Smart Climate Control - v3.0.4
 
   description: |
-    **Ultimate Smart Climate Control v3.0.3**
+    **Ultimate Smart Climate Control v3.0.4**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -46,6 +46,12 @@ blueprint:
     • **Away from house:** Global away mode (separate setting)
 
     **VERSION UPDATES:**
+
+    **v3.0.4 Critical Smart Mode Timeout Fix:**
+    • Fixed Smart mode to ignore presence timeout grace period during active cycles
+    • smart_presence_active now checks control mode BEFORE timeout check
+    • AC immediately exits when room presence becomes false in Smart mode
+    • Presence timeout grace period now only applies to Auto mode (as intended)
 
     **v3.0.3 Critical Smart Mode Continue Fix:**
     • Fixed Smart mode hysteresis logic to respect presence during "continue until target" phase
@@ -2814,13 +2820,13 @@ action:
       smart_presence_active: >
         {% if control_mode == 'Manual' %}
           false
+        {% elif control_mode == 'Smart' %}
+          {# Smart mode ONLY activates based on room presence - no timeout grace period #}
+          {{ room_presence_detected }}
         {% elif room_presence_detected %}
           true
         {% elif minutes_since_presence < presence_timeout %}
           true
-        {% elif control_mode == 'Smart' %}
-          {# Smart mode ONLY activates based on room presence - ignore house presence #}
-          false
         {% elif proximity_zone == 'home' %}
           true
         {% elif anyone_home and control_mode == 'Auto' %}
