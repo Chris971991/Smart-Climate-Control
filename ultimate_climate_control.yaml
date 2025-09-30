@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.8
+  name: Ultimate Smart Climate Control - v3.0.9
 
   description: |
-    **Ultimate Smart Climate Control v3.0.8**
+    **Ultimate Smart Climate Control v3.0.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,20 +56,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.8
+    ## 🆕 Latest Update - v3.0.9
 
-    **🛏️ NEW: BEDROOM Validation Mode - Perfect for Sleep Detection!**
-    - ✅ Intelligently adapts to ANY sensor combination (BLE, motion, bed sensors)
-    - ✅ Detects presence when sleeping (bed sensor + BLE)
-    - ✅ Detects presence when awake (motion + BLE)
-    - ✅ Prevents false positives (phone left behind won't trigger AC)
-    - ✅ Works with only bed sensor, only motion, or any combination
+    **📖 IMPROVED: Response Aggressiveness Description**
+    - ✅ Clearer explanation of what aggressiveness actually controls
+    - ✅ Real-world examples showing AC behavior at each setting
+    - ✅ Concrete temperature thresholds for each aggressiveness level
+    - ✅ Decision guide for when to increase/decrease setting
+    - ✅ Addresses common issue of AC running too long on low power
 
-    **🛏️ Bedroom Mode Intelligence:**
-    - With all 3 sensors: BLE + (Motion OR Bed) = awake OR sleeping detection
-    - With bed + motion: Either sensor works (no phone needed)
-    - With bed + BLE: Both required (ensures you're in bed with phone)
-    - Automatically adapts to whatever sensors you have installed!
+    **💡 Key Improvement:**
+    - Users can now easily understand how to fix "AC staying on for hours" issue
+    - Setting description now includes visual examples with actual temperatures
+    - Clear guidance: "AC running too long? → Increase to 3-5"
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -259,18 +258,42 @@ blueprint:
         temperature_aggressiveness:
           name: ⚡ Response Aggressiveness
           description: |
-            How quickly system responds **beyond comfort zone**:
+            **Controls how quickly the AC reaches maximum power** when temperature goes outside comfort zone.
 
-            • **1 = Gentle** (extreme modes at ±3°C from comfort, slow, very efficient)
-            • **2 = Smooth** (medium at comfort edge, high at +1°C, max at +2°C)
-            • **3 = Balanced** (extreme modes at ±2°C from comfort, good balance)
-            • **5 = Aggressive** (extreme modes at ±1°C from comfort, fast, less efficient)
+            **What this actually does:**
+            - Higher values = AC ramps to HIGH/MAX cooling faster = reaches target temp quicker
+            - Lower values = AC escalates gradually through LOW→MEDIUM→HIGH = more efficient but slower
 
-            **Example** (Target 23°C, Zone ±2°C, Aggressiveness 2):
+            **Settings explained:**
 
-            • **Comfort:** 21-25°C (OFF mode for power savings)
-            • **Medium:** 25°C & 21°C (gentle response at comfort edge)
-            • **High:** 26°C & 20°C (strong response at ±1°C from edge)
+            • **1 = Gentle** - AC won't hit maximum power until 3°C past comfort zone
+              └─ Most efficient, but AC may run for hours on low power
+
+            • **2 = Smooth** (Default) - Medium power at comfort edge, high at +1°C, max at +2°C
+              └─ Balanced approach for most situations
+
+            • **3 = Balanced** - Maximum power kicks in at 2°C past comfort zone
+              └─ Good balance between speed and efficiency
+
+            • **5 = Aggressive** - Maximum power immediately at 1°C past comfort zone
+              └─ Fastest response, reaches target quickly, uses more power
+
+            **Real Example** (Target: 23°C, Comfort Zone: ±2°C = 21-25°C):
+
+            **With Aggressiveness = 2 (Default):**
+            - 21-25°C → AC OFF (in comfort zone)
+            - 25.1°C → LOW cooling starts
+            - 26°C → MEDIUM cooling (+1°C past edge)
+            - 27°C → HIGH cooling (+2°C past edge)
+
+            **With Aggressiveness = 5 (Aggressive):**
+            - 21-25°C → AC OFF (in comfort zone)
+            - 25.1°C → LOW cooling starts
+            - 26°C → HIGH cooling already! (+1°C triggers max power)
+
+            **💡 Choose based on your priority:**
+            - AC running too long trying to reach target? → Increase to 3-5
+            - Want maximum efficiency and don't mind slower response? → Use 1-2
           default: 2
           selector:
             number:
