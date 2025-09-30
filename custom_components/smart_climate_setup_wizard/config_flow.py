@@ -320,7 +320,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         if user_input is not None:
             self._room_data.update(user_input)
-            return await self.async_step_temperature()
+            # Check if smart mode enabled and presence sensors were added
+            if (self._room_data.get("enable_smart_mode", True) and
+                user_input.get("room_presence_sensors")):
+                return await self.async_step_bedroom_mode()
+            else:
+                return await self.async_step_temperature()
 
         # Build schema with optional sensors
         data_schema_dict = {}
@@ -351,6 +356,30 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "4 of 5",
+            },
+        )
+
+    async def async_step_bedroom_mode(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 4.5: Ask if this is a bedroom with bed sensor."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+            return await self.async_step_temperature()
+
+        data_schema = vol.Schema({
+            vol.Optional("is_bedroom_with_bed_sensor", default=False): selector.BooleanSelector()
+        })
+
+        return self.async_show_form(
+            step_id="bedroom_mode",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "4.5 of 5",
             },
         )
 
@@ -680,6 +709,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         if config.get("room_presence_sensors"):
             automation_config["use_blueprint"]["input"]["room_presence_sensors"] = config["room_presence_sensors"]
+
+        # Set presence validation mode based on bedroom configuration
+        if config.get("is_bedroom_with_bed_sensor", False):
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "bedroom"
+        else:
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "smart"
 
         # Read existing automations
         automations_file = hass.config.path("automations.yaml")

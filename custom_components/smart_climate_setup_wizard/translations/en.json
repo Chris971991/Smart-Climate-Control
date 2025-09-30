@@ -35,10 +35,17 @@
       },
       "sensors": {
         "title": "Select Sensors (Step 4 of 5)",
-        "description": "Configure optional sensors for **{room_name}**.\n\n**All sensors are optional but recommended for best accuracy!**\n\n**Temperature Sensor:** External thermometer for more accurate readings\n\n**Room Presence Sensors:** Add your BLE sensors (e.g., sensor.phone_ble_area), motion sensors (PIR), mmWave sensors, or any occupancy detection sensors. You can select multiple sensors for better accuracy!",
+        "description": "Configure optional sensors for **{room_name}**.\n\n**All sensors are optional but recommended for best accuracy!**\n\n**Temperature Sensor:** External thermometer for more accurate readings\n\n**Room Presence Sensors:** Add your BLE sensors (e.g., sensor.phone_ble_area), motion sensors (PIR), mmWave sensors, or any occupancy detection sensors.\n\n**🛏️ For Bedrooms:** Include bed occupancy sensors (e.g., binary_sensor.bed_occupancy) for sleep detection! You can select multiple sensors for better accuracy.",
         "data": {
           "temperature_sensor": "Temperature Sensor (optional)",
-          "room_presence_sensors": "Room Presence Sensors - BLE, Motion, mmWave, etc. (optional, multiple)"
+          "room_presence_sensors": "Room Presence Sensors - BLE, Motion, mmWave, Bed Sensor, etc. (optional, multiple)"
+        }
+      },
+      "bedroom_mode": {
+        "title": "Bedroom Configuration (Step 4.5 of 5)",
+        "description": "Is **{room_name}** a bedroom with a bed occupancy sensor?\n\n**🛏️ BEDROOM Mode Benefits:**\n• Detects presence when sleeping (bed sensor)\n• Detects presence when awake (motion sensor)\n• Prevents false positives (phone left behind)\n• Works with any sensor combination\n\n**Select YES if:**\n• This is a bedroom\n• You added a bed occupancy sensor above\n• You want the AC to stay on while sleeping\n\n**Select NO for:**\n• Living rooms, offices, other areas\n• Bedrooms without bed sensors",
+        "data": {
+          "is_bedroom_with_bed_sensor": "Enable BEDROOM mode? (Adaptive sleep detection)"
         }
       },
       "temperature": {
