@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.1
+  name: Ultimate Smart Climate Control - v3.0.2
 
   description: |
-    **Ultimate Smart Climate Control v3.0.1**
+    **Ultimate Smart Climate Control v3.0.2**
 
     🌡️ **INTELLIGENT ADAPTIVE CLIMATE CONTROL**
 
@@ -2813,6 +2813,9 @@ action:
           true
         {% elif minutes_since_presence < presence_timeout %}
           true
+        {% elif control_mode == 'Smart' %}
+          {# Smart mode ONLY activates based on room presence - ignore house presence #}
+          false
         {% elif proximity_zone == 'home' %}
           true
         {% elif anyone_home and control_mode == 'Auto' %}
