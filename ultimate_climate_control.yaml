@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.6
+  name: Ultimate Smart Climate Control - v3.0.7
 
   description: |
-    **Ultimate Smart Climate Control v3.0.6**
+    **Ultimate Smart Climate Control v3.0.7**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,9 +56,13 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.6
+    ## 🆕 Latest Update - v3.0.7
 
-    **Critical Presence Detection Fix:** Fixed START conditions for heating_low, cooling_low, and cooling_medium modes to require presence detection before activation. Prevents AC from turning on when temperature thresholds are met but nobody is in the room.
+    **Critical Smart Mode Fixes:**
+    - ✅ Added grace period for Smart mode (respects presence_timeout for short absences like bathroom trips)
+    - ✅ Added explicit AC shutdown when Smart mode loses presence after grace period
+    - ✅ Fixed target overshoot logic to prevent cooling/heating past target temperature
+    - ✅ Added room_presence_sensors as triggers for immediate response to presence changes
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2125,6 +2129,11 @@ trigger:
     entity_id: !input presence_devices
     id: device_change
 
+  # Fire immediately when room presence sensors change (motion, BLE, etc.)
+  - platform: state
+    entity_id: !input room_presence_sensors
+    id: room_presence_change
+
   # Fire immediately when control mode changes (Manual/Smart/Auto)
   - platform: state
     entity_id: !input helper_control_mode
@@ -2735,8 +2744,14 @@ action:
         {% if control_mode == 'Manual' %}
           false
         {% elif control_mode == 'Smart' %}
-          {# Smart mode ONLY activates based on room presence - no timeout grace period #}
-          {{ room_presence_detected }}
+          {# Smart mode with grace period for short absences (bathroom trips, etc.) #}
+          {% if room_presence_detected %}
+            true
+          {% elif minutes_since_presence < presence_timeout %}
+            true
+          {% else %}
+            false
+          {% endif %}
         {% elif room_presence_detected %}
           true
         {% elif minutes_since_presence < presence_timeout %}
@@ -8222,6 +8237,72 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
+  # Turn off AC in Smart mode when presence is lost (after grace period)
+  - if:
+      - condition: template
+        value_template: >
+          {{
+            actual_ac_state == 'on' and
+            control_mode == 'Smart' and
+            not smart_presence_active and
+            last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high']
+          }}
+    then:
+      # Log the turn-off action
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🚪 {{ room_name | upper }} SMART MODE - NO PRESENCE DETECTED
+
+                ✅ Turning Off After Grace Period:
+                    • Control Mode: Smart
+                    • Last Presence: {{ minutes_since_presence | round(0) }} minutes ago
+                    • Grace Period: {{ presence_timeout }} minutes
+                    • Current Mode: {{ last_mode }}
+                    • Action: Turning AC OFF (no presence)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Turn off the AC
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+        continue_on_error: true
+
+      # Update helper to reflect AC is now off
+      - condition: template
+        value_template: >
+          {{
+            helper_mode is defined and
+            helper_mode not in ['', 'unavailable', 'unknown'] and
+            states(helper_mode) not in ['unavailable', 'unknown']
+          }}
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
+        continue_on_error: true
+
+      # Update last change time
+      - condition: template
+        value_template: >
+          {{
+            helper_change is defined and
+            helper_change not in ['', 'unavailable', 'unknown'] and
+            states(helper_change) not in ['unavailable', 'unknown']
+          }}
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
   # Turn off AC if it's running but temperature has reached/passed target
   - if:
       - condition: template
@@ -8230,8 +8311,8 @@ action:
             actual_ac_state == 'on' and
             last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
             (
-              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp + 0.1) or
-              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp - 0.1)
+              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
+              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
             )
           }}
     then:
