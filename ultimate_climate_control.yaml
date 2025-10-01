@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.14
+  name: Ultimate Smart Climate Control - v3.0.15
 
   description: |
-    **Ultimate Smart Climate Control v3.0.14**
+    **Ultimate Smart Climate Control v3.0.15**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.14
+    ## 🆕 Latest Update - v3.0.15
 
-    **🐛 CRITICAL FIX: Stability Reset AC Activation Bypass**
-    - ✅ FIXED: Stability Mode Reset directly activating AC without presence check
-    - ✅ Added Smart mode presence validation to cooling activation logic
-    - ✅ Prevents AC hardware activation even after helper state is set correctly
-    - ✅ Completes v3.0.12 & v3.0.13 fixes - ALL bypass routes now closed
+    **🐛 CRITICAL FIX: HIGH Cooling Priority Block Bypass**
+    - ✅ FIXED: HIGH cooling priority block bypassing Smart mode presence check
+    - ✅ Added Smart mode presence validation to emergency cooling activation
+    - ✅ Prevents AC from activating at extreme temperatures without room presence
+    - ✅ Final bypass route closed - comprehensive Smart mode presence enforcement complete
 
     **🛡️ What This Fixes:**
-    - **Bug:** Stability reset would SET helper to "off" but STILL turn on AC hardware
-    - **Root Cause:** Separate activation logic (line 5270) missing presence check
-    - **Solution:** Added `(control_mode != 'Smart' or smart_presence_active)` to activation condition
+    - **Bug:** HIGH cooling activated at 26.5°C without presence when AC was off
+    - **Root Cause:** Priority HIGH cooling check (line 5041) missing Smart mode presence validation
+    - **Solution:** Added `(control_mode != 'Smart' or smart_presence_active)` to priority condition
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -5038,7 +5038,7 @@ action:
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
           - condition: template
-            value_template: "{{ current_temp >= cooling_high_temp and should_activate and actual_ac_state == 'off' }}"
+            value_template: "{{ current_temp >= cooling_high_temp and should_activate and actual_ac_state == 'off' and (control_mode != 'Smart' or smart_presence_active) }}"
         sequence:
           - service: system_log.write
             data:
@@ -5059,11 +5059,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING TO TARGET
                     📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE
                     📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C excess!)
-                    ⚡ Full power until comfortable | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚡ Full power until comfortable | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
@@ -5073,7 +5073,7 @@ action:
                   {% elif temp_gap >= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - RAPID COOL-DOWN
                     🚀 START MODE: Hot {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C threshold
-                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | Fan: {{ selected_fan_mode }}
+                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C
