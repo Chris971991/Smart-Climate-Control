@@ -3237,7 +3237,7 @@ action:
             
             🌡️ Current Conditions:
                 • Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
-                • People: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home (room empty){% elif approaching_home %}Approaching{% else %}Away{% endif %}
+                • People: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home (elsewhere){% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
                 • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_since_change | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_since_change | round(0) }} min ago){% endif %}
                 • Fan Speed: {{ state_attr(climate_list[0], 'fan_mode') | default('Unknown') | title }}
@@ -8511,7 +8511,7 @@ action:
 
             📋 Technical Details:
                 • Temperature: {{ current_temp }}°C
-                • Occupancy: {% if room_presence_detected %}Room occupied ({% if control_mode == 'Smart' %}BLE + Motion{% else %}Motion{% endif %}){% elif anyone_home %}Home but room empty{% elif approaching_home %}Approaching home{% else %}Nobody home{% endif %}
+                • Occupancy: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home but elsewhere{% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
