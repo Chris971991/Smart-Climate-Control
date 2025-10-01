@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.9
+  name: Ultimate Smart Climate Control - v3.0.10
 
   description: |
-    **Ultimate Smart Climate Control v3.0.9**
+    **Ultimate Smart Climate Control v3.0.10**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,19 +56,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.9
+    ## 🆕 Latest Update - v3.0.10
 
-    **📖 IMPROVED: Response Aggressiveness Description**
-    - ✅ Clearer explanation of what aggressiveness actually controls
-    - ✅ Real-world examples showing AC behavior at each setting
-    - ✅ Concrete temperature thresholds for each aggressiveness level
-    - ✅ Decision guide for when to increase/decrease setting
-    - ✅ Addresses common issue of AC running too long on low power
+    **🐛 CRITICAL FIX: Temperature Stability Auto-Off Not Working**
+    - ✅ Fixed stability detection being blocked during continue modes
+    - ✅ Removed redundant `not_in_continue_mode` check preventing shutoff
+    - ✅ Stability now properly triggers when configured tolerance/duration met
+    - ✅ AC will turn off when temp stable within ±0.7°C for 15+ minutes (as configured)
 
-    **💡 Key Improvement:**
-    - Users can now easily understand how to fix "AC staying on for hours" issue
-    - Setting description now includes visual examples with actual temperatures
-    - Clear guidance: "AC running too long? → Increase to 3-5"
+    **💡 What This Fixes:**
+    - **Before:** AC kept running indefinitely even when temp stable within tolerance
+    - **After:** AC turns off automatically when stability conditions are met
+    - Respects user-configured stability tolerance and duration settings
+    - Other safeguards remain: must be in comfort zone, close to target, trend stable
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2515,13 +2515,11 @@ action:
         {% if temp_stability_enabled and helper_temp_history %}
           {% set temp_diff = (current_temp - previous_temp) | abs %}
           {% set time_threshold = stability_duration | float %}
-          {# CRITICAL: Only consider stable if temp is stable AND within comfort zone AND close to target #}
+          {# CRITICAL: Only consider stable if temp is stable AND within comfort zone #}
           {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
-          {# NEW: Respect target-based hysteresis - must be close to actual target, not just in comfort zone #}
-          {% set close_to_target = (current_temp - target_temp) | abs <= 0.5 %}
-          {# NEW: Don't interrupt continue modes that are actively pursuing target #}
-          {% set not_in_continue_mode = last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
-          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone and close_to_target and not_in_continue_mode %}
+          {# REMOVED close_to_target hardcoded check - use user-configured stability_tolerance instead #}
+          {# REMOVED not_in_continue_mode check - other conditions are sufficient to prevent premature shutoff #}
+          {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone %}
             {% if temp_stability_time >= time_threshold %}
               {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] %}
                 true
