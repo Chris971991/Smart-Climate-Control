@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.10
+  name: Ultimate Smart Climate Control - v3.0.11
 
   description: |
-    **Ultimate Smart Climate Control v3.0.10**
+    **Ultimate Smart Climate Control v3.0.11**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,19 +56,20 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.10
+    ## 🆕 Latest Update - v3.0.11
 
-    **🐛 CRITICAL FIX: Temperature Stability Auto-Off Not Working**
-    - ✅ Fixed stability detection being blocked during continue modes
-    - ✅ Removed redundant `not_in_continue_mode` check preventing shutoff
-    - ✅ Stability now properly triggers when configured tolerance/duration met
-    - ✅ AC will turn off when temp stable within ±0.7°C for 15+ minutes (as configured)
+    **🧪 TESTING & VALIDATION: Comprehensive Test Suite Added**
+    - ✅ Added real-world Office AC test suite using actual production configuration
+    - ✅ Validates 22 timeline points across 8.5-hour work day scenario
+    - ✅ Tests SMART presence validation (mmWave + BLE requirement)
+    - ✅ Validates temperature stability auto-off (±0.8°C tolerance)
+    - ✅ Confirms boundary condition handling and floating-point precision
 
-    **💡 What This Fixes:**
-    - **Before:** AC kept running indefinitely even when temp stable within tolerance
-    - **After:** AC turns off automatically when stability conditions are met
-    - Respects user-configured stability tolerance and duration settings
-    - Other safeguards remain: must be in comfort zone, close to target, trend stable
+    **💡 Test Coverage:**
+    - **Office Work Day:** Morning arrival → cooling escalation → lunch break → afternoon activity → end of day
+    - **Stability Auto-Off:** Within/outside tolerance tests, 10-minute duration validation
+    - **SMART Presence:** Dual-sensor validation, false-positive prevention
+    - **Result:** 100% pass rate - all logic verified with production settings
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 

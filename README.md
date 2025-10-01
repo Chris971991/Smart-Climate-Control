@@ -1,4 +1,4 @@
-# Ultimate Smart Climate Control Blueprint v3.0.6
+# Ultimate Smart Climate Control Blueprint v3.0.11
 
 ## 🎉 NEW: Automated Setup Wizard!
 
@@ -812,7 +812,31 @@ Additional:
 
 ## Version History
 
-### **v3.0.6** (Current) - Critical START Condition Presence Fix
+### **v3.0.11** (Current) - Comprehensive Test Suite & Validation
+
+**🧪 TESTING & VALIDATION**
+- **✅ REAL-WORLD TEST SUITE** - Added office_ac_test.py using actual production Office AC configuration
+- **📊 22 TIMELINE TESTS** - Validates 8.5-hour work day: arrival → cooling → lunch break → afternoon → end of day
+- **🎯 SMART PRESENCE** - Tests mmWave + BLE dual-sensor validation, false-positive prevention
+- **🌡️ STABILITY AUTO-OFF** - Validates ±0.8°C tolerance, 10-minute duration, boundary conditions
+- **🔧 BOUNDARY HANDLING** - Fixed test suite precision issues (comfort zone, stability tolerance)
+- **✅ 100% PASS RATE** - All logic verified with production settings from climate.office_a_c
+
+**💡 PRODUCTION VALIDATION**
+- **Configuration Source**: Live Office AC automation (//192.168.50.45/config/automations.yaml)
+- **Real Settings Tested**: 23°C target, 22-24°C comfort zone, SMART validation mode
+- **Adaptive Control**: 5min occupied delay, 15min vacant delay, 3h manual override timeout
+- **Test Coverage**: Temperature thresholds, presence logic, grace periods, adaptive switching
+
+### **v3.0.10** - Temperature Stability Auto-Off Fix
+
+**🐛 CRITICAL FIX: STABILITY DETECTION**
+- **✅ FIXED STABILITY AUTO-OFF** - Removed redundant `not_in_continue_mode` check blocking shutoff
+- **🔧 PROPER TRIGGERING** - Stability now activates when configured tolerance/duration met
+- **📊 REAL-WORLD IMPACT** - AC turns off when stable within ±0.7°C for 15+ minutes (as configured)
+- **✅ BACKWARD COMPATIBLE** - Other safeguards remain: comfort zone, target proximity, trend stability
+
+### **v3.0.6** - Critical START Condition Presence Fix
 
 **🐛 CRITICAL FIX: START CONDITION PRESENCE DETECTION**
 - **✅ FIXED START CONDITIONS** - heating_low, cooling_low, and cooling_medium now require `should_activate` before starting
