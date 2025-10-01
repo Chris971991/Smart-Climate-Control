@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.15
+  name: Ultimate Smart Climate Control - v3.0.16
 
   description: |
-    **Ultimate Smart Climate Control v3.0.15**
+    **Ultimate Smart Climate Control v3.0.16**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.15
+    ## 🆕 Latest Update - v3.0.16
 
-    **🐛 CRITICAL FIX: HIGH Cooling Priority Block Bypass**
-    - ✅ FIXED: HIGH cooling priority block bypassing Smart mode presence check
-    - ✅ Added Smart mode presence validation to emergency cooling activation
-    - ✅ Prevents AC from activating at extreme temperatures without room presence
-    - ✅ Final bypass route closed - comprehensive Smart mode presence enforcement complete
+    **🐛 CRITICAL FIX: Heating Stability Reset Activation Bypass**
+    - ✅ FIXED: Heating stability reset activating heater without Smart mode presence check
+    - ✅ Added Smart mode presence validation to heating activation after stability mode
+    - ✅ Prevents heater from activating when temperature drops without room presence
+    - ✅ Mirrors v3.0.14 cooling fix - complete heating/cooling parity for Smart mode
 
     **🛡️ What This Fixes:**
-    - **Bug:** HIGH cooling activated at 26.5°C without presence when AC was off
-    - **Root Cause:** Priority HIGH cooling check (line 5041) missing Smart mode presence validation
-    - **Solution:** Added `(control_mode != 'Smart' or smart_presence_active)` to priority condition
+    - **Bug:** Heater activated via stability reset without presence validation in Smart mode
+    - **Root Cause:** Stability reset heating activation (line 5379) missing Smart mode presence check
+    - **Solution:** Added `and (control_mode != 'Smart' or smart_presence_active)` to activation condition
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -5376,7 +5376,7 @@ action:
               # Need heating
               - conditions:
                   - condition: template
-                    value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }}"
+                    value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}"
                 sequence:
                   - repeat:
                       for_each: "{{ climate_list }}"
