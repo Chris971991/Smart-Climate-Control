@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.11
+  name: Ultimate Smart Climate Control - v3.0.12
 
   description: |
-    **Ultimate Smart Climate Control v3.0.11**
+    **Ultimate Smart Climate Control v3.0.12**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,20 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.11
+    ## 🆕 Latest Update - v3.0.12
 
-    **🧪 TESTING & VALIDATION: Comprehensive Test Suite Added**
-    - ✅ Added real-world Office AC test suite using actual production configuration
-    - ✅ Validates 22 timeline points across 8.5-hour work day scenario
-    - ✅ Tests SMART presence validation (mmWave + BLE requirement)
-    - ✅ Validates temperature stability auto-off (±0.8°C tolerance)
-    - ✅ Confirms boundary condition handling and floating-point precision
+    **🐛 CRITICAL FIX: Smart Mode Presence Check**
+    - ✅ FIXED: AC activating in Smart mode without room presence
+    - ✅ Added missing `smart_presence_active` check to all START conditions
+    - ✅ Applied fix to all 6 tiers (Cooling LOW/MED/HIGH + Heating LOW/MED/HIGH)
+    - ✅ CONTINUE mode already had proper checks - now START mode matches
 
-    **💡 Test Coverage:**
-    - **Office Work Day:** Morning arrival → cooling escalation → lunch break → afternoon activity → end of day
-    - **Stability Auto-Off:** Within/outside tolerance tests, 10-minute duration validation
-    - **SMART Presence:** Dual-sensor validation, false-positive prevention
-    - **Result:** 100% pass rate - all logic verified with production settings
+    **🛡️ What This Fixes:**
+    - **Bug:** AC would turn on when temp hit threshold, even with nobody in room
+    - **Root Cause:** START conditions missing Smart mode presence validation
+    - **Solution:** Now requires `smart_presence_active` for Smart mode activation
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3541,7 +3539,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating high - start if threshold exceeded and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_high_temp }}
+                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -3771,7 +3769,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start if in medium range and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4030,7 +4028,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating low - start if in low range and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4291,7 +4289,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling high - start if threshold exceeded and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp }}
+                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4521,7 +4519,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start if in medium range and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
+                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4792,7 +4790,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling low - start if in low range and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -7632,7 +7630,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start if medium threshold exceeded and above high #}
-                {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }}
+                {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - condition: template
@@ -7801,7 +7799,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
-                {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
+                {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           # Debug logging at exact condition evaluation time
