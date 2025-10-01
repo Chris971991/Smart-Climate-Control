@@ -2,3 +2,7 @@ home-assistant_2025-09-07T03-51-24.795Z.log
 .claude/settings.local.json
 ultimate_climate_control_backup.yaml
 CLAUDE.md
+
+# Audit reports (test file should be tracked)
+AUDIT_REPORT.md
+AUDIT_IMPROVEMENTS.md
