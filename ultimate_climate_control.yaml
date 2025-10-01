@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.12
+  name: Ultimate Smart Climate Control - v3.0.13
 
   description: |
-    **Ultimate Smart Climate Control v3.0.12**
+    **Ultimate Smart Climate Control v3.0.13**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.12
+    ## 🆕 Latest Update - v3.0.13
 
-    **🐛 CRITICAL FIX: Smart Mode Presence Check**
-    - ✅ FIXED: AC activating in Smart mode without room presence
-    - ✅ Added missing `smart_presence_active` check to all START conditions
-    - ✅ Applied fix to all 6 tiers (Cooling LOW/MED/HIGH + Heating LOW/MED/HIGH)
-    - ✅ CONTINUE mode already had proper checks - now START mode matches
+    **🐛 CRITICAL FIX: Smart Mode Stability Reset Bypass**
+    - ✅ FIXED: Stability Mode Reset bypassing Smart mode presence check
+    - ✅ Added presence validation to temperature stability recovery logic
+    - ✅ Prevents AC activation when exiting stability mode without room presence
+    - ✅ Completes v3.0.12 fix by closing final activation bypass route
 
     **🛡️ What This Fixes:**
-    - **Bug:** AC would turn on when temp hit threshold, even with nobody in room
-    - **Root Cause:** START conditions missing Smart mode presence validation
-    - **Solution:** Now requires `smart_presence_active` for Smart mode activation
+    - **Bug:** AC would turn on via "Stability Mode Reset" path without presence check
+    - **Root Cause:** Stability reset directly set helper to "cooling" bypassing all checks
+    - **Solution:** Added Smart mode presence check before allowing stability reset activation
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -5223,13 +5223,15 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
           
-          # Don't set to "off" - set directly to cooling/heating to bypass checks
+          # Don't set to "off" - set directly to cooling/heating (but respect Smart mode presence)
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
             data:
               value: >
-                {% if current_temp >= cooling_medium_temp %}
+                {% if control_mode == 'Smart' and not smart_presence_active %}
+                  off
+                {% elif current_temp >= cooling_medium_temp %}
                   cooling
                 {% elif current_temp <= heating_medium_temp %}
                   heating
