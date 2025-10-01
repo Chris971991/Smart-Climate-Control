@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.17
+  name: Ultimate Smart Climate Control - v3.0.18
 
   description: |
-    **Ultimate Smart Climate Control v3.0.17**
+    **Ultimate Smart Climate Control v3.0.18**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.17
+    ## 🆕 Latest Update - v3.0.18
 
-    **🐛 FIX: Escalation Debug Message Clarity**
-    - ✅ FIXED: Confusing "Increased to Level 5/4" hardcoded message in MEDIUM cooling escalation
-    - ✅ Changed to generic "Increased fan power for faster cooling" message
-    - ✅ Eliminates confusion when actual fan selection differs from hardcoded levels
-    - ✅ Escalation system working correctly - only message was misleading
+    **🐛 CRITICAL FIX: Manual Override False Positives**
+    - ✅ FIXED: Automation's own actions (turning on/off AC) triggering manual override protection
+    - ✅ FIXED: AC staying on for 30+ minutes after room becomes vacant in Smart mode
+    - ✅ FIXED: Adaptive Control blocked by false "manual change" detection
+    - ✅ Only actual user manual changes now trigger 3-hour override protection
 
     **🛡️ What This Fixes:**
-    - **Bug:** Message showed "Fan: 4" but said "Increased to Level 5 power" causing confusion
-    - **Root Cause:** Hardcoded fan level assumptions in message template (line 4553)
-    - **Solution:** Removed hardcoded level reference, now shows generic escalation message
+    - **Bug:** When automation turned on AC, it was flagged as "manual change" → blocked Adaptive Control for 3 hours → AC stayed on without presence
+    - **Root Cause:** All tier activations updated `helper_change` timestamp, making automation actions look like manual changes
+    - **Solution:** Removed `helper_change` updates from automation activations - only real user changes update it now
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3747,11 +3747,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_high"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # MEDIUM HEATING: Smart hysteresis with direct helper reads
       - conditions:
@@ -4006,11 +4002,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_medium"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # LOW HEATING: Smart hysteresis with direct helper reads
       - conditions:
@@ -4267,11 +4259,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_low"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # HIGH COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -4497,11 +4485,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_high"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # MEDIUM COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -4768,11 +4752,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_medium"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -5029,11 +5009,7 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_low"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
+          # REMOVED: helper_change update - automation actions should NOT trigger manual override
 
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
