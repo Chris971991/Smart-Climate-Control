@@ -3,6 +3,8 @@ home-assistant_2025-09-07T03-51-24.795Z.log
 ultimate_climate_control_backup.yaml
 CLAUDE.md
 
-# Audit reports (test file should be tracked)
+# Audit reports (test files should be tracked)
 AUDIT_REPORT.md
 AUDIT_IMPROVEMENTS.md
+ENHANCED_AUDIT_SUMMARY.md
+TEST_SUITE_ENHANCEMENTS.md
