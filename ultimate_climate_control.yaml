@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.25
+  name: Ultimate Smart Climate Control - v3.0.26
 
   description: |
-    **Ultimate Smart Climate Control v3.0.25**
+    **Ultimate Smart Climate Control v3.0.26**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.25
+    ## 🆕 Latest Update - v3.0.26
 
-    **🐛 CRITICAL FIX: Manual Override False Trigger Fix v3.0.25**
-    - ✅ FIXED: Automation shutoff triggering 3-hour manual override protection
-    - ✅ FIXED: Adaptive Control blocked after legitimate target achievement
-    - ✅ REMOVED: Timestamp updates from 3 automation shutoff locations
-    - ✅ RESULT: Only actual user manual changes trigger override protection
+    **✅ IMPROVED: Smart Mode as Default v3.0.26**
+    - ✅ CHANGED: Setup wizard now defaults to "Smart" mode instead of "Auto"
+    - ✅ CHANGED: Adaptive Control now switches to "Smart" mode by default
+    - ✅ BENEFIT: Room-specific presence detection with immediate shutoff when leaving
+    - ✅ RESULT: Better energy efficiency and more intuitive default behavior
 
-    **🛡️ What This Fixes:**
-    - **Before:** AC reaches target → automation turns off → override triggered for 3 hours
-    - **After:** AC reaches target → automation turns off → override NOT triggered
-    - **Impact:** Adaptive Control now works properly after automation shutoffs
+    **🔧 Previous Fix: Manual Override False Trigger Fix v3.0.25**
+    - ✅ FIXED: Automation shutoff no longer triggers 3-hour manual override protection
+    - ✅ FIXED: Adaptive Control works properly after target achievement
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -1933,7 +1932,7 @@ blueprint:
             • **Smart Mode:** Advanced occupancy-based control with presence timeout
 
             **Recommendation:** Choose Smart Mode if you want the most intelligent behavior.
-          default: "auto"
+          default: "smart"
           selector:
             select:
               options:

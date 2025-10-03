@@ -119,7 +119,7 @@ HELPER_DEFINITIONS = {
         "name": "{room} Climate Control Mode",
         "icon": "mdi:tune",
         "options": ["Auto", "Smart", "Manual"],
-        "initial": "Auto",
+        "initial": "Smart",
     },
 
     # ========================================
