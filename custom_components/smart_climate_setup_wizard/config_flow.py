@@ -7,6 +7,7 @@ import yaml
 import json
 import os
 import asyncio
+import aiohttp
 
 import voluptuous as vol
 
@@ -167,8 +168,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Step 0: Check packages configuration (or auto-configure it)."""
-        # Check if packages are configured
+        """Step 0: Check prerequisites (packages + blueprint)."""
+        # Step 0a: Check packages configuration
         packages_configured = await self._check_packages_configured()
 
         if not packages_configured:
@@ -188,7 +189,31 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 _LOGGER.error("Failed to add packages configuration: %s", err)
                 # Fall through to manual instructions
 
-        # Packages are configured, proceed to room name
+        # Step 0b: Check blueprint exists
+        blueprint_exists = await self._check_blueprint_exists()
+
+        if not blueprint_exists:
+            # Try to download and install blueprint automatically
+            _LOGGER.info("Blueprint not found, attempting automatic installation...")
+            blueprint_installed = await self._download_blueprint_from_github()
+
+            if blueprint_installed:
+                # Success! Show confirmation and proceed
+                return self.async_show_form(
+                    step_id="blueprint_installed",
+                    data_schema=vol.Schema({}),
+                )
+            else:
+                # Download failed, show manual instructions
+                return self.async_abort(
+                    reason="blueprint_download_failed",
+                    description_placeholders={
+                        "blueprint_url": "https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml",
+                        "import_link": "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml",
+                    },
+                )
+
+        # Both packages and blueprint ready, proceed to room setup
         return await self.async_step_room_name()
 
     async def async_step_packages_added(
@@ -201,6 +226,13 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 "message": "Packages configuration has been added to configuration.yaml. Please restart Home Assistant, then run this wizard again to create your climate control setup."
             }
         )
+
+    async def async_step_blueprint_installed(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Show success message that blueprint was installed."""
+        # User clicked Submit/Continue - proceed to room setup
+        return await self.async_step_room_name()
 
     async def async_step_room_name(
         self, user_input: dict[str, Any] | None = None
@@ -593,6 +625,71 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             return True  # Successfully added
 
         return await self.hass.async_add_executor_job(modify_config)
+
+    async def _check_blueprint_exists(self) -> bool:
+        """Check if Ultimate Climate Control blueprint exists."""
+        blueprint_path = self.hass.config.path(
+            "blueprints/automation/Chris971991/ultimate_climate_control.yaml"
+        )
+        exists = os.path.exists(blueprint_path)
+        if exists:
+            _LOGGER.info("Blueprint found at: %s", blueprint_path)
+        else:
+            _LOGGER.info("Blueprint not found, will attempt download from GitHub")
+        return exists
+
+    async def _download_blueprint_from_github(self) -> bool:
+        """Download and install the latest blueprint from GitHub.
+
+        Returns:
+            True if successfully downloaded and installed, False otherwise.
+        """
+        try:
+            blueprint_url = "https://raw.githubusercontent.com/Chris971991/Smart-Climate-Control/main/ultimate_climate_control.yaml"
+            _LOGGER.info("Downloading blueprint from: %s", blueprint_url)
+
+            # Download blueprint content
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    blueprint_url, timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status != 200:
+                        _LOGGER.error(
+                            "Failed to download blueprint: HTTP %d", response.status
+                        )
+                        return False
+                    blueprint_content = await response.text()
+
+            # Validate it's a valid blueprint (basic check)
+            if not blueprint_content.startswith("blueprint:"):
+                _LOGGER.error("Downloaded content doesn't appear to be a valid blueprint")
+                return False
+
+            # Create blueprints directory structure
+            blueprint_dir = self.hass.config.path("blueprints/automation/Chris971991")
+
+            def prepare_and_write():
+                os.makedirs(blueprint_dir, exist_ok=True)
+                blueprint_path = os.path.join(blueprint_dir, "ultimate_climate_control.yaml")
+                with open(blueprint_path, "w", encoding="utf-8") as f:
+                    f.write(blueprint_content)
+                _LOGGER.info("Blueprint saved to: %s", blueprint_path)
+
+            await self.hass.async_add_executor_job(prepare_and_write)
+
+            # Reload automations to make blueprint appear in UI
+            _LOGGER.info("Reloading automations to register blueprint...")
+            await self.hass.services.async_call("automation", "reload", blocking=True)
+
+            _LOGGER.info("Blueprint successfully installed and registered")
+            return True
+
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Network error downloading blueprint: %s", err)
+            return False
+        except Exception as err:
+            _LOGGER.error("Unexpected error installing blueprint: %s", err)
+            return False
 
     async def _create_helpers(
         self, hass: HomeAssistant, config: dict[str, Any]

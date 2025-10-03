@@ -9,6 +9,10 @@
         "title": "✅ Packages Configuration Added",
         "description": "**Packages support has been added to your configuration.yaml!**\n\nThe following line was added:\n```yaml\nhomeassistant:\n  packages: !include_dir_named packages\n```\n\n**Next Step:** Please restart Home Assistant, then run this wizard again to create your climate control setup."
       },
+      "blueprint_installed": {
+        "title": "✅ Blueprint Installed Successfully",
+        "description": "**The Ultimate Climate Control blueprint has been downloaded and installed!**\n\n📥 Downloaded from GitHub\n✅ Saved to your blueprints directory\n✅ Registered with Home Assistant\n\n**What's Next:**\nClick Submit to continue with room setup.\n\n**Note:** The blueprint is now available in Settings → Automations & Scenes → Blueprints if you want to view it!"
+      },
       "room_name": {
         "title": "Smart Climate Control Setup (Step 1 of 5)",
         "description": "Welcome to the **2-Minute Smart Climate Control Setup!** 🚀\n\n**What makes this special:**\n✨ Just answer 2 temperature questions - everything else is automatic!\n✨ Blueprint calculates all 6 temperature tiers for you\n✨ Stall detection, escalation, hysteresis - all configured optimally\n✨ Works perfectly out of the box for 90% of users\n\n**What will be created:**\n• 13 helper entities (automatic tracking)\n• Complete blueprint automation (fully configured)\n• Dashboard control card (optional)\n• Production-ready climate control system\n\n**Let's get started!**\n\nEnter the room name you want to control:",
@@ -69,7 +73,8 @@
     "abort": {
       "already_configured": "Climate control for this room already exists.",
       "no_climate_entities": "No climate entities found in Home Assistant. Please add A/C integrations first.",
-      "packages_configured": "Packages configuration has been added to configuration.yaml. Please restart Home Assistant, then run this wizard again to create your climate control setup."
+      "packages_configured": "Packages configuration has been added to configuration.yaml. Please restart Home Assistant, then run this wizard again to create your climate control setup.",
+      "blueprint_download_failed": "**⚠️ Blueprint Installation Required**\n\nThe wizard couldn't automatically download the blueprint from GitHub.\n\n**Please install it manually:**\n\n**Option 1: Quick Import (Recommended)**\nClick this link to import:\n{import_link}\n\n**Option 2: Manual Import**\n1. Go to Settings → Automations & Scenes → Blueprints\n2. Click 'Import Blueprint'\n3. Enter this URL:\n   {blueprint_url}\n4. Click 'Preview Blueprint' → 'Import Blueprint'\n5. Run this wizard again\n\n**Why manual?** Your network may be blocking GitHub, or the repository is temporarily unavailable."
     }
   },
   "options": {
