@@ -484,21 +484,52 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         return self.hass.states.get(entity_id) is not None
 
     async def _check_packages_configured(self) -> bool:
-        """Check if packages are configured in configuration.yaml."""
+        """Check if packages are configured in configuration.yaml.
+
+        Uses text search instead of YAML parsing to avoid issues with
+        Home Assistant-specific tags like !include, !include_dir_named, etc.
+        """
         try:
             config_path = self.hass.config.path("configuration.yaml")
 
-            def read_config():
+            def check_config():
                 if not os.path.exists(config_path):
-                    return {}
+                    return False
+
                 with open(config_path, "r", encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
+                    content = f.read()
 
-            config = await self.hass.async_add_executor_job(read_config)
+                # Check for packages: configuration under homeassistant:
+                # Look for patterns like:
+                #   homeassistant:
+                #     packages: ...
+                # or
+                #   packages: ...  (if homeassistant: is on a different line)
 
-            # Check if homeassistant.packages exists
-            homeassistant_config = config.get("homeassistant", {})
-            return "packages" in homeassistant_config
+                lines = content.split('\n')
+                in_homeassistant_section = False
+
+                for line in lines:
+                    stripped = line.strip()
+
+                    # Check if we're in homeassistant section
+                    if stripped.startswith('homeassistant:'):
+                        in_homeassistant_section = True
+                        continue
+
+                    # If we find packages: under homeassistant section
+                    if in_homeassistant_section and stripped.startswith('packages:'):
+                        _LOGGER.info("Found packages configuration in configuration.yaml")
+                        return True
+
+                    # If we hit another top-level section, we're no longer in homeassistant
+                    if in_homeassistant_section and line and not line[0].isspace() and ':' in line:
+                        in_homeassistant_section = False
+
+                _LOGGER.info("Packages configuration not found in configuration.yaml")
+                return False
+
+            return await self.hass.async_add_executor_job(check_config)
 
         except Exception as err:
             _LOGGER.error("Failed to check packages configuration: %s", err)
