@@ -453,6 +453,50 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 dashboard_card = self._generate_dashboard_card(self._room_data)
                 self._room_data["dashboard_card_yaml"] = dashboard_card
 
+                # Create persistent notification with dashboard card YAML (only shown once)
+                room_name = self._room_data["room_name"]
+                if dashboard_card:
+                    message = f"""## ✅ {room_name} Climate Control Setup Complete!
+
+**What was created:**
+- ✅ All helper entities
+- ✅ Complete automation
+- ✅ Ready to use immediately!
+
+---
+
+### 🎨 Optional: Add Dashboard Control Card
+
+Copy this YAML and add it to your dashboard for easy mode switching:
+
+```yaml
+{dashboard_card}
+```
+
+**To add to your dashboard:**
+1. Go to your dashboard
+2. Click Edit (top right)
+3. Click Add Card
+4. Search for "Manual" card
+5. Paste the YAML above
+6. Save!
+
+**Note:** Requires `mushroom` and `card-mod` custom cards (install via HACS)
+
+---
+
+You can dismiss this notification once you've copied the card YAML (if desired)."""
+
+                    await self.hass.services.async_call(
+                        "persistent_notification",
+                        "create",
+                        {
+                            "title": f"🎉 {room_name} Climate Setup Complete",
+                            "message": message,
+                            "notification_id": f"climate_setup_{room_name.lower().replace(' ', '_')}",
+                        },
+                    )
+
                 # Create config entry
                 return self.async_create_entry(
                     title=f"{self._room_data['room_name']} Climate Control",
