@@ -174,15 +174,16 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if not packages_configured:
             # Automatically add packages configuration
             try:
-                await self._add_packages_configuration()
-                # Show success message and ask user to restart
-                return self.async_show_form(
-                    step_id="packages_added",
-                    data_schema=vol.Schema({}),
-                    description_placeholders={
-                        "step": "Setup Complete - Restart Required",
-                    },
-                )
+                packages_added = await self._add_packages_configuration()
+                # Only show restart message if packages were actually added
+                if packages_added:
+                    return self.async_show_form(
+                        step_id="packages_added",
+                        data_schema=vol.Schema({}),
+                        description_placeholders={
+                            "step": "Setup Complete - Restart Required",
+                        },
+                    )
             except Exception as err:
                 _LOGGER.error("Failed to add packages configuration: %s", err)
                 # Fall through to manual instructions
@@ -503,8 +504,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             _LOGGER.error("Failed to check packages configuration: %s", err)
             return False
 
-    async def _add_packages_configuration(self) -> None:
-        """Add packages configuration to configuration.yaml."""
+    async def _add_packages_configuration(self) -> bool:
+        """Add packages configuration to configuration.yaml.
+
+        Returns:
+            True if packages were added, False if already configured.
+        """
         config_path = self.hass.config.path("configuration.yaml")
 
         def modify_config():
@@ -530,7 +535,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
             if has_packages:
                 _LOGGER.info("Packages already configured in configuration.yaml")
-                return
+                return False  # Already configured, nothing added
 
             # Add packages configuration
             if has_homeassistant:
@@ -554,8 +559,9 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 f.writelines(lines)
 
             _LOGGER.info("Added packages configuration to configuration.yaml")
+            return True  # Successfully added
 
-        await self.hass.async_add_executor_job(modify_config)
+        return await self.hass.async_add_executor_job(modify_config)
 
     async def _create_helpers(
         self, hass: HomeAssistant, config: dict[str, Any]
