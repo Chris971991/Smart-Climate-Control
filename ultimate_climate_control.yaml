@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.22
+  name: Ultimate Smart Climate Control - v3.0.23
 
   description: |
-    **Ultimate Smart Climate Control v3.0.22**
+    **Ultimate Smart Climate Control v3.0.23**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.21
+    ## 🆕 Latest Update - v3.0.23
 
-    **🐛 ENHANCEMENT: Occupancy Debug Message Clarity**
-    - ✅ IMPROVED: "Occupancy: Someone home" now shows detailed presence status
-    - ✅ ENHANCED: Shows WHY automation thinks room is occupied (BLE + Motion, Motion only, etc.)
-    - ✅ CLARIFIED: Distinguishes "Room occupied", "Home but room empty", "Approaching", "Away"
-    - ✅ Much more helpful for debugging presence detection issues
+    **🐛 CRITICAL FIX: Escalation Override Logic v3.0.23**
+    - ✅ FIXED: De-escalation blocking escalation when AC stalled
+    - ✅ FIXED: AC stuck at low fan speeds despite poor performance
+    - ✅ ENHANCED: Escalation now takes priority over de-escalation
+    - ✅ RESULT: AC properly boosts to max power when stalled
 
-    **🛡️ What This Improves:**
-    - **Before:** Vague "Someone home" / "Nobody home" messages
-    - **After:** Detailed "Room occupied (BLE + Motion)" / "Home but room empty" / "Approaching home"
-    - **Benefit:** Instantly see WHY automation thinks someone is home and which sensors triggered
+    **🛡️ What This Fixes:**
+    - **Before:** De-escalated to Fan 3 → stalled → stayed at Fan 3 (blocked by old de-escalation)
+    - **After:** Stall detected → escalates to Fan 5 → overrides any active de-escalation
+    - **Logic:** Current performance (escalation) > Past performance (de-escalation)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3680,10 +3680,8 @@ action:
                     # HIGH heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -3708,7 +3706,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 and escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -3729,7 +3727,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 and escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -3906,10 +3904,8 @@ action:
                     # MEDIUM heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4161,10 +4157,8 @@ action:
                     # LOW heating adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4418,10 +4412,8 @@ action:
                     # HIGH cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4446,7 +4438,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 %}
+                        {% elif deescalation_level == 2 and escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -4467,7 +4459,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif deescalation_level == 1 %}
+                        {% elif deescalation_level == 1 and escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -4649,10 +4641,8 @@ action:
                     # MEDIUM cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4911,10 +4901,8 @@ action:
                     # LOW cooling adaptive fan selection with de-escalation support
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Near-target stall override: escalation takes priority when stuck very close to target #}
-                      {% set near_target_stall = distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-                      {# De-escalation takes priority over escalation unless near-target stall detected #}
-                      {% if deescalation_level == 3 and not near_target_stall %}
+                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
