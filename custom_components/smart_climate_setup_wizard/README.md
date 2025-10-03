@@ -282,4 +282,23 @@ This integration is part of the Smart Climate Control project.
 
 **Author:** Chris971991
 **Repository:** https://github.com/Chris971991/Smart-Climate-Control
-**Blueprint Version Compatibility:** v3.0.8+
+**Blueprint Version Compatibility:** v3.0.22+
+
+---
+
+## 🆕 What's New in Blueprint v3.0.22
+
+The wizard now supports the latest blueprint features:
+
+### ⚡ Smart Stall Detection
+- **Time-Based Escalation** - Automatically boosts power if AC runs too long with poor progress
+- **Configurable Thresholds** - Customize stall time (5-60min) and progress rate (0.001-0.1°C/min)
+- **Accurate Runtime Tracking** - Fixed timer resets when AC turns ON/OFF
+
+### 🎨 New Advanced Settings (Auto-Configured)
+All new settings come with perfect defaults - no manual configuration needed:
+- **Stall Escalation Time**: 15 minutes (balanced)
+- **Minimum Progress Rate**: 0.01°C/min (average AC)
+- **Temperature Stall Tolerance**: 1.0°C (now actually works!)
+
+The wizard automatically applies these optimal defaults when creating your automation!
