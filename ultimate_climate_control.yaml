@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.21
+  name: Ultimate Smart Climate Control - v3.0.22
 
   description: |
-    **Ultimate Smart Climate Control v3.0.21**
+    **Ultimate Smart Climate Control v3.0.22**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -1569,19 +1569,80 @@ blueprint:
               min: 5
               max: 30
               unit_of_measurement: minutes
-        
+
+        stall_escalation_time:
+          name: Stall Escalation Time
+          description: |
+            **Minutes of poor progress** before forcing escalation regardless of distance from target.
+
+            **How it works:**
+            • Monitors temperature change rate (°C/min)
+            • If progress is too slow for this duration → escalates immediately
+            • Prevents AC getting stuck with minimal progress for hours
+
+            **Time settings:**
+            • **5-10 minutes:** Quick response to stalled progress
+            • **15 minutes:** Balanced approach (recommended)
+            • **30-60 minutes:** Patient, allows AC more time to work
+
+            **Note:** Works with "Minimum Progress Rate" setting below.
+          default: 15
+          selector:
+            number:
+              min: 5
+              max: 60
+              step: 5
+              unit_of_measurement: minutes
+
+        minimum_progress_rate:
+          name: Minimum Progress Rate
+          description: |
+            **Minimum acceptable temperature change rate** (°C per minute) before triggering escalation.
+
+            **How it works:**
+            • System calculates: (current_temp - previous_temp) / time_elapsed
+            • If rate is below this threshold for the "Stall Escalation Time" → escalates power
+            • Customizable for your AC's capabilities and room characteristics
+
+            **Rate examples:**
+            • **0.02-0.05°C/min:** Fast AC, small room, tight control
+            • **0.01-0.02°C/min:** Average AC, medium room (recommended)
+            • **0.005-0.01°C/min:** Slow AC, large room, patient control
+            • **0.001-0.005°C/min:** Very slow AC or poorly insulated room
+
+            **Example scenarios:**
+            • **Aggressive:** 0.03°C/min means expects 1.8°C drop per hour
+            • **Balanced:** 0.01°C/min means expects 0.6°C drop per hour (recommended)
+            • **Patient:** 0.005°C/min means expects 0.3°C drop per hour
+
+            **Tip:** Monitor your logs to see typical cooling/heating rates, then set threshold slightly below that.
+          default: 0.01
+          selector:
+            number:
+              min: 0.001
+              max: 0.1
+              step: 0.001
+              unit_of_measurement: "°C/min"
+
         escalation_temp_tolerance:
           name: Temperature Stall Tolerance
           description: |
-            **Degrees of acceptable temperature drift** before escalating power.
+            **Maximum distance from target** before triggering stall escalation.
+
+            **How it works:**
+            • **Near-Target Stall:** Escalates if distance ≤ this value AND stalled for 15+ min
+            • **Time-Based Stall:** Escalates if distance > half this value AND poor progress for configured time
 
             **Tolerance levels:**
+            • **0.5-1.0°C:** Aggressive response (tight control, escalates early)
+            • **1.0-2.0°C:** Balanced approach (recommended - default 1.0°C)
+            • **2.0-3.0°C:** Patient response (allows more drift before escalating)
 
-            • **0.5-1.0°C:** Aggressive response (tight control)
-            • **1.0-2.0°C:** Balanced approach (recommended)
-            • **2.0-3.0°C:** Patient response (allows more drift)
+            **Example (1.0°C setting):**
+            • If 0.9°C from target and stalled → Gentle escalation (Level 1)
+            • If 0.6°C from target and poor progress → Strong escalation (Level 3)
 
-            **Trade-off:** Lower values provide tighter control but may increase cycling.
+            **Trade-off:** Lower values provide tighter control but may increase power cycling.
           default: 1.0
           selector:
             number:
@@ -2040,6 +2101,8 @@ variables:
   # Dynamic adaptation settings
   dynamic_enabled: !input enable_dynamic_adaptation
   effectiveness_check_mins: !input effectiveness_check_minutes
+  stall_time_threshold: !input stall_escalation_time
+  min_progress_rate: !input minimum_progress_rate
   temp_tolerance: !input escalation_temp_tolerance
   deescalation_threshold: !input deescalation_approach_threshold
   helper_temp_history: !input helper_temp_history
@@ -2593,6 +2656,8 @@ action:
             3  {# Poor effectiveness after reasonable time #}
           {% elif distance_from_target > stall_threshold and calculated_trend == 'stable' and time_in_current_mode >= 8 %}
             3  {# Progress has stalled #}
+          {% elif time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) %}
+            3  {# TIME-BASED STALL: Running too long with terrible progress (user-configurable) #}
 
           {# Level 2: MEDIUM - Moderate escalation #}
           {% elif distance_from_target > 2.0 and time_in_current_mode >= 8 %}
@@ -2601,9 +2666,11 @@ action:
             2  {# Below average effectiveness #}
           {% elif distance_from_target > 1.5 and time_in_current_mode >= effectiveness_check_mins %}
             2  {# Using original check time for moderate escalation #}
+          {% elif time_in_current_mode >= (stall_time_threshold / 2) and temp_change_rate | abs < (min_progress_rate / 2) and distance_from_target > 0.3 %}
+            2  {# EARLY TIME-BASED STALL WARNING: Half stall time with extremely poor progress (user-configurable) #}
 
           {# Level 1: LOW - Minor escalation #}
-          {% elif distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
+          {% elif distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
             1  {# NEAR-TARGET STALL: Very close but stuck for extended time - gentle push needed #}
           {% elif distance_from_target > 1.0 and time_in_current_mode >= (effectiveness_check_mins + 2) %}
             1  {# Slight distance after extended time #}
@@ -3305,13 +3372,19 @@ action:
             • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
             • current_effectiveness: {{ current_effectiveness }}%
             • calculated_trend: {{ calculated_trend }}
-            • temp_change_rate: {{ temp_change_rate | round(2) }}°C/min
+            • temp_change_rate: {{ temp_change_rate | round(3) }}°C/min
 
-        🎯 Stall Detection (Level 1):
-            • Distance ≤ 0.8°C: {{ distance_from_target <= 0.8 }}
+        🎯 Near-Target Stall Detection (Level 1):
+            • Distance ≤ {{ temp_tolerance }}°C: {{ distance_from_target <= temp_tolerance }}
             • Time ≥ 15min: {{ time_in_current_mode >= 15 }}
             • Stable/slow: {{ calculated_trend == 'stable' or temp_change_rate | abs < 0.1 }}
-            • SHOULD TRIGGER: {{ distance_from_target <= 0.8 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) }}
+            • SHOULD TRIGGER: {{ distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) }}
+
+        ⏱️ Time-Based Stall Detection (Level 3):
+            • Time ≥ {{ stall_time_threshold }}min: {{ time_in_current_mode >= stall_time_threshold }}
+            • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)
+            • Distance > {{ (temp_tolerance / 2) | round(1) }}°C: {{ distance_from_target > (temp_tolerance / 2) }}
+            • SHOULD TRIGGER: {{ time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) }}
 
         ⚡ Result: Escalation Level = {{ escalation_level }}
       level: warning
@@ -5169,9 +5242,9 @@ action:
             data:
               value: "cooling"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -5215,7 +5288,7 @@ action:
                   off
                 {% endif %}
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode not in ['cooling', 'heating', 'off'] }}"
           - service: input_datetime.set_datetime
@@ -5330,9 +5403,9 @@ action:
                     data:
                       value: "cooling"
 
-                  # Update mode start time for effectiveness tracking (only if mode changed)
+                  # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                   - condition: template
-                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
                   - service: input_datetime.set_datetime
                     target:
                       entity_id: "{{ helper_mode_time }}"
@@ -5439,9 +5512,9 @@ action:
                     data:
                       value: "heating"
 
-                  # Update mode start time for effectiveness tracking (only if mode changed)
+                  # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                   - condition: template
-                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'heating' }}"
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'heating' or actual_ac_state == 'off') }}"
                   - service: input_datetime.set_datetime
                     target:
                       entity_id: "{{ helper_mode_time }}"
@@ -5729,9 +5802,9 @@ action:
             data:
               value: "cooling"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -5926,9 +5999,9 @@ action:
             data:
               value: "cooling"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6089,9 +6162,9 @@ action:
                     data:
                       value: "eco"
 
-                  # Update mode start time for effectiveness tracking (only if mode changed)
+                  # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                   - condition: template
-                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'eco' }}"
+                    value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'eco' or actual_ac_state == 'off') }}"
                   - service: input_datetime.set_datetime
                     target:
                       entity_id: "{{ helper_mode_time }}"
@@ -6121,9 +6194,9 @@ action:
                 data:
                   value: "off"
 
-              # Update mode start time for effectiveness tracking (only if mode changed)
+              # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
               - condition: template
-                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'off' }}"
+                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'off' or actual_ac_state == 'off') }}"
               - service: input_datetime.set_datetime
                 target:
                   entity_id: "{{ helper_mode_time }}"
@@ -6265,7 +6338,7 @@ action:
             data:
               value: "stability_{{ stability_behavior }}"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'stability_' + stability_behavior }}"
           - service: input_datetime.set_datetime
@@ -6502,7 +6575,7 @@ action:
                   data:
                     value: "adaptive_off"
 
-                # Update mode start time for effectiveness tracking (only if mode changed)
+                # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                 - condition: template
                   value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'adaptive_off' }}"
                 - service: input_datetime.set_datetime
@@ -6678,9 +6751,9 @@ action:
             data:
               value: "manual"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'manual' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'manual' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -6820,7 +6893,7 @@ action:
             data:
               value: "smart_{{ smart_behavior }}"
 
-          # Update mode start time for effectiveness tracking (only if mode changed)
+          # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
             value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'smart_' + smart_behavior }}"
           - service: input_datetime.set_datetime
@@ -7179,7 +7252,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7343,7 +7416,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7577,7 +7650,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7746,7 +7819,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -7999,7 +8072,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
@@ -8215,7 +8288,7 @@ action:
           
           # Update mode start time for effectiveness tracking (only if it exists)
           - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode != 'cooling' }}"
+            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
           - service: input_datetime.set_datetime
             target:
               entity_id: "{{ helper_mode_time }}"
