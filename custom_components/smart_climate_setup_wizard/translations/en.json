@@ -11,7 +11,7 @@
       },
       "room_name": {
         "title": "Smart Climate Control Setup (Step 1 of 5)",
-        "description": "Welcome to the Smart Climate Control Setup Wizard!\n\nThis wizard will guide you through creating a complete climate control automation for your room.\n\n**What will be created:**\n• Helper entities for tracking and automation\n• Complete blueprint automation\n• Fully configured climate control system\n\n**Let's get started!**\n\nEnter the room name you want to control:",
+        "description": "Welcome to the **2-Minute Smart Climate Control Setup!** 🚀\n\n**What makes this special:**\n✨ Just answer 2 temperature questions - everything else is automatic!\n✨ Blueprint calculates all 6 temperature tiers for you\n✨ Stall detection, escalation, hysteresis - all configured optimally\n✨ Works perfectly out of the box for 90% of users\n\n**What will be created:**\n• 13 helper entities (automatic tracking)\n• Complete blueprint automation (fully configured)\n• Dashboard control card (optional)\n• Production-ready climate control system\n\n**Let's get started!**\n\nEnter the room name you want to control:",
         "data": {
           "room_name": "Room Name (e.g., Living Room, Bedroom, Office)"
         }
@@ -49,11 +49,12 @@
         }
       },
       "temperature": {
-        "title": "Temperature Settings (Step 5 of 5)",
-        "description": "Configure basic temperature settings for **{room_name}**.\n\n**Almost there!** Click Submit to create everything.\n\n**What happens next:**\n1. All helper entities will be created automatically\n2. Your blueprint automation will be configured\n3. Climate control will be ready to use immediately!",
+        "title": "Temperature Preferences (Step 5 of 5)",
+        "description": "**Just 2 simple questions!** 🌡️ The wizard automatically calculates ALL temperature thresholds for **{room_name}**.\n\n**Choose your comfort style:**\n• **Tight** (±0.5°C): Precise control, 20+ AC cycles/day\n• **Balanced** (±1.0°C): ⭐ Recommended, 10-15 cycles/day\n• **Relaxed** (±1.5°C): Energy saving, 5-10 cycles/day\n\n**Example:** 23°C ± 1.0°C means:\n• Comfort zone: 22.0°C - 24.0°C (AC off)\n• Gentle cooling starts: 24.1°C\n• Medium cooling starts: 25.0°C\n• Max cooling starts: 26.0°C\n• *(Heating thresholds calculated similarly)*\n\n**What happens next:**\n✅ All 6 temperature tiers calculated automatically\n✅ Stall detection configured optimally\n✅ Dynamic escalation/de-escalation enabled\n✅ Ready to use immediately!",
         "data": {
-          "target_temperature": "Target Temperature (°C)",
-          "comfort_zone_width": "Comfort Zone Width (±°C)",
+          "temperature_preset": "⚙️ Preset (or choose Custom below)",
+          "target_temperature": "🎯 What's your ideal comfort temperature?",
+          "comfort_zone_width": "🌡️ How much temperature variation is acceptable?\n   • 0.5°C = Tight control (23°C → cool at 23.5°C)\n   • 1.0°C = Balanced ⭐ (23°C → cool at 24.0°C)\n   • 1.5-2.0°C = Relaxed (23°C → cool at 24.5-25.0°C)",
           "enable_heating": "Enable Heating Mode",
           "enable_cooling": "Enable Cooling Mode"
         }

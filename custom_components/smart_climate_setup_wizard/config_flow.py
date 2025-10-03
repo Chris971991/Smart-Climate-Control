@@ -386,10 +386,23 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
     async def async_step_temperature(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Step 5: Temperature Settings."""
+        """Step 5: Temperature Settings with Preset Support."""
         errors = {}
 
         if user_input is not None:
+            # Check if preset selected and apply preset values
+            preset = user_input.get("temperature_preset", "custom")
+            if preset and preset != "custom":
+                # Apply preset values
+                presets = {
+                    "tight": {"target": 22, "width": 0.5},
+                    "balanced": {"target": 22, "width": 1.0},
+                    "relaxed": {"target": 22, "width": 1.5},
+                }
+                if preset in presets:
+                    user_input["target_temperature"] = presets[preset]["target"]
+                    user_input["comfort_zone_width"] = presets[preset]["width"]
+
             self._room_data.update(user_input)
 
             # NOW CREATE EVERYTHING!
@@ -418,10 +431,21 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         data_schema = vol.Schema(
             {
+                vol.Optional("temperature_preset", default="balanced"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "Tight (±0.5°C) - Precise control, more energy", "value": "tight"},
+                            {"label": "Balanced (±1.0°C) ⭐ Recommended", "value": "balanced"},
+                            {"label": "Relaxed (±1.5°C) - Energy saving", "value": "relaxed"},
+                            {"label": "Custom - I'll set my own values", "value": "custom"},
+                        ],
+                        mode="dropdown",
+                    )
+                ),
                 vol.Optional("target_temperature", default=22): vol.All(
                     vol.Coerce(float), vol.Range(min=16, max=30)
                 ),
-                vol.Optional("comfort_zone_width", default=2.0): vol.All(
+                vol.Optional("comfort_zone_width", default=1.0): vol.All(
                     vol.Coerce(float), vol.Range(min=0.5, max=5.0)
                 ),
                 vol.Optional("enable_heating", default=True): cv.boolean,
@@ -684,7 +708,9 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             if "helper_proximity_override" not in helpers:
                 helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
 
-        # Build automation config
+        # Build automation config with auto-calculated optimal settings
+        comfort_width = config.get("comfort_zone_width", 1.0)
+
         automation_config = {
             "id": f"climate_control_{sanitized_name}",
             "alias": f"{room_name} Climate Control",
@@ -692,13 +718,26 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             "use_blueprint": {
                 "path": "Chris971991/ultimate_climate_control.yaml",
                 "input": {
+                    # Basic settings
                     "room_name": room_name,
                     "climate_entities": config["climate_entities"],
                     **helpers,
+
+                    # Temperature settings (user-provided)
                     "target_temperature": config.get("target_temperature", 22),
-                    "comfort_zone_width": config.get("comfort_zone_width", 2.0),
+                    "comfort_zone_width": comfort_width,
                     "enable_heating_mode": config.get("enable_heating", True),
                     "enable_cooling_mode": config.get("enable_cooling", True),
+
+                    # Auto-configured stall detection (optimal defaults)
+                    "escalation_temp_tolerance": comfort_width,  # Same as comfort width
+                    "minimum_progress_rate": 0.01,  # Universal default (°C/min)
+                    "stall_escalation_time": 15,    # Universal default (minutes)
+
+                    # Auto-configured timing (optimal defaults)
+                    "check_interval": 5,         # Check every 5 minutes
+                    "minimum_runtime": 10,       # Minimum 10 min runtime
+                    "minimum_off_time": 10,      # Minimum 10 min off time (anti-short-cycling)
                 },
             },
         }
