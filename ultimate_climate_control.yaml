@@ -8391,8 +8391,8 @@ action:
             data:
               value: "off"
 
-    # Turn off AC in Smart mode when presence is lost (after grace period)
-    - if:
+  # Turn off AC in Smart mode when presence is lost (after grace period)
+  - if:
         - condition: template
           value_template: >
             {{
