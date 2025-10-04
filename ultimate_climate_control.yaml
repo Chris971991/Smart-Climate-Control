@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.30
+  name: Ultimate Smart Climate Control - v3.0.31-debug
 
   description: |
-    **Ultimate Smart Climate Control v3.0.30**
+    **Ultimate Smart Climate Control v3.0.31-debug**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -8292,19 +8292,24 @@ action:
     
     # DEFAULT ACTION: Turn off AC when temperature reaches target and no conditions met
     default:
-      # Debug log to show why AC isn't turning off
-      - condition: template
-        value_template: "{{ debug_enabled }}"
+      # Debug log to show DEFAULT action entered
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} DEFAULT ACTION CHECK
+            🔍 {{ room_name | upper }} DEFAULT ACTION ENTERED
             • actual_ac_state: {{ actual_ac_state }}
             • current_temp: {{ current_temp }}°C
             • comfort_min_temp: {{ comfort_min_temp }}°C
             • comfort_max_temp: {{ comfort_max_temp }}°C
-            • temp_in_range: {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
-            • should_turn_off: {{ actual_ac_state == 'on' and current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
+            • enable_heating: {{ enable_heating }}
+            • enable_cooling: {{ enable_cooling }}
+            • control_mode: {{ control_mode }}
+
+            🎯 Turn-off conditions:
+            • Condition 1 (in comfort): {{ actual_ac_state == 'on' and current_temp >= comfort_min_temp and current_temp <= comfort_max_temp and control_mode == 'Smart' }}
+            • Condition 2 (below + no heat): {{ actual_ac_state == 'on' and current_temp < comfort_min_temp and not enable_heating }}
+            • Condition 3 (above + no cool): {{ actual_ac_state == 'on' and current_temp > comfort_max_temp and not enable_cooling }}
+            • Condition 4 (near target): {{ actual_ac_state == 'on' and (current_temp - target_temp) | abs <= 0.5 and control_mode == 'Smart' }}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
