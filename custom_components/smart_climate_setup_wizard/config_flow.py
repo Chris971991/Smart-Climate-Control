@@ -1181,39 +1181,49 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Write automation to automations.yaml
         automations_path = hass.config.path("automations.yaml")
 
-        try:
-            # Read existing automations
-            if os.path.exists(automations_path):
-                with open(automations_path, "r", encoding="utf-8") as f:
-                    existing = yaml.safe_load(f) or []
-            else:
-                existing = []
+        # Read existing automations (non-blocking)
+        def read_automations():
+            try:
+                if os.path.exists(automations_path):
+                    with open(automations_path, "r", encoding="utf-8") as f:
+                        return yaml.safe_load(f) or []
+                else:
+                    return []
+            except Exception as err:
+                _LOGGER.error("Failed to read automations.yaml: %s", err)
+                return []
 
-            # Check if automation already exists - if so, replace it
-            existing_ids = [auto.get("id") for auto in existing if isinstance(auto, dict)]
-            if turnoff_automation["id"] in existing_ids:
-                _LOGGER.info(
-                    "Turn-off automation ID '%s' already exists - replacing with updated configuration", turnoff_automation["id"]
-                )
-                existing = [auto for auto in existing if isinstance(auto, dict) and auto.get("id") != turnoff_automation["id"]]
+        existing = await hass.async_add_executor_job(read_automations)
 
-            # Add new automation
-            existing.append(turnoff_automation)
-
-            # Write back
-            with open(automations_path, "w", encoding="utf-8") as f:
-                yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
+        # Check if automation already exists - if so, replace it
+        existing_ids = [auto.get("id") for auto in existing if isinstance(auto, dict)]
+        if turnoff_automation["id"] in existing_ids:
             _LOGGER.info(
-                "Created turn-off automation: %s", turnoff_automation["id"]
+                "Turn-off automation ID '%s' already exists - replacing with updated configuration", turnoff_automation["id"]
             )
+            existing = [auto for auto in existing if isinstance(auto, dict) and auto.get("id") != turnoff_automation["id"]]
 
-            # Reload automations
-            await hass.services.async_call("automation", "reload")
+        # Add new automation
+        existing.append(turnoff_automation)
+
+        # Write back (non-blocking)
+        def write_automations():
+            try:
+                with open(automations_path, "w", encoding="utf-8") as f:
+                    yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                _LOGGER.info("Created turn-off automation: %s", turnoff_automation["id"])
+            except Exception as err:
+                _LOGGER.error("Failed to write automations.yaml: %s", err)
+                raise
+
+        await hass.async_add_executor_job(write_automations)
+
+        # Reload automations
+        try:
+            await hass.services.async_call("automation", "reload", blocking=True)
             _LOGGER.info("Reloaded automations")
-
         except Exception as err:
-            _LOGGER.error("Failed to create turn-off automation: %s", err)
+            _LOGGER.error("Failed to reload automations: %s", err)
             raise
 
         return turnoff_automation["id"]
