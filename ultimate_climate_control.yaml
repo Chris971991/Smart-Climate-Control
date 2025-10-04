@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.34
+  name: Ultimate Smart Climate Control - v3.0.35
 
   description: |
-    **Ultimate Smart Climate Control v3.0.34**
+    **Ultimate Smart Climate Control v3.0.35**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -8289,8 +8289,6 @@ action:
             data:
               datetime: "{{ now() }}"
             continue_on_error: true
-
-      # FALLBACK: Turn off AC when temperature reaches target and no other conditions met
       - conditions:
           - condition: template
             value_template: "{{ true }}"  # Always match as fallback
