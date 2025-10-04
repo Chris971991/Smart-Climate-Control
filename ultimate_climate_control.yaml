@@ -8391,113 +8391,113 @@ action:
             data:
               value: "off"
 
-      # Turn off AC in Smart mode when presence is lost (after grace period)
-      - if:
-          - condition: template
-            value_template: >
-              {{
-                actual_ac_state == 'on' and
-                control_mode == 'Smart' and
-              not smart_presence_active and
-              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high']
-            }}
-      then:
-        # Log the turn-off action
-        - if:
-            - condition: template
-              value_template: "{{ debug_enabled }}"
-          then:
-            - service: system_log.write
-              data:
-                message: >
-                  🚪 {{ room_name | upper }} SMART MODE - NO PRESENCE DETECTED
-
-                  ✅ Turning Off After Grace Period:
-                      • Control Mode: Smart
-                      • Last Presence: {{ minutes_since_presence | round(0) }} minutes ago
-                      • Grace Period: {{ presence_timeout }} minutes
-                      • Current Mode: {{ last_mode }}
-                      • Action: Turning AC OFF (no presence)
-                level: warning
-                logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-        # Turn off the AC
-        - service: climate.turn_off
-          target:
-            entity_id: !input climate_entities
-          continue_on_error: true
-
-        # Update helper to reflect AC is now off
-        - condition: template
-          value_template: >
-            {{
-              helper_mode is defined and
-              helper_mode not in ['', 'unavailable', 'unknown'] and
-              states(helper_mode) not in ['unavailable', 'unknown']
-            }}
-        - service: input_text.set_value
-          target:
-            entity_id: !input helper_last_mode
-          data:
-            value: "off"
-          continue_on_error: true
-
-
-    # Turn off AC if it's running but temperature has reached/passed target
+    # Turn off AC in Smart mode when presence is lost (after grace period)
     - if:
         - condition: template
           value_template: >
             {{
               actual_ac_state == 'on' and
-              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
-              (
-                (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
-                (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
-              )
+              control_mode == 'Smart' and
+              not smart_presence_active and
+              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high']
             }}
-      then:
-        # Log the turn-off action
-        - if:
-            - condition: template
-              value_template: "{{ debug_enabled }}"
-          then:
-            - service: system_log.write
-              data:
-                message: >
-                  🎯 {{ room_name | upper }} TARGET REACHED - TURNING OFF
+    then:
+      # Log the turn-off action
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🚪 {{ room_name | upper }} SMART MODE - NO PRESENCE DETECTED
 
-                  ✅ Conditions Met:
-                      • Current: {{ current_temp }}°C
-                      • Target: {{ cooling_target_temp if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] else heating_target_temp }}°C
-                      • Mode: {{ last_mode }}
-                      • Action: Turning AC OFF (target achieved)
-                level: warning
-                logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                ✅ Turning Off After Grace Period:
+                    • Control Mode: Smart
+                    • Last Presence: {{ minutes_since_presence | round(0) }} minutes ago
+                    • Grace Period: {{ presence_timeout }} minutes
+                    • Current Mode: {{ last_mode }}
+                    • Action: Turning AC OFF (no presence)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-        # Turn off the AC
-        - service: climate.turn_off
-          target:
-            entity_id: !input climate_entities
+      # Turn off the AC
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+        continue_on_error: true
 
-        # Update helper to show AC is now off
-        - condition: template
-          value_template: >
-            {{
-              helper_mode is defined and
-              helper_mode not in ['', 'unavailable', 'unknown'] and
-              states(helper_mode) not in ['unavailable', 'unknown']
-            }}
-        - service: input_text.set_value
-          target:
-            entity_id: !input helper_last_mode
-          data:
-            value: "off"
-          continue_on_error: true
+      # Update helper to reflect AC is now off
+      - condition: template
+        value_template: >
+          {{
+            helper_mode is defined and
+            helper_mode not in ['', 'unavailable', 'unknown'] and
+            states(helper_mode) not in ['unavailable', 'unknown']
+          }}
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
+        continue_on_error: true
 
-    # Debug: Show which conditions were evaluated but not met
-    - condition: template
-      value_template: "{{ debug_enabled }}"
-    - service: system_log.write
+
+  # Turn off AC if it's running but temperature has reached/passed target
+  - if:
+      - condition: template
+        value_template: >
+          {{
+            actual_ac_state == 'on' and
+            last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
+            (
+              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
+              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
+            )
+          }}
+    then:
+      # Log the turn-off action
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🎯 {{ room_name | upper }} TARGET REACHED - TURNING OFF
+
+                ✅ Conditions Met:
+                    • Current: {{ current_temp }}°C
+                    • Target: {{ cooling_target_temp if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] else heating_target_temp }}°C
+                    • Mode: {{ last_mode }}
+                    • Action: Turning AC OFF (target achieved)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Turn off the AC
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+
+      # Update helper to show AC is now off
+      - condition: template
+        value_template: >
+          {{
+            helper_mode is defined and
+            helper_mode not in ['', 'unavailable', 'unknown'] and
+            states(helper_mode) not in ['unavailable', 'unknown']
+          }}
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
+        continue_on_error: true
+
+  # Debug: Show which conditions were evaluated but not met
+  - condition: template
+    value_template: "{{ debug_enabled }}"
+  - service: system_log.write
     data:
       message: >
         🔍 {{ room_name | upper }} DEBUG: Choose block completed - no conditions matched
