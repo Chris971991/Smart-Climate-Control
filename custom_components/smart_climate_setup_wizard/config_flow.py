@@ -480,17 +480,17 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         errors = {}
 
         if user_input is not None:
-            # Check if preset selected and apply preset values
+            # Check if preset selected and apply preset width (keep user's target temp!)
             preset = user_input.get("temperature_preset", "custom")
             if preset and preset != "custom":
-                # Apply preset values
+                # Apply preset comfort zone width (DO NOT override target temperature!)
                 presets = {
-                    "tight": {"target": 22, "width": 0.5},
-                    "balanced": {"target": 22, "width": 1.0},
-                    "relaxed": {"target": 22, "width": 1.5},
+                    "tight": {"width": 0.5},
+                    "balanced": {"width": 1.0},
+                    "relaxed": {"width": 1.5},
                 }
                 if preset in presets:
-                    user_input["target_temperature"] = presets[preset]["target"]
+                    # Only set width, preserve user's target_temperature
                     user_input["comfort_zone_width"] = presets[preset]["width"]
 
             self._room_data.update(user_input)
