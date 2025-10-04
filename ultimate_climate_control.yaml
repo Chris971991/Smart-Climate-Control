@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.27
+  name: Ultimate Smart Climate Control - v3.0.29
 
   description: |
-    **Ultimate Smart Climate Control v3.0.27**
+    **Ultimate Smart Climate Control v3.0.29**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.27
+    ## 🆕 Latest Update - v3.0.29
 
-    **🎯 IMPROVED: Manual Override Reset on Mode Change v3.0.27**
-    - ✅ FIXED: Changing control mode now clears manual override timer immediately
-    - ✅ SMART: Uses your configured override timeout (not hardcoded)
-    - ✅ BENEFIT: Instant automation control when switching modes via dashboard
-    - ✅ RESULT: No more waiting 3 hours for override to expire!
+    **🐛 CRITICAL FIX: Manual Mode Immediately Timing Out v3.0.29**
+    - ✅ FIXED: Can now select Manual mode without instant switch back to Smart
+    - ✅ FIXED: Mode change timestamp now resets to current time (not past time)
+    - ✅ ROOT CAUSE: v3.0.27 set timestamp to past, triggering immediate manual timeout
+    - ✅ BENEFIT: Manual mode works as intended - timeout starts fresh on selection
 
-    **✅ Previous Update: Smart Mode as Default v3.0.26**
-    - ✅ Setup wizard defaults to "Smart" mode for better energy efficiency
-    - ✅ Adaptive Control switches to "Smart" mode by default
+    **✅ Previous Update: AC Turn-Off When Outside Comfort Zone v3.0.28**
+    - ✅ AC turns off when temp outside comfort zone and relevant mode disabled
+    - ✅ Detects when no action possible and turns off automatically
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2338,13 +2338,15 @@ action:
       - condition: template
         value_template: "{{ trigger.id == 'mode_change' and helper_change not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      # Clear Manual Override timer by setting timestamp beyond user's configured timeout
-      # Uses adaptive_override_timeout + 1 hour buffer to ensure override is fully cleared
+      # Clear Manual Override timer by setting timestamp to NOW
+      # This resets both the override timer AND the manual mode timeout timer
+      # When switching TO Manual mode: starts fresh manual mode timer
+      # When switching FROM Manual mode: clears the override immediately (time_since_manual = 0 < timeout)
       - service: input_datetime.set_datetime
         target:
           entity_id: "{{ helper_change }}"
         data:
-          datetime: "{{ now() - timedelta(hours=adaptive_override_timeout + 1) }}"
+          datetime: "{{ now() }}"
         continue_on_error: true
 
 
@@ -8313,6 +8315,27 @@ action:
                 value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
               - condition: template
                 value_template: "{{ control_mode == 'Smart' }}"
+          # Turn off when outside comfort zone but relevant mode is disabled
+          - condition: and
+            conditions:
+              - condition: template
+                value_template: "{{ actual_ac_state == 'on' }}"
+              - condition: or
+                conditions:
+                  # Below comfort zone but heating disabled
+                  - condition: and
+                    conditions:
+                      - condition: template
+                        value_template: "{{ current_temp < comfort_min_temp }}"
+                      - condition: template
+                        value_template: "{{ not enable_heating }}"
+                  # Above comfort zone but cooling disabled
+                  - condition: and
+                    conditions:
+                      - condition: template
+                        value_template: "{{ current_temp > comfort_max_temp }}"
+                      - condition: template
+                        value_template: "{{ not enable_cooling }}"
           # Emergency condition: AC on and very close to target in Smart mode (ignore comfort zone)
           - condition: and
             conditions:
