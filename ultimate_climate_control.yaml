@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.31-debug
+  name: Ultimate Smart Climate Control - v3.0.32
 
   description: |
-    **Ultimate Smart Climate Control v3.0.31-debug**
+    **Ultimate Smart Climate Control v3.0.32**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
