@@ -803,15 +803,12 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         room_name = config["room_name"]
         sanitized_name = sanitize_room_name(room_name)
 
-        # Check if helpers already exist
+        # Check if helpers already exist - if so, they will be overwritten
         test_helper_id = f"input_text.climate_last_mode_{sanitized_name}"
-        if await self._check_helper_exists(test_helper_id):
-            _LOGGER.warning(
-                "Helpers for %s already exist! This may cause conflicts.", room_name
-            )
-            raise ValueError(
-                f"Helper entities for '{room_name}' already exist. "
-                "Please use a different room name or delete existing helpers first."
+        helpers_exist = await self._check_helper_exists(test_helper_id)
+        if helpers_exist:
+            _LOGGER.info(
+                "Helpers for %s already exist - they will be overwritten/updated.", room_name
             )
 
         # Always create base helpers
@@ -1020,19 +1017,16 @@ You can dismiss this notification once you've copied the card YAML (if desired).
 
         automations = await hass.async_add_executor_job(read_automations)
 
-        # Check for automation ID conflict
+        # Check for automation ID conflict - if exists, replace it
         automation_id = automation_config["id"]
         existing_ids = [auto.get("id") for auto in automations if auto.get("id")]
 
         if automation_id in existing_ids:
-            # Automation with this ID already exists!
-            _LOGGER.error(
-                "Automation ID '%s' already exists in automations.yaml", automation_id
+            # Automation with this ID already exists - remove old one
+            _LOGGER.info(
+                "Automation ID '%s' already exists - replacing with updated configuration", automation_id
             )
-            raise ValueError(
-                f"Automation for '{room_name}' already exists. "
-                "Please delete the existing automation or use a different room name."
-            )
+            automations = [auto for auto in automations if auto.get("id") != automation_id]
 
         # Add new automation
         automations.append(automation_config)
@@ -1195,13 +1189,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             else:
                 existing = []
 
-            # Check if automation already exists
+            # Check if automation already exists - if so, replace it
             existing_ids = [auto.get("id") for auto in existing if isinstance(auto, dict)]
             if turnoff_automation["id"] in existing_ids:
-                _LOGGER.warning(
-                    "Turn-off automation ID '%s' already exists", turnoff_automation["id"]
+                _LOGGER.info(
+                    "Turn-off automation ID '%s' already exists - replacing with updated configuration", turnoff_automation["id"]
                 )
-                return turnoff_automation["id"]
+                existing = [auto for auto in existing if isinstance(auto, dict) and auto.get("id") != turnoff_automation["id"]]
 
             # Add new automation
             existing.append(turnoff_automation)
