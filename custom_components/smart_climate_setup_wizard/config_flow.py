@@ -1118,7 +1118,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             "action": [
                 {
                     "variables": {
-                        "current_temp": f"{{{{ {f\"states('{temp_sensor}')\" if temp_sensor else f\"state_attr('{climate_entities[0]}', 'current_temperature')\"} | float(22) }}}}",
+                        "current_temp": f"{{{{ states('{temp_sensor}') | float(22) }}}}" if temp_sensor else f"{{{{ state_attr('{climate_entities[0]}', 'current_temperature') | float(22) }}}}",
                         "comfort_min": comfort_min,
                         "comfort_max": comfort_max,
                         "enable_heating": enable_heating,
