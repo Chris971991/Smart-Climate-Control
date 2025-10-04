@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.36
+  name: Ultimate Smart Climate Control - v3.0.37
 
   description: |
-    **Ultimate Smart Climate Control v3.0.36**
+    **Ultimate Smart Climate Control v3.0.37**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -7436,7 +7436,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating - start if low threshold exceeded and above medium #}
-                {{ should_activate and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
               {% endif %}
           - condition: template
             value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
@@ -7675,7 +7675,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start if medium threshold exceeded and above high #}
-                {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - condition: template
@@ -7844,7 +7844,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
-                {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') and (control_mode != 'Smart' or smart_presence_active) }}
+                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           # Debug logging at exact condition evaluation time
