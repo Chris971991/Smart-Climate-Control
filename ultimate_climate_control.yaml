@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.29
+  name: Ultimate Smart Climate Control - v3.0.30
 
   description: |
-    **Ultimate Smart Climate Control v3.0.29**
+    **Ultimate Smart Climate Control v3.0.30**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.29
+    ## 🆕 Latest Update - v3.0.30
 
-    **🐛 CRITICAL FIX: Manual Mode Immediately Timing Out v3.0.29**
-    - ✅ FIXED: Can now select Manual mode without instant switch back to Smart
-    - ✅ FIXED: Mode change timestamp now resets to current time (not past time)
-    - ✅ ROOT CAUSE: v3.0.27 set timestamp to past, triggering immediate manual timeout
-    - ✅ BENEFIT: Manual mode works as intended - timeout starts fresh on selection
+    **🐛 CRITICAL FIX: Manual Override Blocking Automation After Mode Change v3.0.30**
+    - ✅ FIXED: AC now turns off when switching from Manual to Smart with temp below comfort zone
+    - ✅ FIXED: Smart timestamp handling - TO Manual uses NOW, FROM Manual uses PAST
+    - ✅ ROOT CAUSE: v3.0.29 set timestamp to NOW, causing override to stay active on periodic checks
+    - ✅ BENEFIT: Automation responds immediately after switching away from Manual mode
 
-    **✅ Previous Update: AC Turn-Off When Outside Comfort Zone v3.0.28**
-    - ✅ AC turns off when temp outside comfort zone and relevant mode disabled
-    - ✅ Detects when no action possible and turns off automatically
+    **✅ Previous Update: Manual Mode Selection Fixed v3.0.29**
+    - ✅ Can select Manual mode without instant switch back
+    - ✅ Manual mode timeout starts fresh on selection
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2338,15 +2338,20 @@ action:
       - condition: template
         value_template: "{{ trigger.id == 'mode_change' and helper_change not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      # Clear Manual Override timer by setting timestamp to NOW
-      # This resets both the override timer AND the manual mode timeout timer
-      # When switching TO Manual mode: starts fresh manual mode timer
-      # When switching FROM Manual mode: clears the override immediately (time_since_manual = 0 < timeout)
+      # Smart timestamp handling for mode changes:
+      # - TO Manual mode: Set to NOW (starts fresh manual mode timeout timer)
+      # - FROM Manual mode: Set to PAST (clears override for future periodic checks)
+      # - Between Smart/Auto: Set to PAST (clears any lingering override)
       - service: input_datetime.set_datetime
         target:
           entity_id: "{{ helper_change }}"
         data:
-          datetime: "{{ now() }}"
+          datetime: >
+            {% if trigger.to_state.state == 'Manual' %}
+              {{ now() }}
+            {% else %}
+              {{ now() - timedelta(hours=adaptive_override_timeout + 1) }}
+            {% endif %}
         continue_on_error: true
 
 
