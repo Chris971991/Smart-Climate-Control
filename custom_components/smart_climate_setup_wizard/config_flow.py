@@ -500,11 +500,15 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 # Create all helpers
                 await self._create_helpers(self.hass, self._room_data)
 
-                # Create the automation
+                # Create the main automation
                 automation_id = await self._create_automation(self.hass, self._room_data)
 
-                # Store automation ID
+                # Create the turn-off automation (handles turning off AC when mode changes)
+                turnoff_automation_id = await self._create_turnoff_automation(self.hass, self._room_data)
+
+                # Store automation IDs
                 self._room_data["automation_id"] = automation_id
+                self._room_data["turnoff_automation_id"] = turnoff_automation_id
 
                 # Generate dashboard card YAML
                 dashboard_card = self._generate_dashboard_card(self._room_data)
@@ -1054,6 +1058,171 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             raise
 
         return automation_config["id"]
+
+    async def _create_turnoff_automation(
+        self, hass: HomeAssistant, config: dict[str, Any]
+    ) -> str:
+        """Create standalone automation to turn off AC when mode changes."""
+        room_name = config["room_name"]
+        sanitized_name = sanitize_room_name(room_name)
+
+        # Helper entity IDs
+        control_mode_helper = f"input_select.climate_control_mode_{sanitized_name}"
+        last_mode_helper = f"input_text.climate_last_mode_{sanitized_name}"
+
+        # Get comfort zone settings
+        target_temp = config.get("target_temperature", 22)
+        comfort_width = config.get("comfort_zone_width", 1.0)
+        comfort_min = round(target_temp - comfort_width, 1)
+        comfort_max = round(target_temp + comfort_width, 1)
+
+        # Get enable settings
+        enable_heating = config.get("enable_heating", True)
+        enable_cooling = config.get("enable_cooling", True)
+
+        # Climate entities
+        climate_entities = config["climate_entities"]
+        temp_sensor = config.get("temperature_sensor")
+
+        # Build automation config
+        turnoff_automation = {
+            "id": f"climate_turnoff_{sanitized_name}",
+            "alias": f"{room_name} Climate Turn-Off",
+            "description": f"Turns off AC when switching to Smart mode and conditions are met - {room_name}",
+            "trigger": [
+                # Trigger on mode change to Smart
+                {
+                    "platform": "state",
+                    "entity_id": control_mode_helper,
+                    "to": "Smart",
+                },
+                # Also check periodically
+                {
+                    "platform": "time_pattern",
+                    "minutes": "/1",
+                },
+            ],
+            "condition": [
+                # Only run in Smart mode
+                {
+                    "condition": "state",
+                    "entity_id": control_mode_helper,
+                    "state": "Smart",
+                },
+                # AC must be on
+                {
+                    "condition": "template",
+                    "value_template": f"{{{{ is_state('{climate_entities[0]}', 'cool') or is_state('{climate_entities[0]}', 'heat') or is_state('{climate_entities[0]}', 'heat_cool') or is_state('{climate_entities[0]}', 'auto') or is_state('{climate_entities[0]}', 'dry') or is_state('{climate_entities[0]}', 'fan_only') }}}}",
+                },
+            ],
+            "action": [
+                {
+                    "variables": {
+                        "current_temp": f"{{{{ {f\"states('{temp_sensor}')\" if temp_sensor else f\"state_attr('{climate_entities[0]}', 'current_temperature')\"} | float(22) }}}}",
+                        "comfort_min": comfort_min,
+                        "comfort_max": comfort_max,
+                        "enable_heating": enable_heating,
+                        "enable_cooling": enable_cooling,
+                    },
+                },
+                # Check if we should turn off
+                {
+                    "condition": "or",
+                    "conditions": [
+                        # Condition 1: Temperature in comfort zone
+                        {
+                            "condition": "template",
+                            "value_template": "{{ current_temp >= comfort_min and current_temp <= comfort_max }}",
+                        },
+                        # Condition 2: Below comfort zone but heating disabled
+                        {
+                            "condition": "and",
+                            "conditions": [
+                                {
+                                    "condition": "template",
+                                    "value_template": "{{ current_temp < comfort_min }}",
+                                },
+                                {
+                                    "condition": "template",
+                                    "value_template": "{{ not enable_heating }}",
+                                },
+                            ],
+                        },
+                        # Condition 3: Above comfort zone but cooling disabled
+                        {
+                            "condition": "and",
+                            "conditions": [
+                                {
+                                    "condition": "template",
+                                    "value_template": "{{ current_temp > comfort_max }}",
+                                },
+                                {
+                                    "condition": "template",
+                                    "value_template": "{{ not enable_cooling }}",
+                                },
+                            ],
+                        },
+                    ],
+                },
+                # Turn off AC
+                {
+                    "service": "climate.turn_off",
+                    "target": {
+                        "entity_id": climate_entities,
+                    },
+                },
+                # Update helper
+                {
+                    "service": "input_text.set_value",
+                    "target": {
+                        "entity_id": last_mode_helper,
+                    },
+                    "data": {
+                        "value": "off",
+                    },
+                },
+            ],
+        }
+
+        # Write automation to automations.yaml
+        automations_path = hass.config.path("automations.yaml")
+
+        try:
+            # Read existing automations
+            if os.path.exists(automations_path):
+                with open(automations_path, "r", encoding="utf-8") as f:
+                    existing = yaml.safe_load(f) or []
+            else:
+                existing = []
+
+            # Check if automation already exists
+            existing_ids = [auto.get("id") for auto in existing if isinstance(auto, dict)]
+            if turnoff_automation["id"] in existing_ids:
+                _LOGGER.warning(
+                    "Turn-off automation ID '%s' already exists", turnoff_automation["id"]
+                )
+                return turnoff_automation["id"]
+
+            # Add new automation
+            existing.append(turnoff_automation)
+
+            # Write back
+            with open(automations_path, "w", encoding="utf-8") as f:
+                yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+            _LOGGER.info(
+                "Created turn-off automation: %s", turnoff_automation["id"]
+            )
+
+            # Reload automations
+            await hass.services.async_call("automation", "reload")
+            _LOGGER.info("Reloaded automations")
+
+        except Exception as err:
+            _LOGGER.error("Failed to create turn-off automation: %s", err)
+            raise
+
+        return turnoff_automation["id"]
 
     def _generate_dashboard_card(self, config: dict[str, Any]) -> str:
         """Generate Mushroom card YAML for dashboard."""
