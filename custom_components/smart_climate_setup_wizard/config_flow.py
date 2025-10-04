@@ -353,12 +353,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         if user_input is not None:
             self._room_data.update(user_input)
-            # Check if smart mode enabled and presence sensors were added
-            if (self._room_data.get("enable_smart_mode", True) and
-                user_input.get("room_presence_sensors")):
-                return await self.async_step_bedroom_mode()
-            else:
-                return await self.async_step_temperature()
+            # Always go to presence detection step next
+            return await self.async_step_presence_detection()
 
         # Build schema with optional sensors
         data_schema_dict = {}
@@ -392,10 +388,71 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             },
         )
 
+    async def async_step_presence_detection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 4.5: Home/Away Presence Detection."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+
+            # Determine which mode to default to based on sensors configured
+            has_room_sensors = bool(self._room_data.get("room_presence_sensors"))
+            has_person_entities = bool(user_input.get("presence_persons"))
+
+            # Auto-select initial control mode
+            if has_room_sensors:
+                # Has room sensors → Smart mode
+                self._room_data["default_control_mode"] = "Smart"
+            elif has_person_entities:
+                # No room sensors but has person entities → Auto mode
+                self._room_data["default_control_mode"] = "Auto"
+            else:
+                # No sensors at all → Smart mode (will just never activate)
+                self._room_data["default_control_mode"] = "Smart"
+
+            # Check if we need to ask about bedroom mode
+            if (self._room_data.get("enable_smart_mode", True) and
+                self._room_data.get("room_presence_sensors")):
+                return await self.async_step_bedroom_mode()
+            else:
+                return await self.async_step_temperature()
+
+        # Build schema for presence detection
+        data_schema_dict = {}
+
+        # Person entities for home/away detection (recommended)
+        data_schema_dict[vol.Optional("presence_persons")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="person",
+                multiple=True,
+            )
+        )
+
+        # Additional presence devices (optional)
+        data_schema_dict[vol.Optional("presence_devices")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                multiple=True,
+            )
+        )
+
+        data_schema = vol.Schema(data_schema_dict)
+
+        return self.async_show_form(
+            step_id="presence_detection",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "4.5 of 6",
+            },
+        )
+
     async def async_step_bedroom_mode(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Step 4.5: Ask if this is a bedroom with bed sensor."""
+        """Step 5: Ask if this is a bedroom with bed sensor."""
         errors = {}
 
         if user_input is not None:
@@ -412,7 +469,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             errors=errors,
             description_placeholders={
                 "room_name": self._room_data["room_name"],
-                "step": "4.5 of 5",
+                "step": "5 of 6",
             },
         )
 
@@ -536,7 +593,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             errors=errors,
             description_placeholders={
                 "room_name": self._room_data["room_name"],
-                "step": "5 of 5",
+                "step": "6 of 6",
             },
         )
 
@@ -814,7 +871,10 @@ You can dismiss this notification once you've copied the card YAML (if desired).
 
             elif domain == "input_select":
                 helper_config["options"] = helper_def.get("options", [])
-                if helper_def.get("initial"):
+                # Use dynamic default for control_mode, otherwise use template default
+                if helper_key == "control_mode" and config.get("default_control_mode"):
+                    helper_config["initial"] = config["default_control_mode"]
+                elif helper_def.get("initial"):
                     helper_config["initial"] = helper_def["initial"]
 
             helpers_config[domain][object_id] = helper_config
@@ -926,6 +986,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
 
         if config.get("room_presence_sensors"):
             automation_config["use_blueprint"]["input"]["room_presence_sensors"] = config["room_presence_sensors"]
+
+        # Add presence detection entities
+        if config.get("presence_persons"):
+            automation_config["use_blueprint"]["input"]["presence_persons"] = config["presence_persons"]
+
+        if config.get("presence_devices"):
+            automation_config["use_blueprint"]["input"]["presence_devices"] = config["presence_devices"]
 
         # Set presence validation mode based on bedroom configuration
         if config.get("is_bedroom_with_bed_sensor", False):

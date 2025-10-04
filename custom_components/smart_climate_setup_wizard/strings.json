@@ -14,14 +14,14 @@
         "description": "**The Ultimate Climate Control blueprint has been downloaded and installed!**\n\n📥 Downloaded from GitHub\n✅ Saved to your blueprints directory\n✅ Registered with Home Assistant\n\n**What's Next:**\nClick Submit to continue with room setup.\n\n**Note:** The blueprint is now available in Settings → Automations & Scenes → Blueprints if you want to view it!"
       },
       "room_name": {
-        "title": "Smart Climate Control Setup (Step 1 of 5)",
+        "title": "Smart Climate Control Setup (Step 1 of 6)",
         "description": "Welcome to the **2-Minute Smart Climate Control Setup!** 🚀\n\n**What makes this special:**\n✨ Just answer 2 temperature questions - everything else is automatic!\n✨ Blueprint calculates all 6 temperature tiers for you\n✨ Stall detection, escalation, hysteresis - all configured optimally\n✨ Works perfectly out of the box for 90% of users\n\n**What will be created:**\n• 13 helper entities (automatic tracking)\n• Complete blueprint automation (fully configured)\n• Dashboard control card (optional)\n• Production-ready climate control system\n\n**Let's get started!**\n\nEnter the room name you want to control:",
         "data": {
           "room_name": "Room Name (e.g., Living Room, Bedroom, Office)"
         }
       },
       "features": {
-        "title": "Select Features (Step 2 of 5)",
+        "title": "Select Features (Step 2 of 6)",
         "description": "Choose which features to enable for **{room_name}**.\n\n**All features are recommended for best performance!**\n\nThese determine which helper entities will be created and which automation features will be available.",
         "data": {
           "enable_dynamic_adaptation": "✅ Dynamic Adaptation (effectiveness tracking, power escalation)",
@@ -31,29 +31,37 @@
         }
       },
       "climate_entities": {
-        "title": "Select Climate Entities (Step 3 of 5)",
+        "title": "Select Climate Entities (Step 3 of 6)",
         "description": "Select the A/C unit(s) for **{room_name}**.\n\nYou can select multiple A/C units if your room has more than one.\n\n**Tip:** If you don't see your A/C, make sure it's properly integrated in Home Assistant first.",
         "data": {
           "climate_entities": "A/C Units (select one or more)"
         }
       },
       "sensors": {
-        "title": "Select Sensors (Step 4 of 5)",
+        "title": "Select Sensors (Step 4 of 6)",
         "description": "Configure optional sensors for **{room_name}**.\n\n**All sensors are optional but recommended for best accuracy!**\n\n**Temperature Sensor:** External thermometer for more accurate readings\n\n**Room Presence Sensors:** Add your BLE sensors (e.g., sensor.phone_ble_area), motion sensors (PIR), mmWave sensors, or any occupancy detection sensors.\n\n**🛏️ For Bedrooms:** Include bed occupancy sensors (e.g., binary_sensor.bed_occupancy) for sleep detection! You can select multiple sensors for better accuracy.",
         "data": {
           "temperature_sensor": "Temperature Sensor (optional)",
           "room_presence_sensors": "Room Presence Sensors - BLE, Motion, mmWave, Bed Sensor, etc. (optional, multiple)"
         }
       },
+      "presence_detection": {
+        "title": "Home/Away Detection (Step 4.5 of 6)",
+        "description": "**Configure home/away presence detection for {room_name}.**\n\n**Person Entities (Recommended):**\nSelect people to track for home/away detection and proximity-based pre-conditioning.\n\n**Why add these even if you have room sensors?**\n• ✅ Enables Auto mode as fallback option\n• ✅ Allows switching between Smart and Auto modes\n• ✅ Provides house-wide automation when needed\n\n**Presence Devices (Optional):**\nAdditional devices that indicate someone is home (PC power, TV, gaming console, etc.)\n\n**🎯 Smart Mode Selection:**\n• **With room sensors** → Defaults to Smart mode (room-specific)\n• **Without room sensors** → Defaults to Auto mode (house-wide)\n• **Both available** → You can switch modes anytime!",
+        "data": {
+          "presence_persons": "Person Entities (for home/away detection)",
+          "presence_devices": "Presence Devices - PC, TV, Workstation, etc. (optional)"
+        }
+      },
       "bedroom_mode": {
-        "title": "Bedroom Configuration (Step 4.5 of 5)",
+        "title": "Bedroom Configuration (Step 5 of 6)",
         "description": "Is **{room_name}** a bedroom with a bed occupancy sensor?\n\n**🛏️ BEDROOM Mode Benefits:**\n• Detects presence when sleeping (bed sensor)\n• Detects presence when awake (motion sensor)\n• Prevents false positives (phone left behind)\n• Works with any sensor combination\n\n**Select YES if:**\n• This is a bedroom\n• You added a bed occupancy sensor above\n• You want the AC to stay on while sleeping\n\n**Select NO for:**\n• Living rooms, offices, other areas\n• Bedrooms without bed sensors",
         "data": {
           "is_bedroom_with_bed_sensor": "Enable BEDROOM mode? (Adaptive sleep detection)"
         }
       },
       "temperature": {
-        "title": "Temperature Preferences (Step 5 of 5)",
+        "title": "Temperature Preferences (Step 6 of 6)",
         "description": "**Just 2 simple questions!** 🌡️ The wizard automatically calculates ALL temperature thresholds for **{room_name}**.\n\n**Choose your comfort style:**\n• **Tight** (±0.5°C): Precise control, 20+ AC cycles/day\n• **Balanced** (±1.0°C): ⭐ Recommended, 10-15 cycles/day\n• **Relaxed** (±1.5°C): Energy saving, 5-10 cycles/day\n\n**Example:** 23°C ± 1.0°C means:\n• Comfort zone: 22.0°C - 24.0°C (AC off)\n• Gentle cooling starts: 24.1°C\n• Medium cooling starts: 25.0°C\n• Max cooling starts: 26.0°C\n• *(Heating thresholds calculated similarly)*\n\n**What happens next:**\n✅ All 6 temperature tiers calculated automatically\n✅ Stall detection configured optimally\n✅ Dynamic escalation/de-escalation enabled\n✅ Ready to use immediately!",
         "data": {
           "temperature_preset": "⚙️ Preset (or choose Custom below)",
