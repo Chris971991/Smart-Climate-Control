@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.39
+  name: Ultimate Smart Climate Control - v3.0.40
 
   description: |
-    **Ultimate Smart Climate Control v3.0.39**
+    **Ultimate Smart Climate Control v3.0.40**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.36
+    ## 🆕 Latest Update - v3.0.40
 
-    **🧹 CODE CLEANUP: Removed Redundant Turn-Off Logic v3.0.36**
-    - ✅ REMOVED: Fallback choose block that never executed (HA blueprint importer bug)
-    - ✅ BENEFIT: Turn-off logic now handled by standalone automation (created by Setup Wizard v3.3.2+)
-    - ✅ CLEANER: Blueprint focuses on temperature control, separate automation handles shutoff
-    - ✅ RELIABLE: No more YAML indentation issues with choose/default blocks
+    **🛡️ COMPRESSOR PROTECTION: Off-Time Protection v3.0.40**
+    - ✅ NEW: Enforces minimum off-time before AC restart (default: 10 minutes, configurable 3-15 min)
+    - ✅ NEW: User-configurable toggle to enable/disable protection (default: enabled)
+    - ✅ PROTECTS: AC compressor pressure equalization prevents damage from rapid restarts
+    - ✅ SMART: Modern ACs (2015+) with built-in protection can disable enforcement
+    - ✅ COMPLETE: Works alongside runtime protection for full anti-short-cycling
 
-    **📝 Previous Update: Manual Mode Fixes v3.0.30**
-    - ✅ FIXED: AC turns off when switching Manual → Smart with appropriate conditions
-    - ✅ FIXED: Smart timestamp handling for immediate automation response
+    **📝 Previous Update: Code Cleanup v3.0.36**
+    - ✅ REMOVED: Redundant turn-off logic (handled by standalone automation from wizard)
+    - ✅ CLEANER: Blueprint focuses on temperature control only
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -1458,6 +1459,10 @@ blueprint:
             • **10 minutes:** Recommended balance
             • **15 minutes:** Conservative protection
 
+            **Note:** Modern AC units (2015+) often have built-in 3-5 minute delay timers.
+            If your AC has hardware protection, you can disable enforcement below
+            or reduce this to 3 minutes.
+
             **Critical** for compressor longevity and energy efficiency.
           default: 10
           selector:
@@ -1465,7 +1470,28 @@ blueprint:
               min: 3
               max: 15
               unit_of_measurement: minutes
-        
+
+        enforce_off_time_protection:
+          name: Enforce Off-Time Protection
+          description: |
+            **Enable off-time protection** when restarting AC from OFF state.
+
+            • **ON (Recommended):** Enforces `min_off_time_minutes` delay before restart
+            • **OFF:** Allows immediate restart (use if AC has built-in protection)
+
+            **When to disable:**
+            - Modern AC with built-in 3-5 minute delay timer
+            - Testing/debugging automation behavior
+            - Rapid response scenarios (at your own risk)
+
+            **When to keep enabled:**
+            - Older AC units without built-in protection
+            - Extending compressor lifespan
+            - Conservative safety approach
+          default: true
+          selector:
+            boolean:
+
         enable_gradual_adjustment:
           name: Enable Gradual Temperature Adjustment
           description: |
@@ -2122,6 +2148,7 @@ variables:
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
+  enforce_offtime: !input enforce_off_time_protection
   # Smart mode settings
   control_mode_helper: !input helper_control_mode
   presence_detected_helper: !input helper_presence_detected
@@ -3640,7 +3667,17 @@ action:
                 {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: >
+              {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {# Same heating tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from cooling/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -3867,7 +3904,17 @@ action:
                 {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: >
+              {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {# Same heating tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from cooling/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -4123,7 +4170,17 @@ action:
                 {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: >
+              {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {# Same heating tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from cooling/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -4381,7 +4438,17 @@ action:
                 {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -4610,7 +4677,17 @@ action:
                 {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -5463,7 +5540,9 @@ action:
               # Need heating
               - conditions:
                   - condition: template
-                    value_template: "{{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}"
+                    value_template: >
+                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_since_change > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_since_change > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                      {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
                 sequence:
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -5678,7 +5757,17 @@ action:
                 {{ should_activate and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -5874,7 +5963,17 @@ action:
                 {{ should_activate and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -7101,7 +7200,17 @@ action:
                 {% endif %}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -7316,7 +7425,17 @@ action:
           - condition: template
             value_template: "{{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}"
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
+            value_template: >
+              {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {# Same cooling tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from heating/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -7486,7 +7605,17 @@ action:
                 {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
               {% endif %}
           - condition: template
-            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
+            value_template: >
+              {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {# Same heating tier switching - enforce runtime minimum #}
+                {{ time_since_change > runtime_min }}
+              {% elif last_mode == 'off' and enforce_offtime %}
+                {# Starting from OFF - enforce off-time if enabled #}
+                {{ time_since_change > offtime_min }}
+              {% else %}
+                {# Switching from cooling/eco OR off-time protection disabled #}
+                true
+              {% endif %}
         sequence:
           - service: system_log.write
             data:
@@ -7723,7 +7852,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start if medium threshold exceeded and above high #}
-                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_since_change > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_since_change > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - condition: template
@@ -7892,7 +8022,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
-                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_since_change > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_since_change > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           # Debug logging at exact condition evaluation time
