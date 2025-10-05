@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.43
+  name: Ultimate Smart Climate Control - v3.0.44
 
   description: |
-    **Ultimate Smart Climate Control v3.0.43**
+    **Ultimate Smart Climate Control v3.0.44**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.43
+    ## 🆕 Latest Update - v3.0.44
 
-    **⚡ CRITICAL FIX: Escalation Blocked by Anti-Short-Cycling Protection v3.0.43**
-    - ✅ FIXED: Runtime protection now allows escalation within same HVAC mode (LOW→MEDIUM→HIGH)
-    - ✅ FIXED: Escalation logic priority - moved stall checks before effectiveness blocking
-    - ✅ RESOLVED: AC can now escalate fan speed immediately when stalled (no 15min wait)
-    - ✅ IMPROVED: Anti-short-cycling still protects mode switches (heat↔cool, on↔off) and de-escalation
+    **🎛️ IMPROVEMENT: Fine-Tunable Escalation Settings v3.0.44**
+    - ✅ IMPROVED: Stall Escalation Time now adjustable in 1-minute increments (was 5-minute steps)
+    - ✅ IMPROVED: Temperature Stall Tolerance now adjustable in 0.1°C increments (was 0.5°C steps)
+    - ✅ IMPROVED: De-escalation Threshold now adjustable in 0.1°C increments (was 0.5°C steps)
+    - ✅ BENEFIT: Users can now fine-tune escalation behavior precisely to their AC and room characteristics
 
-    **📝 Previous Update: Debug Logging Fix v3.0.42**
-    - ✅ FIXED: Missing debug_enabled condition preventing AC activation
-    - ✅ CRITICAL: Automation now works with debug logging disabled
+    **📝 Previous Update: Escalation Fix v3.0.43**
+    - ✅ FIXED: Runtime protection now allows escalation within same HVAC mode
+    - ✅ CRITICAL: AC can now escalate fan speed immediately when stalled
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -1613,9 +1613,9 @@ blueprint:
           default: 15
           selector:
             number:
-              min: 5
+              min: 1
               max: 60
-              step: 5
+              step: 1
               unit_of_measurement: minutes
 
         minimum_progress_rate:
@@ -1670,9 +1670,9 @@ blueprint:
           default: 1.0
           selector:
             number:
-              min: 0.5
+              min: 0.1
               max: 3.0
-              step: 0.5
+              step: 0.1
               unit_of_measurement: "°C"
         
         deescalation_approach_threshold:
@@ -1689,9 +1689,9 @@ blueprint:
           default: 2.0
           selector:
             number:
-              min: 1.0
+              min: 0.1
               max: 4.0
-              step: 0.5
+              step: 0.1
               unit_of_measurement: "°C"
         
         helper_temp_history:
