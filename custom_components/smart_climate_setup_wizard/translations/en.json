@@ -80,6 +80,17 @@
           "enable_heating": "Enable Heating Mode",
           "enable_cooling": "Enable Cooling Mode"
         }
+      },
+      "behavior_settings": {
+        "title": "⚙️ Behavior & Notifications (Step 5.5 of 6)",
+        "description": "**Configure how your climate control behaves in different situations** for **{room_name}**.\n\n**These settings control:**\n• What happens when everyone leaves home\n• What happens when the room is empty (but you're still home)\n• What happens when temperature stabilizes\n• Whether eco mode is used in the comfort zone\n• Whether you receive push notifications\n\n**Don't worry!** You can always change these later in the automation settings.",
+        "data": {
+          "away_mode_action": "🏠 Away Mode Action • What to do when everyone leaves home",
+          "smart_mode_behavior": "🚪 Room Absence Behavior • What to do when room is empty",
+          "stability_behavior": "📊 Temperature Stability Action • What to do when temp is stable",
+          "enable_eco_mode": "💚 Enable Eco Mode • Use eco mode when in comfort zone",
+          "enable_notifications": "🔔 Enable Notifications • Push notifications for climate changes"
+        }
       }
     },
     "error": {

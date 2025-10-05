@@ -625,6 +625,64 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
             self._room_data.update(user_input)
 
+            # Continue to behavior settings step
+            return await self.async_step_behavior_settings()
+
+        data_schema = vol.Schema(
+            {
+                vol.Optional("temperature_preset", default="balanced"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "Tight (±0.5°C) - Precise control, more energy", "value": "tight"},
+                            {"label": "Balanced (±1.0°C) ⭐ Recommended", "value": "balanced"},
+                            {"label": "Relaxed (±1.5°C) - Energy saving", "value": "relaxed"},
+                            {"label": "Custom - I'll set my own values", "value": "custom"},
+                        ],
+                        mode="dropdown",
+                    )
+                ),
+                vol.Optional("target_temperature", default=22): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=16,
+                        max=30,
+                        step=0.5,
+                        mode="box",
+                        unit_of_measurement="°C",
+                    )
+                ),
+                vol.Optional("comfort_zone_width", default=1.0): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.5,
+                        max=5.0,
+                        step=0.1,
+                        mode="box",
+                        unit_of_measurement="°C",
+                    )
+                ),
+                vol.Optional("enable_heating", default=True): selector.BooleanSelector(),
+                vol.Optional("enable_cooling", default=True): selector.BooleanSelector(),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="temperature",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "5 of 6",
+            },
+        )
+
+    async def async_step_behavior_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 5.5: Behavior & Notification Settings."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+
             # NOW CREATE EVERYTHING!
             try:
                 # Create all helpers
@@ -697,49 +755,50 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                 _LOGGER.error("Error creating setup: %s", err, exc_info=True)
                 errors["base"] = "creation_failed"
 
+        # Build schema for behavior settings
         data_schema = vol.Schema(
             {
-                vol.Optional("temperature_preset", default="balanced"): selector.SelectSelector(
+                vol.Optional("away_mode_action", default="eco"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
-                            {"label": "Tight (±0.5°C) - Precise control, more energy", "value": "tight"},
-                            {"label": "Balanced (±1.0°C) ⭐ Recommended", "value": "balanced"},
-                            {"label": "Relaxed (±1.5°C) - Energy saving", "value": "relaxed"},
-                            {"label": "Custom - I'll set my own values", "value": "custom"},
+                            {"label": "Off - Turn AC completely off (maximum savings)", "value": "off"},
+                            {"label": "Eco - Reduce to eco mode ⭐ Recommended", "value": "eco"},
+                            {"label": "Maintain - Keep current temperature", "value": "maintain"},
                         ],
                         mode="dropdown",
                     )
                 ),
-                vol.Optional("target_temperature", default=22): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=16,
-                        max=30,
-                        step=0.5,
-                        mode="box",
-                        unit_of_measurement="°C",
+                vol.Optional("smart_mode_behavior", default="eco"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "Off - Turn off completely (maximum savings)", "value": "off"},
+                            {"label": "Eco - Reduce to eco mode ⭐ Recommended", "value": "eco"},
+                            {"label": "Maintain - Keep current temperature", "value": "maintain"},
+                        ],
+                        mode="dropdown",
                     )
                 ),
-                vol.Optional("comfort_zone_width", default=1.0): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0.5,
-                        max=5.0,
-                        step=0.1,
-                        mode="box",
-                        unit_of_measurement="°C",
+                vol.Optional("stability_behavior", default="off"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "Off - Turn off when stable ⭐ Recommended", "value": "off"},
+                            {"label": "Eco - Switch to eco mode when stable", "value": "eco"},
+                        ],
+                        mode="dropdown",
                     )
                 ),
-                vol.Optional("enable_heating", default=True): selector.BooleanSelector(),
-                vol.Optional("enable_cooling", default=True): selector.BooleanSelector(),
+                vol.Optional("enable_eco_mode", default=True): selector.BooleanSelector(),
+                vol.Optional("enable_notifications", default=False): selector.BooleanSelector(),
             }
         )
 
         return self.async_show_form(
-            step_id="temperature",
+            step_id="behavior_settings",
             data_schema=data_schema,
             errors=errors,
             description_placeholders={
                 "room_name": self._room_data["room_name"],
-                "step": "6 of 6",
+                "step": "5.5 of 6",
             },
         )
 
@@ -1184,6 +1243,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "check_interval": 5,         # Check every 5 minutes
                     "minimum_runtime": 10,       # Minimum 10 min runtime
                     "minimum_off_time": 10,      # Minimum 10 min off time (anti-short-cycling)
+
+                    # Behavior settings (user-provided)
+                    "away_mode_action": config.get("away_mode_action", "eco"),
+                    "smart_mode_behavior": config.get("smart_mode_behavior", "eco"),
+                    "stability_behavior": config.get("stability_behavior", "off"),
+                    "enable_eco_mode": config.get("enable_eco_mode", True),
+                    "enable_notifications": config.get("enable_notifications", False),
                 },
             },
         }
