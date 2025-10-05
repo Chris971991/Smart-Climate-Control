@@ -54,13 +54,13 @@
         }
       },
       "proximity_detection": {
-        "title": "Proximity Pre-Conditioning (Step 4.6 of 6) - Optional",
-        "description": "**Enable automatic pre-conditioning when approaching home! 🏠**\n\nIf you have the Home Assistant **Proximity integration** set up, the system can:\n• 🚗 Detect when you're heading towards home\n• ❄️ Start cooling/heating BEFORE you arrive\n• ✨ Walk into a perfectly comfortable room\n\n**Requirements:**\n1. Home Assistant Proximity integration configured\n2. Person entities being tracked by Proximity\n3. Phone with GPS/location services enabled\n\n**If you haven't set up Proximity yet:**\n• Settings → Devices & Services → Add Integration → Proximity\n• Select \"home\" zone and your person entities\n• It takes 2 minutes!\n\n**Leave unchecked to skip this feature** (you can enable it later).",
+        "title": "🏠 Proximity Pre-Conditioning (Step 4.6 of 6)",
+        "description": "**Start cooling/heating BEFORE you arrive home!**\n\n**How it works:**\n• 🚗 Tracks your location via GPS (phone)\n• 🎯 Detects when heading towards home\n• ❄️ Starts conditioning when within range\n• ✨ Room is comfortable when you arrive\n\n**Setup Status:** {home_zone_status}\n\n**Setup Requirements:**\n1. **Home zone** (Settings → Areas → Zones → Create \"Home\" zone)\n2. **Proximity integration** (Settings → Integrations → Add → Proximity)\n   - Select \"home\" zone\n   - Select person entities to track\n3. **Phone GPS enabled** (Home Assistant Companion App)\n\n**Don't have Proximity setup?**\nLeave unchecked - you can enable this later by editing the blueprint manually.\n\n**Already have Proximity?**\nCheck the box below and select your sensors!",
         "data": {
-          "enable_proximity": "Enable proximity-based pre-conditioning",
-          "proximity_sensor": "Distance sensor (e.g., sensor.home_nearest_distance)",
-          "direction_sensor": "Direction sensor (e.g., sensor.home_nearest_direction_of_travel)",
-          "home_zone_distance": "Activation distance • 5000m = 5km • Activates when within this distance AND heading home"
+          "enable_proximity": "✅ Enable proximity-based pre-conditioning (requires Proximity integration)",
+          "proximity_sensor": "📏 Distance Sensor • Shows how far you are from home • Usually sensor.home_nearest_distance",
+          "direction_sensor": "🧭 Direction Sensor • Shows if heading towards/away • Usually sensor.home_nearest_direction_of_travel",
+          "home_zone_distance": "🎯 Activation Distance (meters) • How far from home to start • 5000m = 5km"
         }
       },
       "bedroom_mode": {
@@ -92,6 +92,7 @@
       "device_not_found": "One or more selected presence devices are not available in Home Assistant. Please select valid devices or remove unavailable ones.",
       "proximity_sensor_not_found": "The selected proximity distance sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
       "direction_sensor_not_found": "The selected direction sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
+      "home_zone_not_found": "⚠️ Home zone is not configured in Home Assistant. Proximity-based pre-conditioning requires a 'Home' zone to work.\n\n**To create the Home zone:**\n1. Go to Settings → Areas, labels & zones → Zones\n2. Click 'Add Zone'\n3. Name it 'Home'\n4. Set your home location on the map\n5. Save and run this wizard again\n\n**Or:** Uncheck the proximity option and continue without this feature.",
       "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)"
     },
     "abort": {

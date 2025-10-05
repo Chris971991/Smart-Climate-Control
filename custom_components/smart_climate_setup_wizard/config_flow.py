@@ -498,11 +498,19 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         """Step 4.6: Optional Proximity-Based Pre-Conditioning Setup."""
         errors = {}
 
+        # Check if Home zone exists
+        home_zone = self.hass.states.get("zone.home")
+        home_zone_exists = home_zone is not None
+
         if user_input is not None:
             enable_proximity = user_input.get("enable_proximity", False)
 
-            # If proximity enabled, validate the sensors
+            # If proximity enabled, validate requirements
             if enable_proximity:
+                # Check if Home zone exists
+                if not home_zone_exists:
+                    errors["base"] = "home_zone_not_found"
+
                 # Validate proximity sensor if provided
                 if user_input.get("proximity_sensor"):
                     proximity_sensor = user_input["proximity_sensor"]
@@ -528,33 +536,35 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         # Build schema for proximity detection
         data_schema_dict = {}
 
-        # Enable proximity checkbox
+        # Enable proximity checkbox (always shown)
         data_schema_dict[vol.Optional("enable_proximity", default=False)] = selector.BooleanSelector()
 
-        # Proximity distance sensor (optional, shown if enabled)
-        data_schema_dict[vol.Optional("proximity_sensor", default="sensor.home_nearest_distance")] = selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                domain="sensor",
+        # Only show sensor fields if Home zone exists (sensors won't work without it)
+        if home_zone_exists:
+            # Proximity distance sensor
+            data_schema_dict[vol.Optional("proximity_sensor", default="sensor.home_nearest_distance")] = selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="sensor",
+                )
             )
-        )
 
-        # Direction sensor (optional, shown if enabled)
-        data_schema_dict[vol.Optional("direction_sensor", default="sensor.home_nearest_direction_of_travel")] = selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                domain="sensor",
+            # Direction sensor
+            data_schema_dict[vol.Optional("direction_sensor", default="sensor.home_nearest_direction_of_travel")] = selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="sensor",
+                )
             )
-        )
 
-        # Home zone distance
-        data_schema_dict[vol.Optional("home_zone_distance", default=5000)] = selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=1000,
-                max=10000,
-                step=500,
-                mode="box",
-                unit_of_measurement="m",
+            # Home zone distance
+            data_schema_dict[vol.Optional("home_zone_distance", default=5000)] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1000,
+                    max=10000,
+                    step=500,
+                    mode="box",
+                    unit_of_measurement="m",
+                )
             )
-        )
 
         data_schema = vol.Schema(data_schema_dict)
 
@@ -565,6 +575,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "4.6 of 6",
+                "home_zone_status": "✅ Home zone configured" if home_zone_exists else "⚠️ Home zone not found",
             },
         )
 
