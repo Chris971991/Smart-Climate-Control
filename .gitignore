@@ -10,3 +10,6 @@ ENHANCED_AUDIT_SUMMARY.md
 TEST_SUITE_ENHANCEMENTS.md
 CRITICAL_AUDIT_REPORT.md
 custom_components/smart_climate_setup_wizard/__pycache__/config_flow.cpython-312.pyc
+proximity_test_helpers.yaml
+proximity_spoof_automation.yaml
+PROXIMITY_TEST_GUIDE.md
