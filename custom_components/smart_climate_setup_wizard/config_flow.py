@@ -683,77 +683,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if user_input is not None:
             self._room_data.update(user_input)
 
-            # NOW CREATE EVERYTHING!
-            try:
-                # Create all helpers
-                await self._create_helpers(self.hass, self._room_data)
-
-                # Create the main automation
-                automation_id = await self._create_automation(self.hass, self._room_data)
-
-                # Create the turn-off automation (handles turning off AC when mode changes)
-                turnoff_automation_id = await self._create_turnoff_automation(self.hass, self._room_data)
-
-                # Store automation IDs
-                self._room_data["automation_id"] = automation_id
-                self._room_data["turnoff_automation_id"] = turnoff_automation_id
-
-                # Generate dashboard card YAML
-                dashboard_card = self._generate_dashboard_card(self._room_data)
-                self._room_data["dashboard_card_yaml"] = dashboard_card
-
-                # Create persistent notification with dashboard card YAML (only shown once)
-                room_name = self._room_data["room_name"]
-                if dashboard_card:
-                    message = f"""## ✅ {room_name} Climate Control Setup Complete!
-
-**What was created:**
-- ✅ All helper entities
-- ✅ Complete automation
-- ✅ Ready to use immediately!
-
----
-
-### 🎨 Optional: Add Dashboard Control Card
-
-Copy this YAML and add it to your dashboard for easy mode switching:
-
-```yaml
-{dashboard_card}
-```
-
-**To add to your dashboard:**
-1. Go to your dashboard
-2. Click Edit (top right)
-3. Click Add Card
-4. Search for "Manual" card
-5. Paste the YAML above
-6. Save!
-
-**Note:** Requires `mushroom` and `card-mod` custom cards (install via HACS)
-
----
-
-You can dismiss this notification once you've copied the card YAML (if desired)."""
-
-                    await self.hass.services.async_call(
-                        "persistent_notification",
-                        "create",
-                        {
-                            "title": f"🎉 {room_name} Climate Setup Complete",
-                            "message": message,
-                            "notification_id": f"climate_setup_{room_name.lower().replace(' ', '_')}",
-                        },
-                    )
-
-                # Create config entry
-                return self.async_create_entry(
-                    title=f"{self._room_data['room_name']} Climate Control",
-                    data=self._room_data,
-                )
-            except Exception as err:
-                _LOGGER.error("Error creating setup: %s", err, exc_info=True)
-                errors["base"] = "creation_failed"
+            # Continue to compressor protection step
+            return await self.async_step_compressor_protection()
 
         # Build schema for behavior settings
         data_schema = vol.Schema(
@@ -799,6 +730,51 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "5.5 of 6",
+            },
+        )
+
+    async def async_step_compressor_protection(self, user_input=None):
+        """Step 5.75: Compressor Protection Settings."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+
+            # Continue to create step
+            return await self.async_step_create()
+
+        # Build schema for compressor protection settings
+        data_schema = vol.Schema(
+            {
+                vol.Optional("min_runtime_minutes", default=15): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=5,
+                        max=30,
+                        step=1,
+                        unit_of_measurement="minutes",
+                        mode="slider",
+                    )
+                ),
+                vol.Optional("min_off_time_minutes", default=10): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=3,
+                        max=15,
+                        step=1,
+                        unit_of_measurement="minutes",
+                        mode="slider",
+                    )
+                ),
+                vol.Optional("enforce_off_time_protection", default=True): selector.BooleanSelector(),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="compressor_protection",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "5.75 of 6",
             },
         )
 
@@ -1239,10 +1215,11 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "minimum_progress_rate": 0.01,  # Universal default (°C/min)
                     "stall_escalation_time": 15,    # Universal default (minutes)
 
-                    # Auto-configured timing (optimal defaults)
+                    # Auto-configured timing (user-configured compressor protection)
                     "check_interval": 5,         # Check every 5 minutes
-                    "minimum_runtime": 10,       # Minimum 10 min runtime
-                    "minimum_off_time": 10,      # Minimum 10 min off time (anti-short-cycling)
+                    "min_runtime_minutes": config.get("min_runtime_minutes", 15),
+                    "min_off_time_minutes": config.get("min_off_time_minutes", 10),
+                    "enforce_off_time_protection": config.get("enforce_off_time_protection", True),
 
                     # Behavior settings (user-provided)
                     "away_mode_action": config.get("away_mode_action", "eco"),

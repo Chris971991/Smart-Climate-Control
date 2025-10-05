@@ -91,6 +91,15 @@
           "enable_eco_mode": "💚 Enable Eco Mode • Use eco mode when in comfort zone",
           "enable_notifications": "🔔 Enable Notifications • Push notifications for climate changes"
         }
+      },
+      "compressor_protection": {
+        "title": "🛡️ Compressor Protection (Step 5.75 of 6)",
+        "description": "**Protect your A/C compressor from rapid cycling damage** for **{room_name}**.\n\n**Why this matters:**\n• 🔧 AC compressors need 3-5 minutes for refrigerant pressure to equalize\n• ⚡ Rapid on/off cycling causes mechanical stress and shortens lifespan\n• 💰 Modern units (2015+) often have built-in 3-5 min delay timers\n\n**Minimum Runtime:**\n• How long AC must RUN before changing cooling/heating intensity\n• Example: 15 min = prevents rapid tier switching\n• **Recommended:** 15 minutes for standard units\n\n**Minimum Off-Time:**\n• How long AC must be OFF before restarting\n• Example: 10 min = protects compressor from rapid restarts\n• **Recommended:** 10 minutes (or 3 minutes if AC has built-in protection)\n\n**Enforce Off-Time Protection:**\n• ✅ **ON (Recommended):** Blueprint enforces minimum off-time delay\n• ❌ **OFF:** Allows immediate restart (use if AC has hardware protection)\n\n**When to disable enforcement:**\n• Your AC is modern (2015+) with built-in delay timer\n• You want to rely on AC hardware protection only\n• Testing/debugging automation behavior",
+        "data": {
+          "min_runtime_minutes": "⏱️ Minimum Runtime • How long AC must run before intensity changes",
+          "min_off_time_minutes": "⏸️ Minimum Off-Time • How long AC must wait before restart",
+          "enforce_off_time_protection": "🛡️ Enforce Off-Time Protection • Blueprint enforces restart delay"
+        }
       }
     },
     "error": {
