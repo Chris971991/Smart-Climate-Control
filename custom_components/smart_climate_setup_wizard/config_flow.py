@@ -1392,16 +1392,11 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             "alias": f"{room_name} Climate Turn-Off",
             "description": f"Turns off AC when switching to Smart mode and conditions are met - {room_name}",
             "trigger": [
-                # Trigger on mode change to Smart
+                # Trigger ONLY on mode change to Smart (not periodic)
                 {
                     "platform": "state",
                     "entity_id": control_mode_helper,
                     "to": "Smart",
-                },
-                # Also check periodically
-                {
-                    "platform": "time_pattern",
-                    "minutes": "/1",
                 },
             ],
             "condition": [
