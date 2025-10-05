@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.37
+  name: Ultimate Smart Climate Control - v3.0.38
 
   description: |
-    **Ultimate Smart Climate Control v3.0.37**
+    **Ultimate Smart Climate Control v3.0.38**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2331,7 +2331,7 @@ action:
 
             📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/{{ check_interval }}min
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   # Mode change detected - immediately update helper and CLEAR Manual Override
   - if:
@@ -2367,7 +2367,7 @@ action:
                 • Helper cleared to "off" - {{ trigger.to_state.state }} mode will activate immediately
                 • Manual Override disabled for mode changes
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
   
   - variables:
       current_temp: >
@@ -2428,7 +2428,8 @@ action:
           {% endif %}
           {% set compensation = ((outdoor - compensation_base_temp) * compensation_factor) | round(1) %}
           {% set compensation = [[-max_compensation, compensation] | max, max_compensation] | min %}
-          {{ (scheduled_target_temp + compensation) | round(1) }}
+          {% set result = (scheduled_target_temp + compensation) | round(1) %}
+          {{ [[10, result] | max, 35] | min }}
         {% else %}
           {{ scheduled_target_temp }}
         {% endif %}
@@ -2514,7 +2515,12 @@ action:
       
       time_since_change: >
         {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-          {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) / 60 }}
+          {% set change_timestamp = as_timestamp(states(helper_change)) %}
+          {% if change_timestamp %}
+            {{ (as_timestamp(now()) - change_timestamp) / 60 }}
+          {% else %}
+            999
+          {% endif %}
         {% else %}
           999
         {% endif %}
@@ -2938,9 +2944,11 @@ action:
       # Check if user manually changed AC settings (from HA or remote)
       manual_change_detected: >
         {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-          {% set last_mode_state = states(helper_mode) | default('off') %}
-          {% set actual_state = actual_ac_state %}
-          {% set time_since_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 60 %}
+          {% set change_timestamp = as_timestamp(states(helper_change)) %}
+          {% if change_timestamp %}
+            {% set last_mode_state = states(helper_mode) | default('off') %}
+            {% set actual_state = actual_ac_state %}
+            {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
 
           {# Only detect manual changes if enough time has passed since last automation change #}
           {% if time_since_change < 2 %}
@@ -2958,6 +2966,9 @@ action:
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'on' %}
             {# AC is running as expected - this is NORMAL operation, not manual change #}
             false
+            {% else %}
+              false
+            {% endif %}
           {% else %}
             false
           {% endif %}
@@ -3218,7 +3229,7 @@ action:
                 • Escalation level: {{ escalation_level }}/4
                 • Should escalate: {{ should_escalate }}
           level: debug
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.dynamic"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.dynamic"
 
   # Debug: Log presence validation details
   - if:
@@ -3296,7 +3307,7 @@ action:
             ⚠️ BLE detected but no motion - likely false trigger from adjacent room
             {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.presence"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.presence"
 
   # Debug: Log current conditions
   - if:
@@ -3329,7 +3340,7 @@ action:
             {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min)
                 • Stall Check: distance={{ distance_from_target | round(1) }}≤0.8? time={{ time_in_current_mode | round(1) }}≥15min? trend={{ calculated_trend }} rate={{ temp_change_rate | round(2) }}°C/min{% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
   
   # Update effectiveness score helper
   - condition: template
@@ -3486,7 +3497,7 @@ action:
             
             🎯 Resuming normal Smart mode climate control
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
       
       # Clear adaptive_off mode - allow normal logic to proceed
       - service: input_text.set_value
@@ -3517,8 +3528,13 @@ action:
               - condition: template
                 value_template: >
                   {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-                    {% set time_in_manual = (as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600 %}
-                    {{ time_in_manual >= manual_timeout_hours }}
+                    {% set change_timestamp = as_timestamp(states(helper_change)) %}
+                    {% if change_timestamp %}
+                      {% set time_in_manual = (as_timestamp(now()) - change_timestamp) / 3600 %}
+                      {{ time_in_manual >= manual_timeout_hours }}
+                    {% else %}
+                      false
+                    {% endif %}
                   {% else %}
                     false
                   {% endif %}
@@ -3526,13 +3542,14 @@ action:
               - service: system_log.write
                 data:
                   message: >
+                    {% set change_timestamp = as_timestamp(states(helper_change)) %}
                     ⏰ {{ room_name | upper }} MANUAL MODE TIMEOUT: Returning to automation
                     • Manual timeout reached: {{ manual_timeout_hours }} hours
-                    • Time in manual: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600) | round(1) }}h
+                    • Time in manual: {{ ((as_timestamp(now()) - change_timestamp) / 3600) | round(1) if change_timestamp else 'N/A' }}h
                     • Switching back to Smart mode - automation will resume
                     • AC will continue running under normal automation control
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
               # Switch back to Smart mode (don't turn off AC)
               - condition: template
@@ -3565,18 +3582,19 @@ action:
               - service: system_log.write
                 data:
                   message: >
+                    {% set change_timestamp = as_timestamp(states(helper_change)) %}
                     🎮 {{ room_name | upper }} MANUAL MODE: Full user control active
                     • Temperature: {{ current_temp }}°C
                     • Timeout setting: {{ manual_mode_timeout }} ({{ manual_timeout_hours }}h)
                     {% if manual_timeout_hours > 0 %}
-                    • Time remaining: {{ (manual_timeout_hours - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }}h
+                    • Time remaining: {{ (manual_timeout_hours - ((as_timestamp(now()) - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A' }}h
                     {% else %}
                     • No timeout - manual until you change it
                     {% endif %}
                     • FULL CONTROL: Set any temp/fan remotely - NO automation interference
                     • Perfect for pre-conditioning rooms before arrival!
                   level: debug
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               - stop: "Manual mode active - user has complete control"
 
       # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
@@ -3589,15 +3607,16 @@ action:
           - service: system_log.write
             data:
               message: >
+                {% set change_timestamp = as_timestamp(states(helper_change)) %}
                 🔒 {{ room_name | upper }} MANUAL OVERRIDE: Respecting user changes
                 • Manual change detected: {{ manual_change_detected }}
                 • Last mode state: "{{ states(helper_mode) | default('off') }}"
                 • Actual AC state: "{{ actual_ac_state }}"
                 • Override timeout: {{ adaptive_override_timeout }} hours
-                • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 3600)) | round(1) }} hours
+                • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A' }} hours
                 • AC will maintain user settings until timeout expires
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # STOP HERE - Respect user's manual changes
           - stop: "Manual override active - respecting user changes"
@@ -3626,7 +3645,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.1) if dynamic_enabled else 0.1 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -3663,7 +3681,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -3792,7 +3810,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -3807,7 +3827,7 @@ action:
                       • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'heating_high' }}"
@@ -3850,7 +3870,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.1) if dynamic_enabled else 0.1 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -3887,7 +3906,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -4045,7 +4064,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4060,7 +4081,7 @@ action:
                       • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'heating_medium' }}"
@@ -4103,7 +4124,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.05) if dynamic_enabled else 0.05 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -4140,7 +4160,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -4300,7 +4320,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4315,7 +4337,7 @@ action:
                       • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'heating_low' }}"
@@ -4358,7 +4380,8 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
-                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set abs_rate = (temp_change_rate | abs) %}
+                {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set fan_display = calculated_fan_speed %}
 
                 {% if current_mode == 'cooling_high' %}
@@ -4395,7 +4418,7 @@ action:
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -4524,7 +4547,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4539,7 +4564,7 @@ action:
                       • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_high' }}"
@@ -4582,7 +4607,8 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
-                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set abs_rate = (temp_change_rate | abs) %}
+                {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set fan_display = calculated_fan_speed %}
 
                 {% if current_mode == 'cooling_medium' %}
@@ -4624,7 +4650,7 @@ action:
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -4782,7 +4808,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4804,7 +4832,7 @@ action:
                       • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_medium' }}"
@@ -4847,7 +4875,8 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
-                {% set eta_minutes = (distance / (temp_change_rate | abs)) | round(0) if temp_change_rate != 0 else 999 %}
+                {% set abs_rate = (temp_change_rate | abs) %}
+                {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set fan_display = calculated_fan_speed %}
 
                 {% if current_mode == 'cooling_low' %}
@@ -4884,7 +4913,7 @@ action:
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -5044,7 +5073,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5059,7 +5090,7 @@ action:
                       • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Only update helper entities when starting new mode (not continuing)
           - condition: template
             value_template: "{{ states(helper_mode) | default('off') != 'cooling_low' }}"
@@ -5088,7 +5119,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (current_temp - target_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.2) if dynamic_enabled else 0.2 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 85 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5124,7 +5154,7 @@ action:
                   {% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5215,7 +5245,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5228,7 +5260,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_max_fan in available_fans else 'Best equivalent for maximum cooling' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -5264,7 +5296,7 @@ action:
                 • Was in mode: {{ last_mode }}
                 • Clearing stability mode to allow normal operation
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Don't set to "off" - set directly to cooling/heating (but respect Smart mode presence)
           - service: input_text.set_value
@@ -5343,7 +5375,9 @@ action:
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
-                            hvac_mode: "{{ selected_hvac_mode }}"
+                            hvac_mode: >
+                              {% set available = state_attr(current_entity, 'hvac_modes') | list %}
+                              {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
                         
                         - condition: template
                           value_template: "{{ debug_enabled }}"
@@ -5355,7 +5389,7 @@ action:
                               • Selected: {{ selected_hvac_mode }}
                               • Reason: Best cooling mode for this AC unit
                             level: debug
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   - service: climate.set_temperature
                     target:
@@ -5414,7 +5448,7 @@ action:
                         • Target: {{ cooling_target_temp }}°C
                         • Mode: {{ 'High' if current_temp >= cooling_high_temp else 'Medium' }}
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               
               # Need heating
               - conditions:
@@ -5452,7 +5486,9 @@ action:
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
-                            hvac_mode: "{{ selected_hvac_mode }}"
+                            hvac_mode: >
+                              {% set available = state_attr(current_entity, 'hvac_modes') | list %}
+                              {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
                         
                         - condition: template
                           value_template: "{{ debug_enabled }}"
@@ -5464,7 +5500,7 @@ action:
                               • Selected: {{ selected_hvac_mode }}
                               • Reason: Best heating mode for this AC unit
                             level: debug
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   - service: climate.set_temperature
                     target:
@@ -5523,7 +5559,7 @@ action:
                         • Target: {{ heating_target_temp }}°C
                         • Mode: {{ 'High' if current_temp <= heating_low_temp else 'Medium' }}
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Pre-conditioning when approaching
       - conditions:
@@ -5546,7 +5582,7 @@ action:
                 {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
                 Temperature: {{ current_temp }}°C needs adjustment
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -5575,7 +5611,7 @@ action:
                 Reason: Pre-conditioning target temperature (approaching home)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: climate.set_fan_mode
             target:
@@ -5639,7 +5675,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (current_temp - target_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.1) if dynamic_enabled else 0.1 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 70 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5676,7 +5711,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5721,7 +5756,7 @@ action:
                       • Selected: {{ selected_hvac_mode }}
                       • Reason: Low cooling mode for gentle temperature control
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: climate.set_temperature
             target:
@@ -5776,7 +5811,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5788,7 +5825,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: Low fan speed for gentle cooling
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -5834,7 +5871,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (current_temp - target_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.15) if dynamic_enabled else 0.15 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5871,7 +5907,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5916,7 +5952,7 @@ action:
                       • Selected: {{ selected_hvac_mode }}
                       • Reason: Medium cooling mode for balanced temperature control
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: climate.set_temperature
             target:
@@ -5972,7 +6008,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5985,7 +6023,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_medium_fan in available_fans else 'Best equivalent for medium cooling' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -6031,7 +6069,7 @@ action:
                     • Room Presence: {{ room_presence_detected }}
                     • Approaching Home: {{ approaching_home }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - choose:
               - conditions:
                   - condition: template
@@ -6077,7 +6115,7 @@ action:
                         Reason: Maintaining target temperature within comfort zone
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   # Set auto fan mode for maximum efficiency in comfort zone
                   - repeat:
@@ -6234,7 +6272,7 @@ action:
                 
                 📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - choose:
               - conditions:
@@ -6254,7 +6292,7 @@ action:
                         Reason: Temperature equilibrium reached - AC job complete
                         Stable at: {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               
               - conditions:
                   - condition: template
@@ -6324,7 +6362,7 @@ action:
                         Reason: Temperature stability eco mode (gentle maintenance after equilibrium)
                         Current: {{ current_temp | round(1) }}°C → Stable for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -6397,7 +6435,7 @@ action:
                     • Time Since Last Presence: {{ presence_time | round(1) }} min
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Additional parent conditions debug logging
           - condition: template
@@ -6421,7 +6459,7 @@ action:
                     • timeout_met: {{ time_since_change >= adaptive_override_timeout }}
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Main condition evaluation and action logic
           - condition: or
@@ -6497,7 +6535,7 @@ action:
                       {% endif %}
                       • Action: Switching control mode helper to {{ adaptive_target_mode | title }}
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - service: input_select.select_option
                   target:
@@ -6512,7 +6550,7 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -6543,7 +6581,7 @@ action:
                       {% endif %}
                       • Actions: Turn off {{ climate_list | length }} climate entities (NO LONGER switching to Manual mode)
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                 # DISABLED: No longer switching to Manual mode when room becomes vacant
                 # Just turn off all climate entities
@@ -6556,7 +6594,7 @@ action:
                         data:
                           message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                           level: debug
-                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                       
                       - service: climate.turn_off
                         target:
@@ -6585,7 +6623,7 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -6617,7 +6655,7 @@ action:
                       {% endif %}
                       • Action: Turning off {{ climate_list | length }} climate entities
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 # Turn off all climate entities
                 - repeat:
@@ -6629,7 +6667,7 @@ action:
                         data:
                           message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                           level: debug
-                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                       
                       - service: climate.turn_off
                         target:
@@ -6649,7 +6687,7 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: MANUAL+VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -6717,7 +6755,7 @@ action:
                 • No valid presence timestamp available from helper: {{ presence_detected_helper }}
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Manual Mode - Immediately clear automation states when detected
       - conditions:
@@ -6737,7 +6775,7 @@ action:
                 
                 📋 Technical: Manual mode = instant automation disable
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - service: input_text.set_value
             target:
@@ -6793,7 +6831,7 @@ action:
                 
                 📋 Technical: {{ time_since_change | round(1) }}min since last change
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - choose:
               - conditions:
@@ -6858,7 +6896,7 @@ action:
                         Reason: {{ 'Eco cooling (comfort max +' + eco_mode_setpoint_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_mode_setpoint_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               
               - conditions:
                   - condition: template
@@ -6879,7 +6917,7 @@ action:
                         Reason: Smart mode maintain current temperature (room empty but still home)
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -6924,7 +6962,7 @@ action:
                 Nobody home detected
                 Time since last change: {{ time_since_change | round(1) }} min
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - choose:
               - conditions:
@@ -6987,7 +7025,7 @@ action:
                         Reason: {{ 'Eco cooling (target +' + eco_mode_setpoint_offset|string + '°C offset)' if current_temp > comfort_max_temp else 'Eco heating (target -' + eco_mode_setpoint_offset|string + '°C offset)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   # Set auto fan mode for efficient away eco mode
                   - repeat:
@@ -7060,7 +7098,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (current_temp - target_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.2) if dynamic_enabled else 0.2 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 85 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -7096,7 +7133,7 @@ action:
                   {% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -7107,7 +7144,7 @@ action:
                 Target: {{ cooling_target_temp }}°C
                 Fan: Maximum
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode with auto preference and fallback
           - repeat:
@@ -7157,7 +7194,7 @@ action:
                 Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Update hysteresis tracking - we're now cooling
           - condition: template
@@ -7289,7 +7326,7 @@ action:
                 Approaching Home: {{ approaching_home }}
                 Extreme High Threshold: {{ extreme_high }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode to auto for efficient medium cooling
           - repeat:
@@ -7333,7 +7370,7 @@ action:
                 Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set auto/medium fan mode for efficient cooling
           - repeat:
@@ -7446,7 +7483,6 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.05) if dynamic_enabled else 0.05 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -7483,7 +7519,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -7494,7 +7530,7 @@ action:
                 Target: {{ heating_target_temp }}°C
                 Fan: Low/Minimum (efficient)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: climate.set_hvac_mode
             target:
@@ -7524,7 +7560,7 @@ action:
                 Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set low fan mode with compatibility check
           - repeat:
@@ -7572,7 +7608,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7584,7 +7622,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: Low fan speed for gentle heating
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -7688,7 +7726,7 @@ action:
                 Target: {{ heating_target_temp }}°C
                 Fan: Auto/Medium (efficient)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode to auto for efficient medium heating
           - repeat:
@@ -7727,7 +7765,7 @@ action:
                 Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set auto/medium fan mode for efficient heating
           - repeat:
@@ -7866,14 +7904,13 @@ action:
                     • mode_check: {{ last_mode != 'heating_high' }}
                     • FULL_CONDITION: {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - service: system_log.write
             data:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
-                {% set temp_change_rate = states('input_number.temp_change_rate_' + room_name.lower().replace(' ', '_')) | float(0.1) if dynamic_enabled else 0.1 %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -7910,7 +7947,7 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -7921,7 +7958,7 @@ action:
                 Target: {{ heating_target_temp }}°C
                 Fan: Maximum (emergency)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: climate.set_hvac_mode
             target:
@@ -7951,7 +7988,7 @@ action:
                 Reason: Direct target temperature (emergency heating mode)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set max fan mode for emergency heating
           - repeat:
@@ -8006,7 +8043,7 @@ action:
                       • Selected: {{ (desired_max_fan if desired_max_fan in available_fans else ('5' if '5' in available_fans else ('high' if 'high' in available_fans else available_fans[-1]))) }}
                       • Reason: Maximum fan speed for emergency heating
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -8104,7 +8141,7 @@ action:
                 {% endif %}
                 Power Level: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Force maximum cooling/heating mode
           - repeat:
@@ -8152,7 +8189,7 @@ action:
                 Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set graduated fan speed based on escalation level
           - repeat:
@@ -8255,7 +8292,9 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode }}"
+                    fan_mode: >
+                      {% set available = state_attr(current_entity, 'fan_modes') | list %}
+                      {{ selected_fan_mode if selected_fan_mode in available else (available[0] if available else 'auto') }}
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -8267,7 +8306,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Power: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -8318,7 +8357,7 @@ action:
                     • Current Mode: {{ last_mode }}
                     • Action: Turning AC OFF (no presence)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Turn off the AC
       - service: climate.turn_off
@@ -8371,7 +8410,7 @@ action:
                     • Mode: {{ last_mode }}
                     • Action: Turning AC OFF (target achieved)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Turn off the AC
       - service: climate.turn_off
@@ -8436,21 +8475,27 @@ action:
             • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
             • Required Delay: {{ adaptive_occupied_delay }} min
         {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-        {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
+        {% set presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
+        {% if presence_timestamp %}
+        {% set presence_time = (as_timestamp(now()) - presence_timestamp) / 60 %}
             • Time Present: {{ presence_time | round(1) }} min
             • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
+        {% endif %}
         {% endif %}
             • Override Timeout: {{ adaptive_override_timeout }}h
         {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
             • Override Helper: {{ states(adaptive_override_helper) }}
         {% endif %}
-            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) if states(helper_change) not in ['unknown', 'unavailable', ''] else 'N/A' }}min
+            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={% set change_timestamp = as_timestamp(states(helper_change)) if states(helper_change) not in ['unknown', 'unavailable', ''] else none %}{{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) if change_timestamp else 'N/A' }}min
         {% if adaptive_override_timeout > 0 %}
         {% set last_change = states(helper_change) %}
         {% if last_change not in ['unknown', 'unavailable', ''] %}
-        {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
+        {% set last_change_timestamp = as_timestamp(last_change) %}
+        {% if last_change_timestamp %}
+        {% set time_since_change = (as_timestamp(now()) - last_change_timestamp) / 3600 %}
             • Time Since Manual Override: {{ time_since_change | round(1) }}h ({{ 'normal automatic operation' if time_since_change >= 24 else 'recent manual change' }})
             • Override Active: {{ time_since_change < adaptive_override_timeout }}
+        {% endif %}
         {% endif %}
         {% endif %}
       level: warning
@@ -8474,6 +8519,6 @@ action:
                 • Occupancy: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home but elsewhere{% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
 mode: restart
