@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.41
+  name: Ultimate Smart Climate Control - v3.0.42
 
   description: |
-    **Ultimate Smart Climate Control v3.0.41**
+    **Ultimate Smart Climate Control v3.0.42**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.41
+    ## 🆕 Latest Update - v3.0.42
 
-    **🏠 PROXIMITY FIX: Smart Mode Pre-Conditioning v3.0.41**
+    **🚨 CRITICAL FIX: Automation Not Activating Without Debug Logging v3.0.42**
+    - ✅ FIXED: Missing debug_enabled condition before Adaptive Control log (line 8610-8613)
+    - ✅ RESOLVED: AC now activates correctly with debug logging disabled
+    - ✅ CRITICAL: Automation was stopping execution due to unconditional log service call
+    - ✅ TESTED: All temperature thresholds now trigger properly regardless of debug setting
+
+    **📝 Previous Update: Proximity Pre-Conditioning v3.0.41**
     - ✅ FIXED: Proximity-based pre-conditioning now works in Smart mode
-    - ✅ NEW: AC activates when approaching home (within configured distance, e.g., 10km)
-    - ✅ PRIORITY: Room presence takes priority - proximity activates only when room empty
-    - ✅ COMPLETE: Pre-conditioning works in both Auto and Smart modes
-
-    **📝 Previous Update: Compressor Protection v3.0.40**
-    - ✅ NEW: Enforces minimum off-time before AC restart (default: 10 minutes)
-    - ✅ SMART: User-configurable toggle for modern ACs with built-in protection
-    - ✅ COMPLETE: Full anti-short-cycling protection system
+    - ✅ NEW: AC activates when approaching home (within configured distance)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -8607,7 +8606,9 @@ action:
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-  # Adaptive Control Status Debug Log  
+  # Adaptive Control Status Debug Log
+  - condition: template
+    value_template: "{{ debug_enabled }}"
   - service: system_log.write
     data:
       message: >
