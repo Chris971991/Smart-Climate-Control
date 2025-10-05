@@ -66,7 +66,7 @@
         "data": {
           "temperature_preset": "⚙️ Preset (or choose Custom below)",
           "target_temperature": "🎯 What's your ideal comfort temperature?",
-          "comfort_zone_width": "🌡️ How much temperature variation is acceptable?\n   • 0.5°C = Tight control (23°C → cool at 23.5°C)\n   • 1.0°C = Balanced ⭐ (23°C → cool at 24.0°C)\n   • 1.5-2.0°C = Relaxed (23°C → cool at 24.5-25.0°C)",
+          "comfort_zone_width": "🌡️ Comfort zone width • 0.5°C=Tight • 1.0°C=Balanced ⭐ • 1.5°C=Relaxed",
           "enable_heating": "Enable Heating Mode",
           "enable_cooling": "Enable Cooling Mode"
         }

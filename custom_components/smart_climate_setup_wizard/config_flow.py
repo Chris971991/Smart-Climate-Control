@@ -620,14 +620,26 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                         mode="dropdown",
                     )
                 ),
-                vol.Optional("target_temperature", default=22): vol.All(
-                    vol.Coerce(float), vol.Range(min=16, max=30)
+                vol.Optional("target_temperature", default=22): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=16,
+                        max=30,
+                        step=0.5,
+                        mode="box",
+                        unit_of_measurement="°C",
+                    )
                 ),
-                vol.Optional("comfort_zone_width", default=1.0): vol.All(
-                    vol.Coerce(float), vol.Range(min=0.5, max=5.0)
+                vol.Optional("comfort_zone_width", default=1.0): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.5,
+                        max=5.0,
+                        step=0.1,
+                        mode="box",
+                        unit_of_measurement="°C",
+                    )
                 ),
-                vol.Optional("enable_heating", default=True): cv.boolean,
-                vol.Optional("enable_cooling", default=True): cv.boolean,
+                vol.Optional("enable_heating", default=True): selector.BooleanSelector(),
+                vol.Optional("enable_cooling", default=True): selector.BooleanSelector(),
             }
         )
 
