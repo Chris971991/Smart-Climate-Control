@@ -1271,8 +1271,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             await hass.services.async_call("automation", "reload", blocking=True)
             _LOGGER.info("Reloaded automations successfully")
 
-            # Add delay to ensure automation is registered
-            await asyncio.sleep(1)
+            # Add delay to ensure automation is registered (increased from 1s to 3s)
+            await asyncio.sleep(3)
 
             # Verify automation was loaded by checking if entity exists
             automation_entity_id = f"automation.{automation_config['id']}"
@@ -1482,8 +1482,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             await hass.services.async_call("automation", "reload", blocking=True)
             _LOGGER.info("Reloaded automations successfully")
 
-            # Add delay to ensure automation is registered
-            await asyncio.sleep(1)
+            # Add delay to ensure automation is registered (increased from 1s to 3s)
+            await asyncio.sleep(3)
 
             # Verify automation was loaded by checking if entity exists
             automation_entity_id = f"automation.{turnoff_automation['id']}"
