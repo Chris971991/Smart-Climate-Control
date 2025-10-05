@@ -1275,7 +1275,9 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             await asyncio.sleep(3)
 
             # Verify automation was loaded by checking if entity exists
-            automation_entity_id = f"automation.{automation_config['id']}"
+            # Note: HA creates entity_id from alias, not id (e.g., "Office Climate Control" -> "automation.office_climate_control")
+            slugified_alias = automation_config['alias'].lower().replace(' ', '_').replace('-', '_')
+            automation_entity_id = f"automation.{slugified_alias}"
             if hass.states.get(automation_entity_id) is None:
                 _LOGGER.error("Automation entity not found after reload: %s", automation_entity_id)
                 raise Exception(f"Automation failed to load: {automation_entity_id}")
@@ -1285,13 +1287,16 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         except Exception as err:
             _LOGGER.error("Failed to reload automations: %s", err)
 
-            # Try to validate automations.yaml to provide helpful error
-            try:
-                with open(automations_file, "r", encoding="utf-8") as f:
-                    yaml.safe_load(f)
-            except yaml.YAMLError as yaml_err:
-                _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
-                raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
+            # Try to validate automations.yaml to provide helpful error (non-blocking)
+            def validate_yaml():
+                try:
+                    with open(automations_file, "r", encoding="utf-8") as f:
+                        yaml.safe_load(f)
+                except yaml.YAMLError as yaml_err:
+                    _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
+                    raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
+
+            await hass.async_add_executor_job(validate_yaml)
             raise
 
         return automation_config["id"]
@@ -1486,7 +1491,9 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             await asyncio.sleep(3)
 
             # Verify automation was loaded by checking if entity exists
-            automation_entity_id = f"automation.{turnoff_automation['id']}"
+            # Note: HA creates entity_id from alias, not id
+            slugified_alias = turnoff_automation['alias'].lower().replace(' ', '_').replace('-', '_')
+            automation_entity_id = f"automation.{slugified_alias}"
             if hass.states.get(automation_entity_id) is None:
                 _LOGGER.error("Turn-off automation entity not found after reload: %s", automation_entity_id)
                 raise Exception(f"Turn-off automation failed to load: {automation_entity_id}")
@@ -1496,13 +1503,16 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         except Exception as err:
             _LOGGER.error("Failed to reload automations: %s", err)
 
-            # Try to validate automations.yaml to provide helpful error
-            try:
-                with open(automations_path, "r", encoding="utf-8") as f:
-                    yaml.safe_load(f)
-            except yaml.YAMLError as yaml_err:
-                _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
-                raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
+            # Try to validate automations.yaml to provide helpful error (non-blocking)
+            def validate_yaml():
+                try:
+                    with open(automations_path, "r", encoding="utf-8") as f:
+                        yaml.safe_load(f)
+                except yaml.YAMLError as yaml_err:
+                    _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
+                    raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
+
+            await hass.async_add_executor_job(validate_yaml)
             raise
 
         return turnoff_automation["id"]
