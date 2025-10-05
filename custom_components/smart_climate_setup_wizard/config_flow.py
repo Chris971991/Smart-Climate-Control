@@ -8,6 +8,9 @@ import json
 import os
 import asyncio
 import aiohttp
+import tempfile
+import shutil
+import errno
 
 import voluptuous as vol
 
@@ -303,11 +306,16 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         errors = {}
 
         if user_input is not None:
-            if not user_input.get("climate_entities"):
+            climate_entities = user_input.get("climate_entities")
+
+            # Comprehensive validation
+            if not climate_entities or not isinstance(climate_entities, list) or len(climate_entities) == 0:
                 errors["base"] = "no_climate_entities"
+            elif any(not e or not isinstance(e, str) or e.strip() == "" for e in climate_entities):
+                errors["base"] = "invalid_climate_entities"
             else:
                 # Check if these climate entities are already used
-                selected_entities = user_input["climate_entities"]
+                selected_entities = climate_entities
                 conflicts = await self._check_climate_entity_conflicts(selected_entities)
 
                 if conflicts:
@@ -352,9 +360,24 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         errors = {}
 
         if user_input is not None:
-            self._room_data.update(user_input)
-            # Always go to presence detection step next
-            return await self.async_step_presence_detection()
+            # Validate presence sensors if provided
+            if user_input.get("room_presence_sensors"):
+                sensors = user_input["room_presence_sensors"]
+                for sensor in sensors:
+                    if self.hass.states.get(sensor) is None:
+                        errors["room_presence_sensors"] = "sensor_not_found"
+                        break
+
+            # Validate temperature sensor if provided
+            if user_input.get("temperature_sensor"):
+                temp_sensor = user_input["temperature_sensor"]
+                if self.hass.states.get(temp_sensor) is None:
+                    errors["temperature_sensor"] = "sensor_not_found"
+
+            if not errors:
+                self._room_data.update(user_input)
+                # Always go to presence detection step next
+                return await self.async_step_presence_detection()
 
         # Build schema with optional sensors
         data_schema_dict = {}
@@ -395,29 +418,46 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         errors = {}
 
         if user_input is not None:
-            self._room_data.update(user_input)
+            # Validate person entities if provided
+            if user_input.get("presence_persons"):
+                persons = user_input["presence_persons"]
+                for person in persons:
+                    if self.hass.states.get(person) is None:
+                        errors["presence_persons"] = "person_not_found"
+                        break
 
-            # Determine which mode to default to based on sensors configured
-            has_room_sensors = bool(self._room_data.get("room_presence_sensors"))
-            has_person_entities = bool(user_input.get("presence_persons"))
+            # Validate presence devices if provided
+            if user_input.get("presence_devices"):
+                devices = user_input["presence_devices"]
+                for device in devices:
+                    if self.hass.states.get(device) is None:
+                        errors["presence_devices"] = "device_not_found"
+                        break
 
-            # Auto-select initial control mode
-            if has_room_sensors:
-                # Has room sensors → Smart mode
-                self._room_data["default_control_mode"] = "Smart"
-            elif has_person_entities:
-                # No room sensors but has person entities → Auto mode
-                self._room_data["default_control_mode"] = "Auto"
-            else:
-                # No sensors at all → Smart mode (will just never activate)
-                self._room_data["default_control_mode"] = "Smart"
+            if not errors:
+                self._room_data.update(user_input)
 
-            # Check if we need to ask about bedroom mode
-            if (self._room_data.get("enable_smart_mode", True) and
-                self._room_data.get("room_presence_sensors")):
-                return await self.async_step_bedroom_mode()
-            else:
-                return await self.async_step_temperature()
+                # Determine which mode to default to based on sensors configured
+                has_room_sensors = bool(self._room_data.get("room_presence_sensors"))
+                has_person_entities = bool(user_input.get("presence_persons"))
+
+                # Auto-select initial control mode
+                if has_room_sensors:
+                    # Has room sensors → Smart mode
+                    self._room_data["default_control_mode"] = "Smart"
+                elif has_person_entities:
+                    # No room sensors but has person entities → Auto mode
+                    self._room_data["default_control_mode"] = "Auto"
+                else:
+                    # No sensors at all → Smart mode (will just never activate)
+                    self._room_data["default_control_mode"] = "Smart"
+
+                # Check if we need to ask about bedroom mode
+                if (self._room_data.get("enable_smart_mode", True) and
+                    self._room_data.get("room_presence_sensors")):
+                    return await self.async_step_bedroom_mode()
+                else:
+                    return await self.async_step_temperature()
 
         # Build schema for presence detection
         data_schema_dict = {}
@@ -722,9 +762,16 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                 lines.insert(1, "  packages: !include_dir_named packages\n")
                 lines.insert(2, "\n")
 
-            # Write back
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.writelines(lines)
+            # Write back atomically
+            temp_fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(config_path), text=True)
+            try:
+                with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                    f.writelines(lines)
+                shutil.move(temp_path, config_path)
+            except Exception:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                raise
 
             _LOGGER.info("Added packages configuration to configuration.yaml")
             return True  # Successfully added
@@ -756,7 +803,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             # Download blueprint content
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    blueprint_url, timeout=aiohttp.ClientTimeout(total=30)
+                    blueprint_url, timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status != 200:
                         _LOGGER.error(
@@ -765,19 +812,45 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                         return False
                     blueprint_content = await response.text()
 
-            # Validate it's a valid blueprint (basic check)
+            # Validate downloaded content is a valid blueprint
+            if not blueprint_content or len(blueprint_content) < 100:
+                _LOGGER.error("Downloaded content is empty or too small (size: %d bytes)", len(blueprint_content) if blueprint_content else 0)
+                return False
+
             if not blueprint_content.startswith("blueprint:"):
-                _LOGGER.error("Downloaded content doesn't appear to be a valid blueprint")
+                _LOGGER.error("Downloaded content doesn't appear to be a valid blueprint (doesn't start with 'blueprint:')")
+                return False
+
+            # Validate YAML syntax to catch corrupted downloads
+            try:
+                yaml.safe_load(blueprint_content)
+                _LOGGER.info("Blueprint YAML validation passed")
+            except yaml.YAMLError as err:
+                _LOGGER.error("Downloaded content is not valid YAML: %s", err)
                 return False
 
             # Create blueprints directory structure
             blueprint_dir = self.hass.config.path("blueprints/automation/Chris971991")
 
             def prepare_and_write():
-                os.makedirs(blueprint_dir, exist_ok=True)
+                try:
+                    os.makedirs(blueprint_dir, exist_ok=True)
+                except OSError as err:
+                    if err.errno != errno.EEXIST:
+                        raise
                 blueprint_path = os.path.join(blueprint_dir, "ultimate_climate_control.yaml")
-                with open(blueprint_path, "w", encoding="utf-8") as f:
-                    f.write(blueprint_content)
+
+                # Atomic write
+                temp_fd, temp_path = tempfile.mkstemp(dir=blueprint_dir, text=True)
+                try:
+                    with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                        f.write(blueprint_content)
+                    shutil.move(temp_path, blueprint_path)
+                except Exception:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
+
                 _LOGGER.info("Blueprint saved to: %s", blueprint_path)
 
             await self.hass.async_add_executor_job(prepare_and_write)
@@ -884,24 +957,56 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Write YAML package file
         try:
             packages_dir = os.path.join(hass.config.config_dir, "packages")
-            os.makedirs(packages_dir, exist_ok=True)
+            try:
+                os.makedirs(packages_dir, exist_ok=True)
+            except OSError as err:
+                if err.errno != errno.EEXIST:
+                    raise
 
             package_file = os.path.join(packages_dir, f"climate_control_{sanitized_name}.yaml")
 
             def write_package():
-                with open(package_file, "w", encoding="utf-8") as f:
-                    yaml.dump(helpers_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                # Atomic write
+                temp_fd, temp_path = tempfile.mkstemp(dir=packages_dir, text=True)
+                try:
+                    with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                        try:
+                            yaml.dump(helpers_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                        except yaml.YAMLError as err:
+                            _LOGGER.error("Failed to serialize helpers YAML: %s", err)
+                            raise
+                        except Exception as err:
+                            _LOGGER.error("Unexpected error writing helpers YAML: %s", err)
+                            raise
+                    shutil.move(temp_path, package_file)
+                except Exception:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
 
             await hass.async_add_executor_job(write_package)
             _LOGGER.info("Created package file: %s", package_file)
 
-            # Reload all input helper domains
+            # Reload all input helper domains WITH BLOCKING to ensure availability
             reload_tasks = []
             for domain in helpers_config.keys():
                 _LOGGER.info("Reloading %s...", domain)
-                reload_tasks.append(hass.services.async_call(domain, "reload", blocking=False))
+                reload_tasks.append(hass.services.async_call(domain, "reload", blocking=True))
 
-            await asyncio.gather(*reload_tasks, return_exceptions=True)
+            # Wait for all reloads to complete
+            await asyncio.gather(*reload_tasks)
+
+            # Add delay to ensure entities are fully registered in state machine
+            await asyncio.sleep(2)
+
+            # Verify all helpers were successfully created
+            _LOGGER.info("Verifying %d helpers were created...", len(created_helpers))
+            for helper_id in created_helpers:
+                if hass.states.get(helper_id) is None:
+                    _LOGGER.error("Helper not available after reload: %s", helper_id)
+                    raise Exception(f"Helper creation failed: {helper_id} - Entity not found in state machine")
+
+            _LOGGER.info("All helpers verified successfully")
 
             self._created_helpers = created_helpers
             _LOGGER.info(
@@ -1034,8 +1139,24 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Write back
         def write_automations():
             try:
-                with open(automations_file, "w", encoding="utf-8") as f:
-                    yaml.dump(automations, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                # Atomic write
+                automations_dir = os.path.dirname(automations_file)
+                temp_fd, temp_path = tempfile.mkstemp(dir=automations_dir, text=True)
+                try:
+                    with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                        try:
+                            yaml.dump(automations, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                        except yaml.YAMLError as err:
+                            _LOGGER.error("Failed to serialize automations YAML: %s", err)
+                            raise
+                        except Exception as err:
+                            _LOGGER.error("Unexpected error writing automations YAML: %s", err)
+                            raise
+                    shutil.move(temp_path, automations_file)
+                except Exception:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
                 _LOGGER.info("Added automation to automations.yaml: %s", automation_config["id"])
             except Exception as err:
                 _LOGGER.error("Failed to write automations.yaml: %s", err)
@@ -1046,9 +1167,29 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Reload automations
         try:
             await hass.services.async_call("automation", "reload", blocking=True)
-            _LOGGER.info("Reloaded automations")
+            _LOGGER.info("Reloaded automations successfully")
+
+            # Add delay to ensure automation is registered
+            await asyncio.sleep(1)
+
+            # Verify automation was loaded by checking if entity exists
+            automation_entity_id = f"automation.{automation_config['id']}"
+            if hass.states.get(automation_entity_id) is None:
+                _LOGGER.error("Automation entity not found after reload: %s", automation_entity_id)
+                raise Exception(f"Automation failed to load: {automation_entity_id}")
+
+            _LOGGER.info("Automation verified: %s", automation_entity_id)
+
         except Exception as err:
             _LOGGER.error("Failed to reload automations: %s", err)
+
+            # Try to validate automations.yaml to provide helpful error
+            try:
+                with open(automations_file, "r", encoding="utf-8") as f:
+                    yaml.safe_load(f)
+            except yaml.YAMLError as yaml_err:
+                _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
+                raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
             raise
 
         return automation_config["id"]
@@ -1209,8 +1350,24 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Write back (non-blocking)
         def write_automations():
             try:
-                with open(automations_path, "w", encoding="utf-8") as f:
-                    yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                # Atomic write
+                automations_dir = os.path.dirname(automations_path)
+                temp_fd, temp_path = tempfile.mkstemp(dir=automations_dir, text=True)
+                try:
+                    with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                        try:
+                            yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                        except yaml.YAMLError as err:
+                            _LOGGER.error("Failed to serialize turn-off automation YAML: %s", err)
+                            raise
+                        except Exception as err:
+                            _LOGGER.error("Unexpected error writing turn-off automation YAML: %s", err)
+                            raise
+                    shutil.move(temp_path, automations_path)
+                except Exception:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                    raise
                 _LOGGER.info("Created turn-off automation: %s", turnoff_automation["id"])
             except Exception as err:
                 _LOGGER.error("Failed to write automations.yaml: %s", err)
@@ -1221,9 +1378,29 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Reload automations
         try:
             await hass.services.async_call("automation", "reload", blocking=True)
-            _LOGGER.info("Reloaded automations")
+            _LOGGER.info("Reloaded automations successfully")
+
+            # Add delay to ensure automation is registered
+            await asyncio.sleep(1)
+
+            # Verify automation was loaded by checking if entity exists
+            automation_entity_id = f"automation.{turnoff_automation['id']}"
+            if hass.states.get(automation_entity_id) is None:
+                _LOGGER.error("Turn-off automation entity not found after reload: %s", automation_entity_id)
+                raise Exception(f"Turn-off automation failed to load: {automation_entity_id}")
+
+            _LOGGER.info("Turn-off automation verified: %s", automation_entity_id)
+
         except Exception as err:
             _LOGGER.error("Failed to reload automations: %s", err)
+
+            # Try to validate automations.yaml to provide helpful error
+            try:
+                with open(automations_path, "r", encoding="utf-8") as f:
+                    yaml.safe_load(f)
+            except yaml.YAMLError as yaml_err:
+                _LOGGER.error("automations.yaml has invalid YAML: %s", yaml_err)
+                raise Exception(f"Automation file corrupted - YAML error: {yaml_err}")
             raise
 
         return turnoff_automation["id"]

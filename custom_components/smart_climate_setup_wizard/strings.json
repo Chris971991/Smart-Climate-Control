@@ -76,6 +76,10 @@
       "create_failed": "Failed to create helper entities. Check logs for details.",
       "creation_failed": "Failed to create climate control setup. Check logs for details.",
       "no_climate_entities": "Please select at least one A/C unit.",
+      "invalid_climate_entities": "Invalid A/C unit selection. Please select valid climate entities.",
+      "sensor_not_found": "One or more selected sensors are not available in Home Assistant. Please select valid sensors or remove unavailable ones.",
+      "person_not_found": "One or more selected person entities are not available in Home Assistant. Please select valid person entities or remove unavailable ones.",
+      "device_not_found": "One or more selected presence devices are not available in Home Assistant. Please select valid devices or remove unavailable ones.",
       "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)"
     },
     "abort": {
