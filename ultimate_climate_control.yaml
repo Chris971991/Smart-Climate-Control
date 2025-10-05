@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.38
+  name: Ultimate Smart Climate Control - v3.0.39
 
   description: |
-    **Ultimate Smart Climate Control v3.0.38**
+    **Ultimate Smart Climate Control v3.0.39**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -3639,6 +3639,8 @@ action:
                 {# Not heating high - start if threshold exceeded and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
           - service: system_log.write
             data:
@@ -3864,6 +3866,8 @@ action:
                 {# Not heating medium - start if in medium range and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
           - service: system_log.write
             data:
@@ -4118,6 +4122,8 @@ action:
                 {# Not heating low - start if in low range and conditions met #}
                 {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'heating' }}"
         sequence:
           - service: system_log.write
             data:
@@ -4374,6 +4380,8 @@ action:
                 {# Not cooling high - start if threshold exceeded and conditions met #}
                 {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
           - service: system_log.write
             data:
@@ -4601,6 +4609,8 @@ action:
                 {# Not cooling medium - start if in medium range and conditions met #}
                 {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
+          - condition: template
+            value_template: "{{ time_since_change > runtime_min or last_mode != 'cooling' }}"
         sequence:
           - service: system_log.write
             data:
@@ -8337,7 +8347,8 @@ action:
               actual_ac_state == 'on' and
               control_mode == 'Smart' and
               not smart_presence_active and
-              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high']
+              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
+              time_since_change > runtime_min
             }}
     then:
       # Log the turn-off action
@@ -8388,6 +8399,7 @@ action:
           {{
             actual_ac_state == 'on' and
             last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
+            time_since_change > runtime_min and
             (
               (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
               (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
