@@ -123,13 +123,33 @@
           "enable_manual_override": "Manual Override Detection",
           "enable_control_mode": "Control Mode Selection (Auto/Smart/Manual)",
           "enable_smart_mode": "Smart Mode (presence detection, timeout logic)",
-          "show_dashboard_card": "🎨 Show Dashboard Card YAML (if you lost it or want to copy it again)"
+          "show_dashboard_card": "🎨 Show Dashboard Card YAML (if you lost it or want to copy it again)",
+          "uninstall_room_setup": "🗑️ Uninstall This Room Setup (delete all helpers, automations, and config)",
+          "reinstall_room_setup": "🔄 Reinstall (Delete & Reconfigure - runs wizard again)"
+        }
+      },
+      "confirm_uninstall": {
+        "title": "⚠️ Confirm Uninstall",
+        "description": "**Are you sure you want to uninstall {room_name} climate control?**\n\n**This will permanently delete:**\n• All helper entities for {room_name}\n• Both automations (main + turn-off)\n• Helpers package file\n• This integration entry\n\n**⚠️ This action CANNOT be undone!**\n\n**Note:** Your A/C units will NOT be deleted (only the climate control automation).",
+        "data": {
+          "confirm": "✅ Yes, uninstall everything for {room_name}"
+        }
+      },
+      "confirm_reinstall": {
+        "title": "🔄 Confirm Reinstall",
+        "description": "**Are you sure you want to reinstall {room_name} climate control?**\n\n**This will:**\n1. **Delete** all current helpers and automations for {room_name}\n2. **Launch** the wizard again to reconfigure from scratch\n\n**⚠️ Your current settings will be lost!**\n\n**Tip:** Use this if you want to change sensors, A/C units, or reconfigure settings that can't be changed in options.",
+        "data": {
+          "confirm": "✅ Yes, delete and reconfigure {room_name}"
         }
       }
     },
     "abort": {
       "no_card_available": "No dashboard card available for this room (control mode may not be enabled).",
-      "card_shown": "Dashboard card YAML has been sent as a notification! Check your notifications."
+      "card_shown": "Dashboard card YAML has been sent as a notification! Check your notifications.",
+      "uninstall_successful": "✅ **Uninstall Complete!**\n\nAll entities and automations for {room_name} have been deleted.\n\nYou can now:\n• Set up a different room via 'Add entry'\n• Reinstall this room with new settings\n• Leave it deleted",
+      "uninstall_failed": "❌ **Uninstall Failed**\n\nSomething went wrong during uninstall. Check the logs for details.\n\nYou may need to manually delete:\n• Helper entities (Settings → Helpers)\n• Automations (Settings → Automations)\n• Integration entry",
+      "reinstall_complete": "✅ **Reinstall Started!**\n\nOld setup has been deleted. Click 'Add entry' to run the wizard again and reconfigure {room_name}.",
+      "reinstall_failed": "❌ **Reinstall Failed**\n\nUninstall failed, so wizard cannot continue. Check the logs for details.\n\nYou may need to manually delete old entities before setting up again."
     }
   }
 }

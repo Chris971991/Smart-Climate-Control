@@ -1679,10 +1679,6 @@ card_mod:
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow for the integration."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -1691,6 +1687,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Check if user wants to show dashboard card
             if user_input.get("show_dashboard_card", False):
                 return await self.async_step_show_card()
+
+            # Check if user wants to uninstall
+            if user_input.get("uninstall_room_setup", False):
+                return await self.async_step_confirm_uninstall()
+
+            # Check if user wants to reinstall
+            if user_input.get("reinstall_room_setup", False):
+                return await self.async_step_confirm_reinstall()
 
             return self.async_create_entry(title="", data=user_input)
 
@@ -1725,6 +1729,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # Add option to show dashboard card if it exists
         if has_card:
             schema_dict[vol.Optional("show_dashboard_card", default=False)] = cv.boolean
+
+        # Add uninstall and reinstall options
+        schema_dict[vol.Optional("uninstall_room_setup", default=False)] = cv.boolean
+        schema_dict[vol.Optional("reinstall_room_setup", default=False)] = cv.boolean
 
         return self.async_show_form(
             step_id="init",
@@ -1769,3 +1777,178 @@ Copy this YAML and add it to your dashboard:
         )
 
         return self.async_abort(reason="card_shown")
+
+    async def async_step_confirm_uninstall(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm uninstall of room setup."""
+        room_name = self.config_entry.data.get("room_name", "Unknown Room")
+
+        if user_input is not None:
+            if user_input.get("confirm"):
+                # User confirmed - proceed with uninstall
+                try:
+                    await self._uninstall_room_setup(self.hass, self.config_entry)
+                    return self.async_abort(reason="uninstall_successful")
+                except Exception as err:
+                    _LOGGER.error("Error during uninstall: %s", err, exc_info=True)
+                    return self.async_abort(reason="uninstall_failed")
+            else:
+                # User cancelled - return to options menu
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="confirm_uninstall",
+            data_schema=vol.Schema({
+                vol.Required("confirm", default=False): cv.boolean,
+            }),
+            description_placeholders={"room_name": room_name},
+        )
+
+    async def async_step_confirm_reinstall(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm reinstall of room setup."""
+        room_name = self.config_entry.data.get("room_name", "Unknown Room")
+
+        if user_input is not None:
+            if user_input.get("confirm"):
+                # User confirmed - uninstall then trigger new setup
+                try:
+                    await self._uninstall_room_setup(self.hass, self.config_entry)
+                    # Abort with special reason that triggers reinstall
+                    return self.async_abort(reason="reinstall_complete")
+                except Exception as err:
+                    _LOGGER.error("Error during reinstall: %s", err, exc_info=True)
+                    return self.async_abort(reason="reinstall_failed")
+            else:
+                # User cancelled - return to options menu
+                return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="confirm_reinstall",
+            data_schema=vol.Schema({
+                vol.Required("confirm", default=False): cv.boolean,
+            }),
+            description_placeholders={"room_name": room_name},
+        )
+
+    @staticmethod
+    async def _uninstall_room_setup(hass: HomeAssistant, config_entry: config_entries.ConfigEntry) -> None:
+        """Uninstall all entities and automations for this room setup."""
+        room_name = config_entry.data.get("room_name", "Unknown Room")
+        sanitized_name = room_name.lower().replace(" ", "_").replace("-", "_")
+
+        _LOGGER.info("Starting uninstall for room: %s", room_name)
+
+        # Step 1: Delete helper entities
+        helpers_to_delete = [
+            # Always created
+            f"input_text.climate_last_mode_{sanitized_name}",
+            f"input_datetime.climate_last_change_{sanitized_name}",
+        ]
+
+        # Conditional helpers
+        if config_entry.data.get("enable_control_mode", True):
+            helpers_to_delete.append(f"input_select.climate_control_mode_{sanitized_name}")
+
+        if config_entry.data.get("enable_smart_mode", True):
+            helpers_to_delete.extend([
+                f"input_datetime.climate_presence_detected_{sanitized_name}",
+                f"input_boolean.climate_proximity_override_{sanitized_name}",
+            ])
+
+        if config_entry.data.get("enable_dynamic_adaptation", True):
+            helpers_to_delete.extend([
+                f"input_number.climate_temp_history_{sanitized_name}",
+                f"input_text.climate_trend_direction_{sanitized_name}",
+                f"input_datetime.climate_mode_start_time_{sanitized_name}",
+                f"input_number.climate_effectiveness_score_{sanitized_name}",
+                f"input_datetime.climate_temp_stable_since_{sanitized_name}",
+                f"input_text.climate_last_transition_{sanitized_name}",
+            ])
+
+        # Delete each helper entity
+        for helper_id in helpers_to_delete:
+            try:
+                domain, entity_id_part = helper_id.split(".", 1)
+                await hass.services.async_call(
+                    domain,
+                    "remove",
+                    {"entity_id": helper_id},
+                    blocking=True,
+                )
+                _LOGGER.info("Deleted helper: %s", helper_id)
+            except Exception as err:
+                _LOGGER.warning("Failed to delete helper %s: %s", helper_id, err)
+
+        # Step 2: Delete automations from automations.yaml
+        automations_file = hass.config.path("automations.yaml")
+
+        # Automation IDs to delete
+        main_automation_id = f"climate_control_{sanitized_name}"
+        turnoff_automation_id = f"climate_turnoff_{sanitized_name}"
+
+        def delete_automations():
+            try:
+                if os.path.exists(automations_file):
+                    with open(automations_file, "r", encoding="utf-8") as f:
+                        automations = yaml.safe_load(f) or []
+
+                    # Filter out automations for this room
+                    original_count = len(automations)
+                    automations = [
+                        a for a in automations
+                        if a.get("id") not in [main_automation_id, turnoff_automation_id]
+                    ]
+                    deleted_count = original_count - len(automations)
+
+                    if deleted_count > 0:
+                        # Write back to file atomically
+                        fd, temp_file = tempfile.mkstemp(
+                            dir=os.path.dirname(automations_file),
+                            prefix=".automations_",
+                            suffix=".yaml",
+                            text=True
+                        )
+                        try:
+                            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                                yaml.dump(automations, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                            shutil.move(temp_file, automations_file)
+                            _LOGGER.info("Deleted %d automation(s) for room: %s", deleted_count, room_name)
+                        except Exception:
+                            if os.path.exists(temp_file):
+                                os.unlink(temp_file)
+                            raise
+                    else:
+                        _LOGGER.warning("No automations found to delete for room: %s", room_name)
+            except Exception as err:
+                _LOGGER.error("Failed to delete automations: %s", err)
+                raise
+
+        await hass.async_add_executor_job(delete_automations)
+
+        # Step 3: Reload automation integration
+        await hass.services.async_call("automation", "reload", blocking=True)
+        _LOGGER.info("Reloaded automations after deletion")
+
+        # Step 4: Delete helpers package file (if exists)
+        package_file = hass.config.path(f"packages/climate_helpers_{sanitized_name}.yaml")
+
+        def delete_package():
+            try:
+                if os.path.exists(package_file):
+                    os.remove(package_file)
+                    _LOGGER.info("Deleted package file: %s", package_file)
+                else:
+                    _LOGGER.info("Package file not found (may not exist): %s", package_file)
+            except Exception as err:
+                _LOGGER.warning("Failed to delete package file: %s", err)
+
+        await hass.async_add_executor_job(delete_package)
+
+        # Step 5: Remove config entry
+        await hass.config_entries.async_remove(config_entry.entry_id)
+        _LOGGER.info("Removed config entry for room: %s", room_name)
+
+        _LOGGER.info("Uninstall complete for room: %s", room_name)
