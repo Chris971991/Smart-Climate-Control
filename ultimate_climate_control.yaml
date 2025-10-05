@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.47
+  name: Ultimate Smart Climate Control - v3.0.48
 
   description: |
-    **Ultimate Smart Climate Control v3.0.47**
+    **Ultimate Smart Climate Control v3.0.48**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.47** - 🐛 CRITICAL FIX: Escalation & continue mode logic causing AC restart at target
-    **v3.0.46** - 🐛 Fix: Anti-short-cycling protection using wrong timer reference
+    **v3.0.48** - 🐛 CRITICAL FIX: Escalation & continue mode logic causing AC restart at target
+    **v3.0.47** - 🐛 Fix: Initial escalation fix (superseded by v3.0.48)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
