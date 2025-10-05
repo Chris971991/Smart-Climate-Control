@@ -60,7 +60,7 @@
           "enable_proximity": "✅ Enable proximity-based pre-conditioning (requires Proximity integration)",
           "proximity_sensor": "📏 Distance Sensor • Shows how far you are from home • Usually sensor.home_nearest_distance",
           "direction_sensor": "🧭 Direction Sensor • Shows if heading towards/away • Usually sensor.home_nearest_direction_of_travel",
-          "home_zone_distance": "🎯 Activation Distance (meters) • How far from home to start • 5000m = 5km"
+          "home_zone_distance": "🎯 Activation Distance (meters)\nHow far from home to start • 5000m = 5km"
         }
       },
       "bedroom_mode": {
