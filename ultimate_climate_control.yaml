@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.42
+  name: Ultimate Smart Climate Control - v3.0.43
 
   description: |
-    **Ultimate Smart Climate Control v3.0.42**
+    **Ultimate Smart Climate Control v3.0.43**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.42
+    ## 🆕 Latest Update - v3.0.43
 
-    **🚨 CRITICAL FIX: Automation Not Activating Without Debug Logging v3.0.42**
-    - ✅ FIXED: Missing debug_enabled condition before Adaptive Control log (line 8610-8613)
-    - ✅ RESOLVED: AC now activates correctly with debug logging disabled
-    - ✅ CRITICAL: Automation was stopping execution due to unconditional log service call
-    - ✅ TESTED: All temperature thresholds now trigger properly regardless of debug setting
+    **⚡ CRITICAL FIX: Escalation Blocked by Anti-Short-Cycling Protection v3.0.43**
+    - ✅ FIXED: Runtime protection now allows escalation within same HVAC mode (LOW→MEDIUM→HIGH)
+    - ✅ FIXED: Escalation logic priority - moved stall checks before effectiveness blocking
+    - ✅ RESOLVED: AC can now escalate fan speed immediately when stalled (no 15min wait)
+    - ✅ IMPROVED: Anti-short-cycling still protects mode switches (heat↔cool, on↔off) and de-escalation
 
-    **📝 Previous Update: Proximity Pre-Conditioning v3.0.41**
-    - ✅ FIXED: Proximity-based pre-conditioning now works in Smart mode
-    - ✅ NEW: AC activates when approaching home (within configured distance)
+    **📝 Previous Update: Debug Logging Fix v3.0.42**
+    - ✅ FIXED: Missing debug_enabled condition preventing AC activation
+    - ✅ CRITICAL: Automation now works with debug logging disabled
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2670,13 +2670,9 @@ action:
           {% set emergency_threshold = 4.0 %}  {# Degrees from target for emergency escalation #}
           {% set stall_threshold = 2.0 %}  {# Degrees for considering progress stalled #}
 
-          {# Level 0: No escalation needed #}
+          {# Level 0: No escalation needed - minimum checks only #}
           {% if time_in_current_mode < min_check_time %}
-            0
-          {% elif current_effectiveness >= 80 and distance_from_target > 0.8 %}
-            0  {# Working well and not too close, no escalation needed #}
-          {% elif distance_from_target <= 1.0 and time_in_current_mode < 15 %}
-            0  {# Close to target but haven't been stuck long enough #}
+            0  {# Too early to evaluate #}
 
           {# Level 4: EMERGENCY - Immediate maximum power #}
           {% elif distance_from_target > emergency_threshold and time_in_current_mode >= min_check_time %}
@@ -2687,6 +2683,10 @@ action:
             4  {# Cooling but temperature rising above comfort zone #}
           {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
             4  {# Heating but temperature falling below comfort zone #}
+
+          {# Level 1: NEAR-TARGET STALL - Check BEFORE effectiveness blocking #}
+          {% elif distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
+            1  {# NEAR-TARGET STALL: Very close but stuck for extended time - gentle push needed #}
 
           {# Level 3: HIGH - Strong escalation needed #}
           {% elif distance_from_target > 3.0 and time_in_current_mode >= 5 %}
@@ -2709,8 +2709,6 @@ action:
             2  {# EARLY TIME-BASED STALL WARNING: Half stall time with extremely poor progress (user-configurable) #}
 
           {# Level 1: LOW - Minor escalation #}
-          {% elif distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-            1  {# NEAR-TARGET STALL: Very close but stuck for extended time - gentle push needed #}
           {% elif distance_from_target > 1.0 and time_in_current_mode >= (effectiveness_check_mins + 2) %}
             1  {# Slight distance after extended time #}
           {% elif current_effectiveness <= 60 and time_in_current_mode >= (effectiveness_check_mins + 5) %}
@@ -3670,8 +3668,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-                {# Same heating tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -3907,8 +3905,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-                {# Same heating tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -4173,8 +4171,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-                {# Same heating tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -4441,8 +4439,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -4680,8 +4678,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -5542,7 +5540,7 @@ action:
               - conditions:
                   - condition: template
                     value_template: >
-                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_since_change > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_since_change > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and (escalation_level > 0 or time_since_change > runtime_min)) or (last_mode == 'off' and (not enforce_offtime or time_since_change > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
                       {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
                 sequence:
                   - repeat:
@@ -5760,8 +5758,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -5966,8 +5964,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -7203,8 +7201,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -7428,8 +7426,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-                {# Same cooling tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
@@ -7608,8 +7606,8 @@ action:
           - condition: template
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-                {# Same heating tier switching - enforce runtime minimum #}
-                {{ time_since_change > runtime_min }}
+                {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
+                {{ escalation_level > 0 or time_since_change > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_since_change > offtime_min }}
