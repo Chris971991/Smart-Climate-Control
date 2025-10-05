@@ -1013,13 +1013,30 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         room_name = config["room_name"]
         sanitized_name = sanitize_room_name(room_name)
 
-        # Check if helpers already exist - if so, they will be overwritten
+        # Check if helpers already exist - if so, delete old package file first
         test_helper_id = f"input_text.climate_last_mode_{sanitized_name}"
         helpers_exist = await self._check_helper_exists(test_helper_id)
+
         if helpers_exist:
             _LOGGER.info(
-                "Helpers for %s already exist - they will be overwritten/updated.", room_name
+                "Helpers for %s already exist - deleting old package file to avoid conflicts.", room_name
             )
+            # Delete old package file to prevent duplicate ID warnings
+            packages_dir = os.path.join(hass.config.config_dir, "packages")
+            old_package_file = os.path.join(packages_dir, f"climate_control_{sanitized_name}.yaml")
+
+            def delete_old_package():
+                if os.path.exists(old_package_file):
+                    os.unlink(old_package_file)
+                    _LOGGER.info("Deleted old package file: %s", old_package_file)
+
+            await hass.async_add_executor_job(delete_old_package)
+
+            # Reload helpers to remove old entities from registry
+            for domain in ["input_text", "input_datetime", "input_number", "input_boolean", "input_select"]:
+                await hass.services.async_call(domain, "reload", blocking=True)
+
+            await asyncio.sleep(1)  # Brief pause for cleanup
 
         # Always create base helpers
         base_helpers = ["last_mode", "last_change"]
