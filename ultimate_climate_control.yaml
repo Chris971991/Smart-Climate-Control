@@ -3662,11 +3662,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_high' %}
-                {# Continue HIGH only if still below HIGH threshold or within 1°C of target #}
+                {# Continue HIGH only if AC running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
                 {% endif %}
@@ -3899,11 +3901,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_medium' %}
-                {# Already heating medium - continue until target reached or escalation needed #}
+                {# Already heating medium - continue only if AC running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
@@ -4165,11 +4169,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_low' %}
-                {# Already heating low - continue until target reached or escalation needed #}
+                {# Already heating low - continue only if AC running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
@@ -4433,11 +4439,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_high' %}
-                {# Continue HIGH only if still above HIGH threshold or within 1°C of target #}
+                {# Continue HIGH only if AC is actually running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
                 {% endif %}
@@ -4672,11 +4680,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_medium' %}
-                {# Already cooling medium - continue until target reached or escalation needed #}
+                {# Already cooling medium - continue only if AC running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
@@ -4952,11 +4962,13 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_low' %}
-                {# Already cooling low - continue until target reached or escalation needed #}
+                {# Already cooling low - continue only if AC running AND temp needs adjustment #}
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
