@@ -53,6 +53,16 @@
           "presence_devices": "📱 Presence Devices (optional) - PC, TV, Gaming Console, Workstation, etc."
         }
       },
+      "proximity_detection": {
+        "title": "🏠 Proximity Pre-Conditioning (Step 4.6 of 6)",
+        "description": "**Start cooling/heating BEFORE you arrive home!**\n\n**How it works:**\n• 🚗 Tracks your location via GPS (phone)\n• 🎯 Detects when heading towards home\n• ❄️ Starts conditioning when within range\n• ✨ Room is comfortable when you arrive\n\n**Setup Status:** {home_zone_status}\n\n**Setup Requirements:**\n1. **Home zone** (Settings → Areas → Zones → Create \"Home\" zone)\n2. **Proximity integration** (Settings → Integrations → Add → Proximity)\n   - Select \"home\" zone\n   - Select person entities to track\n3. **Phone GPS enabled** (Home Assistant Companion App)\n\n**Don't have Proximity setup?**\nLeave unchecked - you can enable this later by editing the blueprint manually.\n\n**Already have Proximity?**\nCheck the box below and select your sensors!",
+        "data": {
+          "enable_proximity": "✅ Enable proximity-based pre-conditioning (requires Proximity integration)",
+          "proximity_sensor": "📏 Distance Sensor • Shows how far you are from home • Usually sensor.home_nearest_distance",
+          "direction_sensor": "🧭 Direction Sensor • Shows if heading towards/away • Usually sensor.home_nearest_direction_of_travel",
+          "home_zone_distance": "🎯 Activation Distance (meters) • How far from home to start • 5000m = 5km"
+        }
+      },
       "bedroom_mode": {
         "title": "Bedroom Configuration (Step 5 of 6)",
         "description": "Is **{room_name}** a bedroom with a bed occupancy sensor?\n\n**🛏️ BEDROOM Mode Benefits:**\n• Detects presence when sleeping (bed sensor)\n• Detects presence when awake (motion sensor)\n• Prevents false positives (phone left behind)\n• Works with any sensor combination\n\n**Select YES if:**\n• This is a bedroom\n• You added a bed occupancy sensor above\n• You want the AC to stay on while sleeping\n\n**Select NO for:**\n• Living rooms, offices, other areas\n• Bedrooms without bed sensors",
@@ -76,6 +86,13 @@
       "create_failed": "Failed to create helper entities. Check logs for details.",
       "creation_failed": "Failed to create climate control setup. Check logs for details.",
       "no_climate_entities": "Please select at least one A/C unit.",
+      "invalid_climate_entities": "Invalid A/C unit selection. Please select valid climate entities.",
+      "sensor_not_found": "One or more selected sensors are not available in Home Assistant. Please select valid sensors or remove unavailable ones.",
+      "person_not_found": "One or more selected person entities are not available in Home Assistant. Please select valid person entities or remove unavailable ones.",
+      "device_not_found": "One or more selected presence devices are not available in Home Assistant. Please select valid devices or remove unavailable ones.",
+      "proximity_sensor_not_found": "The selected proximity distance sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
+      "direction_sensor_not_found": "The selected direction sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
+      "home_zone_not_found": "⚠️ Home zone is not configured in Home Assistant. Proximity-based pre-conditioning requires a 'Home' zone to work.\n\n**To create the Home zone:**\n1. Go to Settings → Areas, labels & zones → Zones\n2. Click 'Add Zone'\n3. Name it 'Home'\n4. Set your home location on the map\n5. Save and run this wizard again\n\n**Or:** Uncheck the proximity option and continue without this feature.",
       "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)"
     },
     "abort": {
