@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.40
+  name: Ultimate Smart Climate Control - v3.0.41
 
   description: |
-    **Ultimate Smart Climate Control v3.0.40**
+    **Ultimate Smart Climate Control v3.0.41**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.40
+    ## 🆕 Latest Update - v3.0.41
 
-    **🛡️ COMPRESSOR PROTECTION: Off-Time Protection v3.0.40**
-    - ✅ NEW: Enforces minimum off-time before AC restart (default: 10 minutes, configurable 3-15 min)
-    - ✅ NEW: User-configurable toggle to enable/disable protection (default: enabled)
-    - ✅ PROTECTS: AC compressor pressure equalization prevents damage from rapid restarts
-    - ✅ SMART: Modern ACs (2015+) with built-in protection can disable enforcement
-    - ✅ COMPLETE: Works alongside runtime protection for full anti-short-cycling
+    **🏠 PROXIMITY FIX: Smart Mode Pre-Conditioning v3.0.41**
+    - ✅ FIXED: Proximity-based pre-conditioning now works in Smart mode
+    - ✅ NEW: AC activates when approaching home (within configured distance, e.g., 10km)
+    - ✅ PRIORITY: Room presence takes priority - proximity activates only when room empty
+    - ✅ COMPLETE: Pre-conditioning works in both Auto and Smart modes
 
-    **📝 Previous Update: Code Cleanup v3.0.36**
-    - ✅ REMOVED: Redundant turn-off logic (handled by standalone automation from wizard)
-    - ✅ CLEANER: Blueprint focuses on temperature control only
+    **📝 Previous Update: Compressor Protection v3.0.40**
+    - ✅ NEW: Enforces minimum off-time before AC restart (default: 10 minutes)
+    - ✅ SMART: User-configurable toggle for modern ACs with built-in protection
+    - ✅ COMPLETE: Full anti-short-cycling protection system
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2941,6 +2941,8 @@ action:
           {% if room_presence_detected %}
             true
           {% elif minutes_since_presence < presence_timeout %}
+            true
+          {% elif approaching_home %}
             true
           {% else %}
             false
