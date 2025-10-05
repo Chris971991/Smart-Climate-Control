@@ -452,8 +452,11 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # No sensors at all → Smart mode (will just never activate)
                     self._room_data["default_control_mode"] = "Smart"
 
-                # Check if we need to ask about bedroom mode
-                if (self._room_data.get("enable_smart_mode", True) and
+                # If person entities selected, offer proximity pre-conditioning
+                if has_person_entities:
+                    return await self.async_step_proximity_detection()
+                # Otherwise check if we need to ask about bedroom mode
+                elif (self._room_data.get("enable_smart_mode", True) and
                     self._room_data.get("room_presence_sensors")):
                     return await self.async_step_bedroom_mode()
                 else:
@@ -486,6 +489,82 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "4.5 of 6",
+            },
+        )
+
+    async def async_step_proximity_detection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 4.6: Optional Proximity-Based Pre-Conditioning Setup."""
+        errors = {}
+
+        if user_input is not None:
+            enable_proximity = user_input.get("enable_proximity", False)
+
+            # If proximity enabled, validate the sensors
+            if enable_proximity:
+                # Validate proximity sensor if provided
+                if user_input.get("proximity_sensor"):
+                    proximity_sensor = user_input["proximity_sensor"]
+                    if self.hass.states.get(proximity_sensor) is None:
+                        errors["proximity_sensor"] = "proximity_sensor_not_found"
+
+                # Validate direction sensor if provided
+                if user_input.get("direction_sensor"):
+                    direction_sensor = user_input["direction_sensor"]
+                    if self.hass.states.get(direction_sensor) is None:
+                        errors["direction_sensor"] = "direction_sensor_not_found"
+
+            if not errors:
+                self._room_data.update(user_input)
+
+                # Check if we need to ask about bedroom mode
+                if (self._room_data.get("enable_smart_mode", True) and
+                    self._room_data.get("room_presence_sensors")):
+                    return await self.async_step_bedroom_mode()
+                else:
+                    return await self.async_step_temperature()
+
+        # Build schema for proximity detection
+        data_schema_dict = {}
+
+        # Enable proximity checkbox
+        data_schema_dict[vol.Optional("enable_proximity", default=False)] = selector.BooleanSelector()
+
+        # Proximity distance sensor (optional, shown if enabled)
+        data_schema_dict[vol.Optional("proximity_sensor", default="sensor.home_nearest_distance")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="sensor",
+            )
+        )
+
+        # Direction sensor (optional, shown if enabled)
+        data_schema_dict[vol.Optional("direction_sensor", default="sensor.home_nearest_direction_of_travel")] = selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="sensor",
+            )
+        )
+
+        # Home zone distance
+        data_schema_dict[vol.Optional("home_zone_distance", default=5000)] = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1000,
+                max=10000,
+                step=500,
+                mode="box",
+                unit_of_measurement="m",
+            )
+        )
+
+        data_schema = vol.Schema(data_schema_dict)
+
+        return self.async_show_form(
+            step_id="proximity_detection",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "4.6 of 6",
             },
         )
 
