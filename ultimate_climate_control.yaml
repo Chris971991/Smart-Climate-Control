@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.44
+  name: Ultimate Smart Climate Control - v3.0.45
 
   description: |
-    **Ultimate Smart Climate Control v3.0.44**
+    **Ultimate Smart Climate Control v3.0.45**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.44
+    ## 🆕 Latest Update - v3.0.45
 
-    **🎛️ IMPROVEMENT: Fine-Tunable Escalation Settings v3.0.44**
-    - ✅ IMPROVED: Stall Escalation Time now adjustable in 1-minute increments (was 5-minute steps)
-    - ✅ IMPROVED: Temperature Stall Tolerance now adjustable in 0.1°C increments (was 0.5°C steps)
-    - ✅ IMPROVED: De-escalation Threshold now adjustable in 0.1°C increments (was 0.5°C steps)
-    - ✅ BENEFIT: Users can now fine-tune escalation behavior precisely to their AC and room characteristics
+    **⚡ CRITICAL FIX: Escalation Temperature Threshold Bypass v3.0.45**
+    - ✅ FIXED: Escalation can now bypass temperature thresholds when switching tiers within same HVAC mode
+    - ✅ CRITICAL: AC no longer turns OFF when escalation Level 3-4 triggered below higher tier's start threshold
+    - ✅ EXAMPLE: At 24.0°C with escalation L3, can now escalate to MEDIUM (normally requires ≥25.5°C)
+    - ✅ IMPACT: Prevents "Choose block completed - no conditions matched" → AC OFF → AC ON cycling
 
-    **📝 Previous Update: Escalation Fix v3.0.43**
-    - ✅ FIXED: Runtime protection now allows escalation within same HVAC mode
-    - ✅ CRITICAL: AC can now escalate fan speed immediately when stalled
+    **📝 Previous Update: Fine-Tunable Settings v3.0.44**
+    - ✅ IMPROVED: Escalation settings now adjustable in 1-minute and 0.1°C increments
+    - ✅ BENEFIT: Precise fine-tuning for responsive climate control
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3662,8 +3662,8 @@ action:
                   {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
-                {# Not heating high - start if threshold exceeded and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating high - start if threshold exceeded OR escalation forcing tier change #}
+                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_high_temp) and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -3899,8 +3899,8 @@ action:
                   {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
               {% else %}
-                {# Not heating medium - start if in medium range and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating medium - start if in medium range OR escalation forcing tier change #}
+                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_medium_temp) and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4165,8 +4165,8 @@ action:
                   {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
               {% else %}
-                {# Not heating low - start if in low range and conditions met #}
-                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating low - start if in low range OR escalation forcing tier change #}
+                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_low_temp) and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4433,8 +4433,8 @@ action:
                   {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
-                {# Not cooling high - start if threshold exceeded and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling high - start if threshold exceeded OR escalation forcing tier change #}
+                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_high_temp) and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4672,8 +4672,8 @@ action:
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
               {% else %}
-                {# Not cooling medium - start if in medium range and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling medium - start if in medium range OR escalation forcing tier change #}
+                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_medium_temp) and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4952,8 +4952,8 @@ action:
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
               {% else %}
-                {# Not cooling low - start if in low range and conditions met #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling low - start if in low range OR escalation forcing tier change #}
+                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_low_temp) and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
