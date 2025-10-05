@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.46
+  name: Ultimate Smart Climate Control - v3.0.47
 
   description: |
-    **Ultimate Smart Climate Control v3.0.46**
+    **Ultimate Smart Climate Control v3.0.47**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -78,6 +78,15 @@ blueprint:
     📖 [Complete Documentation](https://github.com/Chris971991/Smart-Climate-Control/blob/main/README.md)
     📋 [Configuration Guide](https://github.com/Chris971991/Smart-Climate-Control/blob/main/setup-new-room-guide.md)
     🐛 [Report Issues](https://github.com/Chris971991/Smart-Climate-Control/issues)
+
+    ---
+
+    ## 📋 Latest Changes
+
+    **v3.0.47** - 🐛 CRITICAL FIX: Escalation preventing AC from turning off at target temperature
+    **v3.0.46** - 🐛 Fix: Anti-short-cycling protection using wrong timer reference
+
+    [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
     ---
 
@@ -3662,8 +3671,8 @@ action:
                   {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
-                {# Not heating high - start if threshold exceeded OR escalation forcing tier change #}
-                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_high_temp) and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
+                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -3899,8 +3908,8 @@ action:
                   {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
               {% else %}
-                {# Not heating medium - start if in medium range OR escalation forcing tier change #}
-                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_medium_temp) and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4165,8 +4174,8 @@ action:
                   {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
               {% else %}
-                {# Not heating low - start if in low range OR escalation forcing tier change #}
-                {{ should_activate and enable_heating and (escalation_level > 0 or current_temp <= heating_low_temp) and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
+                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4433,8 +4442,8 @@ action:
                   {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
                 {% endif %}
               {% else %}
-                {# Not cooling high - start if threshold exceeded OR escalation forcing tier change #}
-                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_high_temp) and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
+                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4672,8 +4681,8 @@ action:
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
               {% else %}
-                {# Not cooling medium - start if in medium range OR escalation forcing tier change #}
-                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_medium_temp) and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
+                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4952,8 +4961,8 @@ action:
                   {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
               {% else %}
-                {# Not cooling low - start if in low range OR escalation forcing tier change #}
-                {{ should_activate and enable_cooling and (escalation_level > 0 or current_temp >= cooling_low_temp) and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
+                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
