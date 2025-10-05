@@ -83,7 +83,7 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.47** - 🐛 CRITICAL FIX: Escalation preventing AC from turning off at target temperature
+    **v3.0.47** - 🐛 CRITICAL FIX: Escalation & continue mode logic causing AC restart at target
     **v3.0.46** - 🐛 Fix: Anti-short-cycling protection using wrong timer reference
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
@@ -3517,6 +3517,8 @@ action:
           {% else %}
             false
           {% endif %}
+      - condition: template
+        value_template: "{{ actual_ac_state == 'off' }}"
       - condition: template
         value_template: "{{ current_temp <= heating_medium_temp or current_temp >= cooling_medium_temp }}"
     then:
