@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.51
+  name: Ultimate Smart Climate Control - v3.0.52
 
   description: |
-    **Ultimate Smart Climate Control v3.0.51**
+    **Ultimate Smart Climate Control v3.0.52**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -3702,6 +3702,8 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
@@ -3711,11 +3713,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - CRUISING TO TARGET
                     📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - EMERGENCY MODE
                     📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C deficit!)
-                    ⚡ Full power until comfortable | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
@@ -3725,7 +3727,7 @@ action:
                   {% elif temp_gap >= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - RAPID WARM-UP
                     🚀 START MODE: Cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C threshold
-                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | Fan: {{ selected_fan_mode }}
+                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_high_temp }}°C
@@ -3942,6 +3944,8 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'heating_medium' %}
                   {% if temp_gap <= 0.5 %}
@@ -3951,11 +3955,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STEADY PROGRESS
                     📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - SUSTAINED MODE
                     📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
-                    ⚙️ Balanced power until target | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 4.0 %}
@@ -3965,7 +3969,7 @@ action:
                   {% elif temp_gap >= 1.5 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STANDARD WARM-UP
                     🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C threshold
-                    ⚙️ Balanced heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | Fan: {{ selected_fan_mode }}
+                    ⚙️ Balanced heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - GENTLE MODE
                     🚀 START MODE: Minor adjustment {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C
@@ -4211,6 +4215,8 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
@@ -4220,11 +4226,11 @@ action:
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
                     📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
                     📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
-                    🌡️ Gentle power until comfort | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
@@ -4234,7 +4240,7 @@ action:
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | Fan: {{ selected_fan_mode }}
+                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
@@ -5820,11 +5826,11 @@ action:
                   {% elif temp_gap <= 1.5 %}
                     ❄️ {{ room_name | upper }} LOW COOLING - GENTLE APPROACH
                     📊 CONTINUE MODE: Gradually cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} LOW COOLING - PATIENT MODE
                     📊 CONTINUE MODE: Steady cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
-                    🌡️ Gentle power until comfort | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
@@ -5834,7 +5840,7 @@ action:
                   {% elif temp_gap >= 1.0 %}
                     ❄️ {{ room_name | upper }} LOW COOLING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight warmth {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C threshold
-                    ⚙️ Gentle cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | Fan: {{ selected_fan_mode }}
+                    ⚙️ Gentle cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} LOW COOLING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C
@@ -6026,11 +6032,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS
                     📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - SUSTAINED MODE
                     📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
-                    ⚙️ Balanced power until target | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 4.0 %}
@@ -6040,7 +6046,7 @@ action:
                   {% elif temp_gap >= 1.5 %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - STANDARD COOL-DOWN
                     🚀 START MODE: Moderate heat {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C threshold
-                    ⚙️ Balanced cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | Fan: {{ selected_fan_mode }}
+                    ⚙️ Balanced cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - GENTLE MODE
                     🚀 START MODE: Minor adjustment {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C
@@ -7263,11 +7269,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING TO TARGET
                     📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE
                     📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C excess!)
-                    ⚡ Full power until comfortable | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
@@ -7277,7 +7283,7 @@ action:
                   {% elif temp_gap >= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - RAPID COOL-DOWN
                     🚀 START MODE: Hot {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C threshold
-                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | Fan: {{ selected_fan_mode }}
+                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C
@@ -7659,6 +7665,8 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
@@ -7668,11 +7676,11 @@ action:
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
                     📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
                     📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
-                    🌡️ Gentle power until comfort | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
@@ -7682,7 +7690,7 @@ action:
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | Fan: {{ selected_fan_mode }}
+                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
@@ -8098,11 +8106,11 @@ action:
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - CRUISING TO TARGET
                     📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | Fan: {{ selected_fan_mode }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - EMERGENCY MODE
                     📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C deficit!)
-                    ⚡ Full power until comfortable | Fan: {{ selected_fan_mode }} | Effectiveness: {{ effectiveness }}%
+                    ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
@@ -8112,7 +8120,7 @@ action:
                   {% elif temp_gap >= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - RAPID WARM-UP
                     🚀 START MODE: Cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C threshold
-                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | Fan: {{ selected_fan_mode }}
+                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_high_temp }}°C
