@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.61
+  name: Ultimate Smart Climate Control - v3.0.62
 
   description: |
-    **Ultimate Smart Climate Control v3.0.61**
+    **Ultimate Smart Climate Control v3.0.62**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,19 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.61
+    ## 🆕 Latest Update - v3.0.62
 
-    **🔥 CRITICAL FIX: Tier Transition Blocking De-Escalation v3.0.61**
-    - 🐛 FIXED: HIGH/MEDIUM tiers staying active after temperature drops below thresholds
-    - 🐛 FIXED: System unable to transition between tiers (HIGH→MEDIUM→LOW)
-    - 🐛 FIXED: De-escalation blocked by wrong tier keeping fan at maximum speed
-    - 🐛 FIXED: Fan stuck at speed 5 despite escalation level L1 (near target)
-    - ⚡ RESULT: Proper tier transitions allow de-escalation to work correctly
-    - 📈 IMPACT: All 4 upper tiers (HIGH/MEDIUM heating/cooling) now exit when temp leaves range
+    **🔄 SMART FIX: Intelligent State Synchronization After HA Restart v3.0.62**
+    - 🐛 FIXED: Helper state lost on Home Assistant restart causing AC to stay on indefinitely
+    - 🧠 FIXED: System now intelligently decides whether to continue AC operation or turn off
+    - 🎯 IMPROVED: Analyzes current temperature to determine if AC should keep running
+    - ⚡ RESULT: Updates helper to match AC if needed, or turns off if in comfort zone
+    - 📈 IMPACT: Graceful recovery from HA restarts without unnecessary AC cycling
 
-    **📝 Previous Update: Debug Conditions Blocking Automation v3.0.60**
-    - ✅ FIXED: Automation completely broken when debug logging disabled
-    - ✅ FIXED: Bare condition blocks stopping execution before main choose block
+    **📝 Previous Update: Tier Transition Blocking De-Escalation v3.0.61**
+    - ✅ FIXED: HIGH/MEDIUM tiers staying active after temperature drops below thresholds
+    - ✅ FIXED: System unable to transition between tiers (HIGH→MEDIUM→LOW)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -85,8 +84,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.0.62** - 🔄 SMART FIX: Intelligent state sync after HA restart
     **v3.0.61** - 🐛 CRITICAL FIX: Tier transition blocking proper de-escalation (HIGH→MEDIUM→LOW)
-    **v3.0.60** - 🐛 CRITICAL FIX: Debug conditions blocking automation execution
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -8699,6 +8698,116 @@ action:
       level: warning
       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
+  # STATE SYNCHRONIZATION: Handle helper/AC mismatch (e.g., after HA restart)
+  # If helper says "off" but AC is actually running, intelligently decide what to do
+  - if:
+      - condition: template
+        value_template: "{{ last_mode == 'off' and actual_ac_state == 'on' }}"
+    then:
+      # Determine what the AC is probably doing based on current temperature
+      - variables:
+          probable_mode: >
+            {% if current_temp >= cooling_high_temp %}
+              cooling_high
+            {% elif current_temp >= cooling_medium_temp %}
+              cooling_medium
+            {% elif current_temp >= cooling_low_temp %}
+              cooling_low
+            {% elif current_temp <= heating_high_temp %}
+              heating_high
+            {% elif current_temp <= heating_medium_temp %}
+              heating_medium
+            {% elif current_temp <= heating_low_temp %}
+              heating_low
+            {% elif current_temp >= comfort_max_temp %}
+              cooling_low
+            {% elif current_temp <= comfort_min_temp %}
+              heating_low
+            {% else %}
+              off
+            {% endif %}
+          should_be_running: "{{ probable_mode != 'off' }}"
+
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🔄 {{ room_name | upper }} STATE SYNC: Helper/AC mismatch detected
+
+                📊 Mismatch Details:
+                    • Helper Mode: {{ last_mode }} (says AC should be OFF)
+                    • Actual AC State: {{ actual_ac_state }} (AC is ON)
+                    • Current Temp: {{ current_temp }}°C
+                    • Target Temp: {{ target_temp }}°C
+                    • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
+
+                🤔 Analysis:
+                    • Probable Mode: {{ probable_mode }}
+                    • Should AC Be Running: {{ should_be_running }}
+
+                🛠️ Action: {{ 'Updating helper to match AC operation' if should_be_running else 'Turning OFF AC (temp in comfort zone)' }}
+                💡 Reason: Helper state likely lost (e.g., HA restart) - {{ 'restoring tracking' if should_be_running else 'resetting to known state' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # If AC should be running, update helper to track it
+      - if:
+          - condition: template
+            value_template: "{{ should_be_running }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "{{ probable_mode }}"
+            continue_on_error: true
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    ✅ {{ room_name | upper }} STATE SYNC: Helper updated to {{ probable_mode }}
+                    📋 AC will continue running - next check will use correct mode for tier transitions
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # If AC should NOT be running (temp in comfort zone), turn it off
+      - if:
+          - condition: template
+            value_template: "{{ not should_be_running }}"
+        then:
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - service: climate.turn_off
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  continue_on_error: true
+
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    ✅ {{ room_name | upper }} STATE SYNC: AC turned OFF
+                    📋 Temperature {{ current_temp }}°C is in comfort zone - no cooling/heating needed
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Debug: No conditions matched
   - if:
