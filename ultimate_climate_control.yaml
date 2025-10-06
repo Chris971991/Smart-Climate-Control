@@ -3681,6 +3681,8 @@ action:
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
+                {% elif current_temp > heating_high_temp and (target_temp - current_temp) > 1.0 %}
+                  False  {# EXIT: Temp rose above HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp }}
                 {% endif %}
@@ -3921,6 +3923,8 @@ action:
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
+                {% elif current_temp > heating_medium_temp and (target_temp - current_temp) > 1.0 %}
+                  False  {# EXIT: Temp rose above MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
                   {{ should_activate and current_temp < target_temp }}
                 {% endif %}
@@ -4461,6 +4465,8 @@ action:
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
+                {% elif current_temp < cooling_high_temp and (current_temp - target_temp) > 1.0 %}
+                  False  {# EXIT: Temp dropped below HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp }}
                 {% endif %}
@@ -4708,6 +4714,8 @@ action:
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
+                {% elif current_temp < cooling_medium_temp and (current_temp - target_temp) > 1.0 %}
+                  False  {# EXIT: Temp dropped below MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
                   {{ should_activate and current_temp > target_temp }}
                 {% endif %}
