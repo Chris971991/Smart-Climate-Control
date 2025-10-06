@@ -4481,39 +4481,39 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set fan_target = 'Auto/Low' if escalation_level == 0 and deescalation_level == 0 else ('Quiet/L1' if deescalation_level >= 2 else ('Low/L1' if deescalation_level == 1 else ('L' ~ calculated_fan_speed if escalation_level > 0 else 'Auto'))) %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C remaining)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
                   {% elif current_effectiveness < 40 and escalation_level > 0 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (ESCALATING L{{ escalation_level }} - only {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATING L{{ escalation_level }} - only {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ minutes{% endif %}
                   {% elif escalation_level == 4 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE 🆘
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
                 ⚠️ System at maximum capacity - consider manual intervention
                   {% elif current_effectiveness >= 80 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING ✅
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (STABLE - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (STABLE - {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
                   {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - INITIATED 🚀
                 📊 {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (FULL POWER)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (FULL POWER)
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
@@ -4724,44 +4724,44 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set fan_target = 'Auto/Low' if escalation_level == 0 and deescalation_level == 0 else ('Quiet/L1' if deescalation_level >= 2 else ('Low/L1' if deescalation_level == 1 else ('L' ~ calculated_fan_speed if escalation_level > 0 else 'Auto'))) %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
                 📊 {{ current_temp }}°C ≈ {{ target_temp }}°C (within {{ distance }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
                 ✅ Success! Temperature stabilized
                   {% elif deescalation_level == 3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
                 📈 Ultra-efficient mode - saving energy while maintaining comfort
                   {% elif current_effectiveness >= 85 and deescalation_level > 0 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min - Perfect balance of power & efficiency
                   {% elif escalation_level >= 2 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - BOOSTED ⚡
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (ESCALATION L{{ escalation_level }} - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATION L{{ escalation_level }} - {{ current_effectiveness }}% effective)
                 ⚠️ Increased fan power for faster cooling
                   {% elif current_effectiveness < 50 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - UNDERPERFORMING ⚠️
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
                   {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS 📊
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ENGAGED 🎯
                 📊 {{ current_temp }}°C in medium range ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (MEDIUM INTENSITY)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MEDIUM INTENSITY)
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
@@ -4996,39 +4996,39 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set fan_target = 'Auto/Low' if escalation_level == 0 and deescalation_level == 0 else ('Quiet/L1' if deescalation_level >= 2 else ('Low/L1' if deescalation_level == 1 else ('L' ~ calculated_fan_speed if escalation_level > 0 else 'Auto'))) %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_low' %}
                   {% if distance <= 0.2 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PRECISION MODE 🎯
                 📊 {{ current_temp }}°C ≈ {{ target_temp }}°C ({{ distance }}°C away)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (GENTLE)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE)
                 ✨ Maintaining perfect comfort with minimal energy
                   {% elif current_effectiveness >= 90 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PERFECT EFFICIENCY 💎
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 🌿 Ideal conditions - minimal power, maximum comfort
                   {% elif escalation_level > 0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - ASSISTED 📈
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (ESCALATED L{{ escalation_level }} for minor boost)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATED L{{ escalation_level }} for minor boost)
                 📊 Temporarily increased for quicker response
                   {% elif distance < 1.0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - FINE TUNING 🎚️
                 📊 {{ current_temp }}°C → {{ target_temp }}°C (just {{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Nearly there{% if eta_minutes < 5 %} - ~{{ eta_minutes }} min remaining{% endif %}
                   {% else %}
                 🌬️ {{ room_name | upper }} LOW COOLING - GENTLE PROGRESS 🍃
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
                 🌬️ {{ room_name | upper }} LOW COOLING - INITIALIZED 🌱
                 📊 {{ current_temp }}°C slightly above comfort (≥{{ cooling_low_temp }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ fan_target }} (GENTLE START)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE START)
                 🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
                 {% endif %}
               level: warning
