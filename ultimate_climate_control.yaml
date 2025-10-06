@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.62
+  name: Ultimate Smart Climate Control - v3.0.63
 
   description: |
-    **Ultimate Smart Climate Control v3.0.62**
+    **Ultimate Smart Climate Control v3.0.63**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.62
+    ## 🆕 Latest Update - v3.0.63
 
-    **🔄 SMART FIX: Intelligent State Synchronization After HA Restart v3.0.62**
-    - 🐛 FIXED: Helper state lost on Home Assistant restart causing AC to stay on indefinitely
-    - 🧠 FIXED: System now intelligently decides whether to continue AC operation or turn off
-    - 🎯 IMPROVED: Analyzes current temperature to determine if AC should keep running
-    - ⚡ RESULT: Updates helper to match AC if needed, or turns off if in comfort zone
-    - 📈 IMPACT: Graceful recovery from HA restarts without unnecessary AC cycling
+    **⏱️ CRITICAL FIX: Off-Time Protection Not Enforcing Restart Delay v3.0.63**
+    - 🐛 FIXED: Off-time protection ignoring minimum off-time setting
+    - 🔧 FIXED: Mode start time not updating when AC turns OFF
+    - ⚡ IMPROVED: System now tracks OFF mode duration correctly
+    - 📈 IMPACT: User-configured minimum off-time delays now properly enforced
 
-    **📝 Previous Update: Tier Transition Blocking De-Escalation v3.0.61**
-    - ✅ FIXED: HIGH/MEDIUM tiers staying active after temperature drops below thresholds
-    - ✅ FIXED: System unable to transition between tiers (HIGH→MEDIUM→LOW)
+    **📝 Previous Update: Intelligent State Sync After HA Restart v3.0.62**
+    - ✅ FIXED: Helper state lost on HA restart causing AC to stay on indefinitely
+    - ✅ FIXED: System intelligently decides whether to continue or stop after restart
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -84,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.0.63** - ⏱️ CRITICAL FIX: Off-time protection not enforcing restart delay
     **v3.0.62** - 🔄 SMART FIX: Intelligent state sync after HA restart
-    **v3.0.61** - 🐛 CRITICAL FIX: Tier transition blocking proper de-escalation (HIGH→MEDIUM→LOW)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -2302,6 +2301,14 @@ action:
           value: "off"
         continue_on_error: true
 
+      # Update mode start time for off-time protection tracking
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_mode_start_time
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
   # Store inputs as variables first
   - variables:
       check_interval: !input check_interval_minutes
@@ -3551,15 +3558,17 @@ action:
           entity_id: !input helper_last_mode
         data:
           value: "off"
-      
-      # Reset mode start time to allow immediate evaluation in next cycle (only if mode changed)
-      - condition: template
-        value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] and last_mode != 'off' }}"
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ helper_mode_time }}"
-        data:
-          datetime: "{{ now() }}"
+
+      # Update mode start time for off-time protection tracking (always update when going to OFF)
+      - if:
+          - condition: template
+            value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_mode_time }}"
+            data:
+              datetime: "{{ now() }}"
 
   - choose:
       # Handle Manual mode - True manual control with optional timeout
@@ -6384,14 +6393,16 @@ action:
                 data:
                   value: "off"
 
-              # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
-              - condition: template
-                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'off' or actual_ac_state == 'off') }}"
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_mode_time }}"
-                data:
-                  datetime: "{{ now() }}"
+              # Update mode start time for off-time protection tracking (always update when going to OFF)
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' }}"
+                then:
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: "{{ helper_mode_time }}"
+                    data:
+                      datetime: "{{ now() }}"
               
               - condition: template
                 value_template: "{{ enable_notifications }}"
@@ -8574,6 +8585,18 @@ action:
           value: "off"
         continue_on_error: true
 
+      # Update mode start time for off-time protection tracking
+      - if:
+          - condition: template
+            value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_mode_start_time
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
 
   # Turn off AC if it's running but temperature has reached/passed target
   - if:
@@ -8626,6 +8649,18 @@ action:
         data:
           value: "off"
         continue_on_error: true
+
+      # Update mode start time for off-time protection tracking
+      - if:
+          - condition: template
+            value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_mode_start_time
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
   - condition: template
@@ -8771,6 +8806,18 @@ action:
             data:
               datetime: "{{ now() }}"
             continue_on_error: true
+
+          # Update mode start time helper for off-time protection tracking
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_mode_start_time
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           - if:
               - condition: template
