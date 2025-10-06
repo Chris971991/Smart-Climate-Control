@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.49
+  name: Ultimate Smart Climate Control - v3.0.50
 
   description: |
-    **Ultimate Smart Climate Control v3.0.49**
+    **Ultimate Smart Climate Control v3.0.50**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.49
+    ## 🆕 Latest Update - v3.0.50
 
-    **🔥 CRITICAL FIX: Escalation & Continue Mode Completely Broken v3.0.49**
-    - 🐛 FIXED: Helper update condition blocking mode persistence (caused escalation to never apply)
-    - 🐛 FIXED: System stuck in "INITIALIZED" mode instead of "CONTINUE" mode
-    - 🐛 FIXED: Escalation calculated correctly but fan speed never escalated
-    - 🐛 FIXED: AC bouncing at comfort zone edge (24.5-24.7°C) instead of reaching target (23°C)
-    - ⚡ RESULT: Escalation now actually works! AC will intensify when stalled
-    - 📈 IMPACT: Temperature actually reaches target instead of stuck 1.5°C above
+    **🔥 CRITICAL FIX: Continue Mode Boundary Restriction Preventing Target Achievement v3.0.50**
+    - 🐛 FIXED: Continue condition boundary checks preventing fan escalation from working
+    - 🐛 FIXED: AC stuck at comfort zone edge (24.3-24.5°C) despite escalation level 3
+    - 🐛 FIXED: Choose block conditions failing when temperature drops into comfort zone
+    - 🐛 FIXED: Fan speed remaining at "Auto" despite calculated escalation to "3"
+    - ⚡ RESULT: Escalation now works through entire temperature range to target
+    - 📈 IMPACT: All 6 tiers (heating/cooling HIGH/MEDIUM/LOW) fixed with simplified continue logic
 
-    **📝 Previous Update: Anti-Short-Cycling Protection v3.0.48**
-    - ✅ FIXED: Protection now uses correct timer (time_in_current_mode instead of time_since_change)
+    **📝 Previous Update: Helper Persistence Blocking Escalation v3.0.49**
+    - ✅ FIXED: Helper update condition preventing mode persistence
+    - ✅ FIXED: System stuck in "INITIALIZED" mode instead of "CONTINUE" mode
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3673,7 +3674,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and (current_temp <= heating_high_temp or (current_temp < target_temp and (target_temp - current_temp) < 1.0)) }}
+                  {{ should_activate and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -3913,7 +3914,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp < target_temp and current_temp > heating_high_temp }}
+                  {{ should_activate and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -4182,7 +4183,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp < target_temp and current_temp > heating_medium_temp }}
+                  {{ should_activate and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
@@ -4453,7 +4454,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and (current_temp >= cooling_high_temp or (current_temp > target_temp and (current_temp - target_temp) < 1.0)) }}
+                  {{ should_activate and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -4695,7 +4696,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp > target_temp and current_temp < cooling_high_temp }}
+                  {{ should_activate and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -4978,7 +4979,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp > target_temp and current_temp < cooling_medium_temp }}
+                  {{ should_activate and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
