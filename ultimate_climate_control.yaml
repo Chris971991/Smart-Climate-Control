@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.59
+  name: Ultimate Smart Climate Control - v3.0.60
 
   description: |
-    **Ultimate Smart Climate Control v3.0.59**
+    **Ultimate Smart Climate Control v3.0.60**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -3397,113 +3397,121 @@ action:
       value: "{{ calculated_trend }}"
 
   # Debug: Log the actual last_mode value to see what's happening
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
-        
-        📊 Core Variables:
-            • last_mode (internal): "{{ last_mode }}"
-            • actual_ac_state: "{{ actual_ac_state }}"
-            • should_activate: {{ should_activate }}
-            • current_temp: {{ current_temp }}°C
-            • cooling_high: {{ cooling_high_temp }}°C
-            • cooling_medium: {{ cooling_medium_temp }}°C
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
 
-  - condition: template
-    value_template: "{{ debug_enabled and dynamic_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} ESCALATION DEBUG
+            📊 Core Variables:
+                • last_mode (internal): "{{ last_mode }}"
+                • actual_ac_state: "{{ actual_ac_state }}"
+                • should_activate: {{ should_activate }}
+                • current_temp: {{ current_temp }}°C
+                • cooling_high: {{ cooling_high_temp }}°C
+                • cooling_medium: {{ cooling_medium_temp }}°C
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-        📊 Escalation Conditions:
-            • distance_from_target: {{ distance_from_target | round(1) }}°C
-            • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
-            • current_effectiveness: {{ current_effectiveness }}%
-            • calculated_trend: {{ calculated_trend }}
-            • temp_change_rate: {{ temp_change_rate | round(3) }}°C/min
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and dynamic_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} ESCALATION DEBUG
 
-        🎯 Near-Target Stall Detection (Level 1):
-            • Distance ≤ {{ temp_tolerance }}°C: {{ distance_from_target <= temp_tolerance }}
-            • Time ≥ 15min: {{ time_in_current_mode >= 15 }}
-            • Stable/slow: {{ calculated_trend == 'stable' or temp_change_rate | abs < 0.1 }}
-            • SHOULD TRIGGER: {{ distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) }}
+            📊 Escalation Conditions:
+                • distance_from_target: {{ distance_from_target | round(1) }}°C
+                • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
+                • current_effectiveness: {{ current_effectiveness }}%
+                • calculated_trend: {{ calculated_trend }}
+                • temp_change_rate: {{ temp_change_rate | round(3) }}°C/min
 
-        ⏱️ Time-Based Stall Detection (Level 3):
-            • Time ≥ {{ stall_time_threshold }}min: {{ time_in_current_mode >= stall_time_threshold }}
-            • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)
-            • Distance > {{ (temp_tolerance / 2) | round(1) }}°C: {{ distance_from_target > (temp_tolerance / 2) }}
-            • SHOULD TRIGGER: {{ time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) }}
+            🎯 Near-Target Stall Detection (Level 1):
+                • Distance ≤ {{ temp_tolerance }}°C: {{ distance_from_target <= temp_tolerance }}
+                • Time ≥ 15min: {{ time_in_current_mode >= 15 }}
+                • Stable/slow: {{ calculated_trend == 'stable' or temp_change_rate | abs < 0.1 }}
+                • SHOULD TRIGGER: {{ distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) }}
 
-        ⚡ Result: Escalation Level = {{ escalation_level }}
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+            ⏱️ Time-Based Stall Detection (Level 3):
+                • Time ≥ {{ stall_time_threshold }}min: {{ time_in_current_mode >= stall_time_threshold }}
+                • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)
+                • Distance > {{ (temp_tolerance / 2) | round(1) }}°C: {{ distance_from_target > (temp_tolerance / 2) }}
+                • SHOULD TRIGGER: {{ time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) }}
 
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} DEBUG Part 2: Cooling checks
-        
-        🌡️ Temperature Logic:
-            • last_transition: "{{ last_transition }}"
-            • hysteresis: {{ hysteresis_tolerance }}°C
-            • temp >= high: {{ current_temp >= cooling_high_temp }}
-            • time_since_change: {{ time_since_change | round(1) }}min
-            • runtime_min: {{ runtime_min }}min
-            • time_check: {{ time_since_change > runtime_min }}
-            • mode_check: {{ last_mode != 'cooling' }}
-            • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • HIGH cooling conditions: {% if last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+            ⚡ Result: Escalation Level = {{ escalation_level }}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} DEBUG Part 3: Heating & Cooling checks
-        
-        🔥 Heating Logic:
-            • heating_low: {{ heating_low_temp }}°C
-            • heating_medium: {{ heating_medium_temp }}°C
-            • heating_high: {{ heating_high_temp }}°C
-            • temp <= low: {{ current_temp <= heating_low_temp }}
-            • temp <= medium: {{ current_temp <= heating_medium_temp }}
-            • temp <= high: {{ current_temp <= heating_high_temp }}
-            • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
-            • mode_check: {{ last_mode != 'heating' }} (last_mode: {{ last_mode }})
-            • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'heating' else 'inactive' }}
-            • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • Heating Mode: {{ 'ENABLED' if enable_heating else 'DISABLED' }}
-            • LOW heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_low' %}{{ current_temp < target_temp and current_temp > heating_medium_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating_low') }} (start condition){% endif %}
-            • MEDIUM heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_medium' %}{{ current_temp < target_temp and current_temp > heating_high_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }} (start condition){% endif %}
-            • HIGH heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_high' %}{{ current_temp < target_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }} (start condition){% endif %}
-        
-        ❄️ Cooling Logic:
-            • cooling_low: {{ cooling_low_temp }}°C
-            • cooling_medium: {{ cooling_medium_temp }}°C
-            • cooling_high: {{ cooling_high_temp }}°C
-            • temp >= low: {{ current_temp >= cooling_low_temp }}
-            • temp >= medium: {{ current_temp >= cooling_medium_temp }}
-            • temp >= high: {{ current_temp >= cooling_high_temp }}
-            • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
-            • mode_check: {{ last_mode != 'cooling' }} (last_mode: {{ last_mode }})
-            • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'cooling' else 'inactive' }}
-            • actual_ac_off: {{ actual_ac_state == 'off' }}
-            • Cooling Mode: {{ 'ENABLED' if enable_cooling else 'DISABLED' }}
-            • LOW cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_low' %}{{ current_temp > target_temp and current_temp < cooling_medium_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (time_since_change > runtime_min or last_mode != 'cooling_low') }} (start condition){% endif %}
-            • MEDIUM cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_medium' %}{{ current_temp > target_temp and current_temp < cooling_high_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling_medium') }} (start condition){% endif %}
-            • HIGH cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DEBUG Part 2: Cooling checks
+
+            🌡️ Temperature Logic:
+                • last_transition: "{{ last_transition }}"
+                • hysteresis: {{ hysteresis_tolerance }}°C
+                • temp >= high: {{ current_temp >= cooling_high_temp }}
+                • time_since_change: {{ time_since_change | round(1) }}min
+                • runtime_min: {{ runtime_min }}min
+                • time_check: {{ time_since_change > runtime_min }}
+                • mode_check: {{ last_mode != 'cooling' }}
+                • actual_ac_off: {{ actual_ac_state == 'off' }}
+                • HIGH cooling conditions: {% if last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DEBUG Part 3: Heating & Cooling checks
+
+            🔥 Heating Logic:
+                • heating_low: {{ heating_low_temp }}°C
+                • heating_medium: {{ heating_medium_temp }}°C
+                • heating_high: {{ heating_high_temp }}°C
+                • temp <= low: {{ current_temp <= heating_low_temp }}
+                • temp <= medium: {{ current_temp <= heating_medium_temp }}
+                • temp <= high: {{ current_temp <= heating_high_temp }}
+                • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
+                • mode_check: {{ last_mode != 'heating' }} (last_mode: {{ last_mode }})
+                • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'heating' else 'inactive' }}
+                • actual_ac_off: {{ actual_ac_state == 'off' }}
+                • Heating Mode: {{ 'ENABLED' if enable_heating else 'DISABLED' }}
+                • LOW heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_low' %}{{ current_temp < target_temp and current_temp > heating_medium_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (time_since_change > runtime_min or last_mode != 'heating_low') }} (start condition){% endif %}
+                • MEDIUM heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_medium' %}{{ current_temp < target_temp and current_temp > heating_high_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_medium') }} (start condition){% endif %}
+                • HIGH heating conditions: {% if not enable_heating %}DISABLED{% elif last_mode == 'heating_high' %}{{ current_temp < target_temp }} (continue until target){% else %}{{ should_activate and enable_heating and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }} (start condition){% endif %}
+
+            ❄️ Cooling Logic:
+                • cooling_low: {{ cooling_low_temp }}°C
+                • cooling_medium: {{ cooling_medium_temp }}°C
+                • cooling_high: {{ cooling_high_temp }}°C
+                • temp >= low: {{ current_temp >= cooling_low_temp }}
+                • temp >= medium: {{ current_temp >= cooling_medium_temp }}
+                • temp >= high: {{ current_temp >= cooling_high_temp }}
+                • time_check: {{ time_since_change > runtime_min }} ({{ time_since_change | round(1) }}min > {{ runtime_min }}min)
+                • mode_check: {{ last_mode != 'cooling' }} (last_mode: {{ last_mode }})
+                • runtime_lockout: {{ 'ACTIVE - preventing activation' if time_since_change <= runtime_min and last_mode == 'cooling' else 'inactive' }}
+                • actual_ac_off: {{ actual_ac_state == 'off' }}
+                • Cooling Mode: {{ 'ENABLED' if enable_cooling else 'DISABLED' }}
+                • LOW cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_low' %}{{ current_temp > target_temp and current_temp < cooling_medium_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (time_since_change > runtime_min or last_mode != 'cooling_low') }} (start condition){% endif %}
+                • MEDIUM cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_medium' %}{{ current_temp > target_temp and current_temp < cooling_high_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling_medium') }} (start condition){% endif %}
+                • HIGH cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # ADAPTIVE CONTROL REACTIVATION: Clear adaptive_off when room is occupied and heating/cooling needed
   - if:
