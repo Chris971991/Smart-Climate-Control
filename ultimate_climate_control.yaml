@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.63
+  name: Ultimate Smart Climate Control - v3.0.64
 
   description: |
-    **Ultimate Smart Climate Control v3.0.63**
+    **Ultimate Smart Climate Control v3.0.64**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -5084,10 +5084,10 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
-                    # LOW cooling adaptive fan selection with de-escalation support
+                    # LOW cooling adaptive fan selection with full 5-speed escalation
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# Escalation always takes priority over de-escalation when system is stalled #}
+                      {# De-escalation takes priority when no stall detected #}
                       {% if deescalation_level == 3 and escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
@@ -5102,10 +5102,6 @@ action:
                           1
                           {% elif 'Level 1' in fans %}
                           Level 1
-                          {% elif 'low' in fans %}
-                          low
-                          {% elif 'Low' in fans %}
-                          Low
                           {% elif 'auto' in fans %}
                           auto
                           {% elif 'Auto' in fans %}
@@ -5119,11 +5115,20 @@ action:
                           quiet
                           {% elif 'Quiet' in fans %}
                           Quiet
-                          {% elif 'silence' in fans %}
-                          silence
-                          {% elif 'Silence' in fans %}
-                          Silence
                           {% elif '1' in fans %}
+                          1
+                          {% elif 'Level 1' in fans %}
+                          Level 1
+                          {% elif 'auto' in fans %}
+                          auto
+                          {% elif 'Auto' in fans %}
+                          Auto
+                          {% else %}
+                          {{ fans[0] if fans else 'Auto' }}
+                        {% endif %}
+                        {% elif deescalation_level == 1 %}
+                        {# Level 1: LOW de-escalation - Minimal reduction #}
+                        {% if '1' in fans %}
                           1
                           {% elif 'Level 1' in fans %}
                           Level 1
@@ -5138,50 +5143,25 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 1 %}
-                        {# Level 1: LOW de-escalation - Minimal reduction #}
-                        {% if 'low' in fans %}
-                          low
-                          {% elif 'Low' in fans %}
-                          Low
-                          {% elif '1' in fans %}
-                          1
-                          {% elif 'Level 1' in fans %}
-                          Level 1
-                          {% elif 'quiet' in fans %}
-                          quiet
-                          {% elif 'Quiet' in fans %}
-                          Quiet
-                          {% elif 'auto' in fans %}
-                          auto
-                          {% elif 'Auto' in fans %}
-                          Auto
-                          {% else %}
-                          {{ fans[0] if fans else 'Auto' }}
-                        {% endif %}
                         {% elif escalation_level == 0 %}
-                        {# Level 0: Start gentle - Level 1 equivalent #}
-                        {% if 'low' in fans %}
-                          low
-                          {% elif 'Low' in fans %}
-                          Low
-                          {% elif '1' in fans %}
+                        {# Escalation Level 0: Start gentle - Fan 1 #}
+                        {% if '1' in fans %}
                           1
                           {% elif 'Level 1' in fans %}
                           Level 1
-                          {% elif 'quiet' in fans %}
-                          quiet
-                          {% elif 'Quiet' in fans %}
-                          Quiet
-                          {% elif 'Auto' in fans %}
-                          Auto
+                          {% elif 'low' in fans %}
+                          low
+                          {% elif 'Low' in fans %}
+                          Low
                           {% elif 'auto' in fans %}
                           auto
+                          {% elif 'Auto' in fans %}
+                          Auto
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
                         {% elif escalation_level == 1 %}
-                        {# Level 1: Moderate escalation - Level 2 equivalent #}
+                        {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
                           {% elif 'Level 2' in fans %}
@@ -5192,8 +5172,6 @@ action:
                           Medium
                           {% elif '3' in fans %}
                           3
-                          {% elif 'Level 3' in fans %}
-                          Level 3
                           {% elif 'auto' in fans %}
                           auto
                           {% elif 'Auto' in fans %}
@@ -5201,8 +5179,8 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% else %}
-                        {# Level 2+: Maximum for LOW tier - Level 3 equivalent #}
+                        {% elif escalation_level == 2 %}
+                        {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
                           {% elif 'Level 3' in fans %}
@@ -5211,6 +5189,48 @@ action:
                           medium
                           {% elif 'Medium' in fans %}
                           Medium
+                          {% elif '4' in fans %}
+                          4
+                          {% elif 'auto' in fans %}
+                          auto
+                          {% elif 'Auto' in fans %}
+                          Auto
+                          {% else %}
+                          {{ fans[2] if fans|length > 2 else fans[-1] }}
+                        {% endif %}
+                        {% elif escalation_level == 3 %}
+                        {# Escalation Level 3: Strong boost - Fan 4 #}
+                        {% if '4' in fans %}
+                          4
+                          {% elif 'Level 4' in fans %}
+                          Level 4
+                          {% elif '5' in fans %}
+                          5
+                          {% elif '3' in fans %}
+                          3
+                          {% elif 'high' in fans %}
+                          high
+                          {% elif 'High' in fans %}
+                          High
+                          {% elif 'auto' in fans %}
+                          auto
+                          {% elif 'Auto' in fans %}
+                          Auto
+                          {% else %}
+                          {{ fans[3] if fans|length > 3 else fans[-1] }}
+                        {% endif %}
+                        {% else %}
+                        {# Escalation Level 4: Emergency maximum - Fan 5 #}
+                        {% if '5' in fans %}
+                          5
+                          {% elif 'Level 5' in fans %}
+                          Level 5
+                          {% elif '4' in fans %}
+                          4
+                          {% elif 'high' in fans %}
+                          high
+                          {% elif 'High' in fans %}
+                          High
                           {% elif 'auto' in fans %}
                           auto
                           {% elif 'Auto' in fans %}
