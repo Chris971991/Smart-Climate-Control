@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.55
+  name: Ultimate Smart Climate Control - v3.0.56
 
   description: |
-    **Ultimate Smart Climate Control v3.0.55**
+    **Ultimate Smart Climate Control v3.0.56**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -4922,6 +4922,12 @@ action:
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
                       {% endif %}
+
+                - service: system_log.write
+                  data:
+                    message: "🔍 MEDIUM COOL FAN CALL: selected='{{ selected_fan_mode }}' | available={{ state_attr(current_entity, 'fan_modes') | list }} | final='{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}'"
+                    level: warning
+                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                 - service: climate.set_fan_mode
                   target:
