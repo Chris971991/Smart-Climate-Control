@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.60
+  name: Ultimate Smart Climate Control - v3.0.61
 
   description: |
-    **Ultimate Smart Climate Control v3.0.60**
+    **Ultimate Smart Climate Control v3.0.61**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,19 +56,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.50
+    ## 🆕 Latest Update - v3.0.61
 
-    **🔥 CRITICAL FIX: Continue Mode Boundary Restriction Preventing Target Achievement v3.0.50**
-    - 🐛 FIXED: Continue condition boundary checks preventing fan escalation from working
-    - 🐛 FIXED: AC stuck at comfort zone edge (24.3-24.5°C) despite escalation level 3
-    - 🐛 FIXED: Choose block conditions failing when temperature drops into comfort zone
-    - 🐛 FIXED: Fan speed remaining at "Auto" despite calculated escalation to "3"
-    - ⚡ RESULT: Escalation now works through entire temperature range to target
-    - 📈 IMPACT: All 6 tiers (heating/cooling HIGH/MEDIUM/LOW) fixed with simplified continue logic
+    **🔥 CRITICAL FIX: Tier Transition Blocking De-Escalation v3.0.61**
+    - 🐛 FIXED: HIGH/MEDIUM tiers staying active after temperature drops below thresholds
+    - 🐛 FIXED: System unable to transition between tiers (HIGH→MEDIUM→LOW)
+    - 🐛 FIXED: De-escalation blocked by wrong tier keeping fan at maximum speed
+    - 🐛 FIXED: Fan stuck at speed 5 despite escalation level L1 (near target)
+    - ⚡ RESULT: Proper tier transitions allow de-escalation to work correctly
+    - 📈 IMPACT: All 4 upper tiers (HIGH/MEDIUM heating/cooling) now exit when temp leaves range
 
-    **📝 Previous Update: Helper Persistence Blocking Escalation v3.0.49**
-    - ✅ FIXED: Helper update condition preventing mode persistence
-    - ✅ FIXED: System stuck in "INITIALIZED" mode instead of "CONTINUE" mode
+    **📝 Previous Update: Debug Conditions Blocking Automation v3.0.60**
+    - ✅ FIXED: Automation completely broken when debug logging disabled
+    - ✅ FIXED: Bare condition blocks stopping execution before main choose block
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -85,8 +85,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.48** - 🐛 CRITICAL FIX: Escalation & continue mode logic causing AC restart at target
-    **v3.0.47** - 🐛 Fix: Initial escalation fix (superseded by v3.0.48)
+    **v3.0.61** - 🐛 CRITICAL FIX: Tier transition blocking proper de-escalation (HIGH→MEDIUM→LOW)
+    **v3.0.60** - 🐛 CRITICAL FIX: Debug conditions blocking automation execution
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
