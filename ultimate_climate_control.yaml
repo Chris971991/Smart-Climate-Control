@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.65
+  name: Ultimate Smart Climate Control - v3.0.66
 
   description: |
-    **Ultimate Smart Climate Control v3.0.65**
+    **Ultimate Smart Climate Control v3.0.66**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2701,9 +2701,13 @@ action:
           {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
             4  {# Heating but temperature falling below comfort zone #}
 
-          {# Level 1: NEAR-TARGET STALL - Check BEFORE effectiveness blocking #}
-          {% elif distance_from_target <= temp_tolerance and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.1) %}
-            1  {# NEAR-TARGET STALL: Very close but stuck for extended time - gentle push needed #}
+          {# Level 0: VERY CLOSE TO TARGET - Don't escalate, maintain only #}
+          {% elif distance_from_target <= 0.5 and current_effectiveness >= 85 %}
+            0  {# Too close for escalation - high effectiveness means we're doing great #}
+
+          {# Level 1: NEAR-TARGET STALL - Gentle push when close but stalling #}
+          {% elif distance_from_target > 0.5 and distance_from_target <= 1.0 and time_in_current_mode >= 15 and (calculated_trend == 'stable' or temp_change_rate | abs < 0.05) %}
+            1  {# NEAR-TARGET STALL: Close but stuck for extended time - gentle push needed #}
 
           {# Level 3: HIGH - Strong escalation needed #}
           {% elif distance_from_target > 3.0 and time_in_current_mode >= 5 %}
@@ -4927,12 +4931,6 @@ action:
                       {% endif %}
                       {% endif %}
 
-                - service: system_log.write
-                  data:
-                    message: "🔍 HIGH COOL FAN CALL: selected='{{ selected_fan_mode }}' | available={{ state_attr(current_entity, 'fan_modes') | list }} | final='{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}'"
-                    level: warning
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -4944,13 +4942,21 @@ action:
                 - service: system_log.write
                   data:
                     message: >
-                      🔍 HIGH COOL MAXIMUM FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}/4 (max tier - Level 5 always)
-                      • Fan Selection: {{ selected_fan_mode }} (maximum power)
+                      🔍 HIGH COOL ADAPTIVE FAN: {{ repeat.item }}
+                      {% if deescalation_level > 0 %}
+                      • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
+                        {% else %}
+                      • Escalation Level: {{ escalation_level }}/4
+                      {% endif %}
+                      • Selected Fan: {{ selected_fan_mode }}
+                      • Current Fan: {{ state_attr(repeat.item, 'fan_mode') | default('Unknown') }}
+                      • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
-                      • Available Fans: {{ available_fans | join(', ') }}
+                      {% if deescalation_level > 0 %}
+                      • Reason: {{ 'Excellent performance - switching to eco mode' if deescalation_level == 3 else 'Good performance - reducing to medium power' if deescalation_level == 2 else 'Approaching target - minor reduction' }}
+                      {% endif %}
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
@@ -5255,12 +5261,6 @@ action:
                         {% endif %}
                       {% endif %}
 
-                - service: system_log.write
-                  data:
-                    message: "🔍 MEDIUM COOL FAN CALL: selected='{{ selected_fan_mode }}' | repr={{ selected_fan_mode | string | tojson }} | available={{ state_attr(current_entity, 'fan_modes') | list }} | trimmed='{{ selected_fan_mode | trim }}'"
-                    level: warning
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -5278,14 +5278,15 @@ action:
                         {% else %}
                       • Escalation Level: {{ escalation_level }}/4
                       {% endif %}
-                      • Fan Selection: {{ selected_fan_mode }}
+                      • Selected Fan: {{ selected_fan_mode }}
+                      • Current Fan: {{ state_attr(repeat.item, 'fan_mode') | default('Unknown') }}
+                      • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
                       {% if deescalation_level > 0 %}
                       • Reason: {{ 'Excellent performance - switching to eco mode' if deescalation_level == 3 else 'Good performance - reducing to low power' if deescalation_level == 2 else 'Approaching target - minor reduction' }}
                       {% endif %}
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
-                      • Available Fans: {{ available_fans | join(', ') }}
+                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
