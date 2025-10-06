@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.58
+  name: Ultimate Smart Climate Control - v3.0.59
 
   description: |
-    **Ultimate Smart Climate Control v3.0.58**
+    **Ultimate Smart Climate Control v3.0.59**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -6297,11 +6297,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                             desired_swing: !input swing_mode_active
-                        - service: climate.set_swing_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            swing_mode: >
+                            selected_swing_mode: >
                               {% if desired_swing in available_swings %}
                                 {{ desired_swing }}
                                 {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -6329,6 +6325,11 @@ action:
                                 {% else %}
                                 {{ available_swings[0] if available_swings else 'Off' }}
                               {% endif %}
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: "{{ selected_swing_mode | trim }}"
                   
                   - service: input_text.set_value
                     target:
@@ -7394,11 +7395,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                     desired_swing: !input swing_mode_active
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: >
+                    selected_swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
                         {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -7426,6 +7423,11 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode | trim }}"
           
           - service: input_text.set_value
             target:
@@ -7568,11 +7570,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                     desired_swing: !input swing_mode_active
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: >
+                    selected_swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
                         {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -7600,6 +7598,11 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode | trim }}"
           
           - service: input_text.set_value
             target:
@@ -7804,11 +7807,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                     desired_swing: !input swing_mode_active
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: >
+                    selected_swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
                         {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -7836,6 +7835,11 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode | trim }}"
           
           - service: input_text.set_value
             target:
@@ -7974,11 +7978,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                     desired_swing: !input swing_mode_active
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: >
+                    selected_swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
                         {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -8006,6 +8006,11 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode | trim }}"
           
           - service: input_text.set_value
             target:
@@ -8227,11 +8232,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
                     desired_swing: !input swing_mode_active
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: >
+                    selected_swing_mode: >
                       {% if desired_swing in available_swings %}
                         {{ desired_swing }}
                         {% elif desired_swing == 'both' and '3D' in available_swings %}
@@ -8259,6 +8260,11 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode | trim }}"
           
           - service: input_text.set_value
             target:
