@@ -3865,7 +3865,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4134,7 +4134,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4405,7 +4405,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4644,7 +4644,7 @@ action:
 
                 - service: system_log.write
                   data:
-                    message: "🔍 HIGH COOL FAN CALL: selected='{{ selected_fan_mode }}' | available={{ state_attr(current_entity, 'fan_modes') | list }} | final='{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}'"
+                    message: "🔍 HIGH COOL FAN CALL: selected='{{ selected_fan_mode }}' | available={{ state_attr(current_entity, 'fan_modes') | list }} | final='{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}'"
                     level: warning
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
@@ -4652,7 +4652,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -4927,7 +4927,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5194,7 +5194,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5365,7 +5365,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -5941,7 +5941,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -6146,7 +6146,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7776,7 +7776,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -8460,7 +8460,7 @@ action:
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in state_attr(current_entity, 'fan_modes') | list else (state_attr(current_entity, 'fan_modes') | list)[0] if state_attr(current_entity, 'fan_modes') | list else 'auto' }}"
+                    fan_mode: "{{ selected_fan_mode if selected_fan_mode in (state_attr(current_entity, 'fan_modes') | list) else (state_attr(current_entity, 'fan_modes') | list)[0] if (state_attr(current_entity, 'fan_modes') | list) else 'auto' }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
