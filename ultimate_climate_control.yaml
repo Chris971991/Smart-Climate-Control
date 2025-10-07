@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.80
+  name: Ultimate Smart Climate Control - v3.0.81
 
   description: |
-    **Ultimate Smart Climate Control v3.0.80**
+    **Ultimate Smart Climate Control v3.0.81**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.80
+    ## 🆕 Latest Update - v3.0.81
 
-    **🐛 CRITICAL FIX: Runtime Protection Now Works Correctly v3.0.80**
-    - 🛡️ FIXED: Minimum Runtime protection now properly enforced (was turning off after seconds instead of minutes)
-    - 🔧 FIXED: Minimum Off Time protection now works correctly
-    - ⏱️ ROOT CAUSE: Used wrong time variable (time_since_change vs time_in_current_mode)
-    - ✅ IMPACT: AC will now stay on for full minimum runtime even if target reached early
+    **🐛 CRITICAL FIX: No More Fan Speed Jumps on Startup v3.0.81**
+    - 🔊 FIXED: Fan no longer jumps to high speed then drops to low when AC starts
+    - 🎯 ROOT CAUSE: Escalation logic used time from OFF mode causing immediate Level 3 escalation
+    - ✅ IMPACT: Smooth startup with appropriate fan speed from the beginning
+    - 🔧 BONUS: v3.0.80 runtime protection fix also included
 
-    **📝 Previous Update: Wrong-Direction Escalation Feature v3.0.68-79**
-    - ✨ NEW: Optional wrong-direction detection boosts escalation when temp moves opposite way
-    - 🎮 GAMING ROOMS: Responds faster to sudden heat spikes (PCs, consoles, cooking)
+    **📝 Previous Update: Runtime Protection Fixed v3.0.80**
+    - 🛡️ FIXED: Minimum Runtime and Off Time protection now work correctly
+    - ⏱️ AC stays on for full configured runtime even if target reached early
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.80** - 🐛 CRITICAL FIX: Runtime protection now works correctly
-    **v3.0.68-79** - 🚨 NEW: Wrong-direction escalation boost (optional feature)
+    **v3.0.81** - 🐛 CRITICAL FIX: No more fan speed jumps on startup
+    **v3.0.80** - 🛡️ FIXED: Runtime protection now works correctly
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -2775,7 +2775,7 @@ action:
           {% set stall_threshold = 2.0 %}  {# Degrees for considering progress stalled #}
 
           {# Level 0: No escalation needed - minimum checks only #}
-          {% if time_in_current_mode < min_check_time %}
+          {% if last_mode in ['off', 'eco'] or time_in_current_mode < min_check_time %}
             0  {# Too early to evaluate #}
 
           {# Level 4: EMERGENCY - Immediate maximum power #}
