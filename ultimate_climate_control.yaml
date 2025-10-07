@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.71
+  name: Ultimate Smart Climate Control - v3.0.72
 
   description: |
-    **Ultimate Smart Climate Control v3.0.71**
+    **Ultimate Smart Climate Control v3.0.72**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2835,9 +2835,9 @@ action:
       # This is cumulative - resets when mode changes or temp goes right direction
       wrong_direction_detected: >
         {% if wrong_direction_enabled and wrong_direction_per_check > 0 %}
-          {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and calculated_trend == 'rising' %}
+          {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > 0 %}
             true
-          {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and calculated_trend == 'falling' %}
+          {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < 0 %}
             true
           {% else %}
             false
