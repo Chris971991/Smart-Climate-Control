@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.77
+  name: Ultimate Smart Climate Control - v3.0.78
 
   description: |
-    **Ultimate Smart Climate Control v3.0.77**
+    **Ultimate Smart Climate Control v3.0.78**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2834,17 +2834,11 @@ action:
       # Count how many effectiveness checks have detected wrong direction
       # This is cumulative - resets when mode changes or temp goes right direction
       wrong_direction_detected: >
-        {% if wrong_direction_enabled and wrong_direction_per_check > 0 %}
-          {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > 0 %}
-            true
-          {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < 0 %}
-            true
-          {% else %}
-            false
-          {% endif %}
-        {% else %}
-          false
-        {% endif %}
+        {{
+          (wrong_direction_enabled and wrong_direction_per_check > 0) and
+          ((last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > 0) or
+           (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < 0))
+        }}
 
       # Helper to track consecutive wrong-direction checks
       # NOTE: This needs a helper entity to persist between runs
