@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.66
+  name: Ultimate Smart Climate Control - v3.0.67
 
   description: |
-    **Ultimate Smart Climate Control v3.0.66**
+    **Ultimate Smart Climate Control v3.0.67**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.63
+    ## 🆕 Latest Update - v3.0.67
 
-    **⏱️ CRITICAL FIX: Off-Time Protection Not Enforcing Restart Delay v3.0.63**
-    - 🐛 FIXED: Off-time protection ignoring minimum off-time setting
-    - 🔧 FIXED: Mode start time not updating when AC turns OFF
-    - ⚡ IMPROVED: System now tracks OFF mode duration correctly
-    - 📈 IMPACT: User-configured minimum off-time delays now properly enforced
+    **🎛️ IMPROVED: Fine-Grained Control Adjustments v3.0.67**
+    - 🔧 IMPROVED: Comfort Zone Range now steps by 0.1°C (was 0.5°C) for precise control
+    - 🔧 IMPROVED: Effectiveness Check Interval minimum reduced to 1 minute (was 5 min) for aggressive gaming rooms
+    - 🔧 IMPROVED: Minimum Progress Rate maximum increased to 0.5°C/min (was 0.1) for high-power ACs
+    - 🔧 IMPROVED: Hysteresis Tolerance now steps by 0.01°C (was 0.1°C) for tight control
 
-    **📝 Previous Update: Intelligent State Sync After HA Restart v3.0.62**
-    - ✅ FIXED: Helper state lost on HA restart causing AC to stay on indefinitely
-    - ✅ FIXED: System intelligently decides whether to continue or stop after restart
+    **📝 Previous Update: Smart Near-Target Logic + Debug Cleanup v3.0.66**
+    - 🎯 ADDED: Very close zone (≤0.5°C, effectiveness ≥85%) → Escalation Level 0
+    - 🔧 IMPROVED: Near-target stall range tightened from ≤1.0°C to 0.5-1.0°C
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.63** - ⏱️ CRITICAL FIX: Off-time protection not enforcing restart delay
-    **v3.0.62** - 🔄 SMART FIX: Intelligent state sync after HA restart
+    **v3.0.67** - 🎛️ IMPROVED: Fine-grained control adjustments for gaming rooms
+    **v3.0.66** - 🎯 IMPROVED: Smart near-target logic + debug cleanup
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -232,7 +232,7 @@ blueprint:
             number:
               min: 0.5
               max: 3
-              step: 0.5
+              step: 0.1
               unit_of_measurement: "°C"
               mode: slider
         
@@ -1591,6 +1591,7 @@ blueprint:
           description: |
             **Minutes to wait** before checking if current mode is working.
 
+            • **1-3 minutes:** Very aggressive adaptation (gaming rooms, high heat load)
             • **5-10 minutes:** Responsive adaptation
             • **15 minutes:** Balanced approach (recommended)
             • **20-30 minutes:** Conservative, gives more time for AC to work
@@ -1599,7 +1600,7 @@ blueprint:
           default: 10
           selector:
             number:
-              min: 5
+              min: 1
               max: 30
               unit_of_measurement: minutes
 
@@ -1638,22 +1639,25 @@ blueprint:
             • Customizable for your AC's capabilities and room characteristics
 
             **Rate examples:**
-            • **0.02-0.05°C/min:** Fast AC, small room, tight control
+            • **0.10-0.20°C/min:** Very aggressive (gaming rooms, high-power ACs)
+            • **0.05-0.10°C/min:** Aggressive (fast AC, small room, tight control)
+            • **0.02-0.05°C/min:** Responsive (fast AC, good insulation)
             • **0.01-0.02°C/min:** Average AC, medium room (recommended)
             • **0.005-0.01°C/min:** Slow AC, large room, patient control
             • **0.001-0.005°C/min:** Very slow AC or poorly insulated room
 
             **Example scenarios:**
-            • **Aggressive:** 0.03°C/min means expects 1.8°C drop per hour
-            • **Balanced:** 0.01°C/min means expects 0.6°C drop per hour (recommended)
-            • **Patient:** 0.005°C/min means expects 0.3°C drop per hour
+            • **Very Aggressive:** 0.15°C/min = expects 9°C drop per hour (gaming rooms)
+            • **Aggressive:** 0.08°C/min = expects 4.8°C drop per hour
+            • **Balanced:** 0.01°C/min = expects 0.6°C drop per hour (recommended)
+            • **Patient:** 0.005°C/min = expects 0.3°C drop per hour
 
             **Tip:** Monitor your logs to see typical cooling/heating rates, then set threshold slightly below that.
           default: 0.01
           selector:
             number:
               min: 0.001
-              max: 0.1
+              max: 0.5
               step: 0.001
               unit_of_measurement: "°C/min"
 
@@ -1805,17 +1809,18 @@ blueprint:
             **Temperature tolerance** for preventing rapid switching (±°C).
 
             • **Prevents oscillation** at temperature boundaries
-            • **0.1-0.3°C:** Sensitive (may cause more switching)
-            • **0.3-0.5°C:** Balanced approach (recommended)
-            • **0.5-1.0°C:** Conservative (less switching)
+            • **0.05-0.15°C:** Very tight control (gaming rooms, precise control)
+            • **0.15-0.30°C:** Sensitive (may cause more switching)
+            • **0.30-0.50°C:** Balanced approach (recommended)
+            • **0.50-1.00°C:** Conservative (less switching)
 
             **Rule:** System won't change modes unless temperature exceeds threshold by this amount.
           default: 0.3
           selector:
             number:
-              min: 0.1
+              min: 0.05
               max: 1.0
-              step: 0.1
+              step: 0.01
               unit_of_measurement: "°C"
         
         enable_debug_logging:
