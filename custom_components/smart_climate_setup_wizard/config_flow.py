@@ -683,8 +683,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if user_input is not None:
             self._room_data.update(user_input)
 
-            # Continue to compressor protection step
-            return await self.async_step_compressor_protection()
+            # Continue to advanced escalation step
+            return await self.async_step_advanced_escalation()
 
         # Build schema for behavior settings
         data_schema = vol.Schema(
@@ -733,6 +733,60 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             },
         )
 
+    async def async_step_advanced_escalation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 5.6: Advanced Escalation Settings (Wrong-Direction Boost)."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+
+            # Continue to compressor protection step
+            return await self.async_step_compressor_protection()
+
+        # Build schema for advanced escalation settings
+        data_schema = vol.Schema(
+            {
+                vol.Optional("enable_wrong_direction_boost", default=False): selector.BooleanSelector(),
+                vol.Optional("wrong_direction_boost_delay", default=3): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1,
+                        max=10,
+                        step=1,
+                        unit_of_measurement="minutes",
+                        mode="slider",
+                    )
+                ),
+                vol.Optional("wrong_direction_boost_amount_early", default=1): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=3,
+                        step=1,
+                        mode="slider",
+                    )
+                ),
+                vol.Optional("wrong_direction_boost_amount_late", default=2): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=3,
+                        step=1,
+                        mode="slider",
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(
+            step_id="advanced_escalation",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "5.6 of 6",
+            },
+        )
+
     async def async_step_compressor_protection(self, user_input=None):
         """Step 5.75: Compressor Protection Settings."""
         errors = {}
@@ -774,7 +828,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             errors=errors,
             description_placeholders={
                 "room_name": self._room_data["room_name"],
-                "step": "5.75 of 6",
+                "step": "5.8 of 6",
             },
         )
 

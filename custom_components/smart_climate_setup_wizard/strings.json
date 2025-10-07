@@ -92,8 +92,18 @@
           "enable_notifications": "🔔 Enable Notifications • Push notifications for climate changes"
         }
       },
+      "advanced_escalation": {
+        "title": "🚨 Advanced Escalation (Step 5.6 of 6) - Optional Feature",
+        "description": "**NEW FEATURE: Wrong-Direction Escalation Boost** ✨\n\n**What it does:**\nAutomatically boosts escalation power when temperature moves the **WRONG way** - rising during cooling or falling during heating.\n\n**Perfect for:**\n• 🎮 Gaming rooms (PCs generating variable heat)\n• 🍳 Kitchen areas (cooking heat spikes)\n• ☀️ Rooms with sun exposure\n• 👥 High-occupancy rooms (variable people count)\n\n**How it works:**\n1. AC starts cooling → normally would escalate slowly\n2. Temperature RISES instead of falling → **WRONG DIRECTION DETECTED**\n3. System automatically boosts escalation faster\n4. Example: Reaches Fan 5 in 8 minutes instead of 15+ minutes\n\n**Safe by default:**\n• ❌ **Disabled** by default (won't affect your automation)\n• ✅ **Enable only if** you have variable heat loads\n• 🛡️ Ignores early fluctuations (3+ min delay)\n\n**Settings explanation:**\n• **Enable:** Turn feature ON/OFF\n• **Detection Delay:** How long to wait before boost (3 min recommended)\n• **Early Boost:** +Levels for first 8 minutes (+1 recommended)\n• **Late Boost:** +Levels after 8+ minutes (+2 recommended)\n\n💡 **Recommendation:** Leave **DISABLED** unless you have gaming PCs or variable heat sources!",
+        "data": {
+          "enable_wrong_direction_boost": "🚨 Enable Wrong-Direction Boost • Faster response to heat spikes",
+          "wrong_direction_boost_delay": "⏱️ Detection Delay • Minutes to wait before boost activates",
+          "wrong_direction_boost_amount_early": "⚡ Early Phase Boost • +Levels for 3-8 minutes (0-3)",
+          "wrong_direction_boost_amount_late": "🚀 Late Phase Boost • +Levels after 8+ minutes (0-3)"
+        }
+      },
       "compressor_protection": {
-        "title": "🛡️ Compressor Protection (Step 5.75 of 6)",
+        "title": "🛡️ Compressor Protection (Step 5.8 of 6)",
         "description": "**Protect your A/C compressor from rapid cycling damage** for **{room_name}**.\n\n**Why this matters:**\n• 🔧 AC compressors need 3-5 minutes for refrigerant pressure to equalize\n• ⚡ Rapid on/off cycling causes mechanical stress and shortens lifespan\n• 💰 Modern units (2015+) often have built-in 3-5 min delay timers\n\n**Minimum Runtime:**\n• How long AC must RUN before changing cooling/heating intensity\n• Example: 15 min = prevents rapid tier switching\n• **Recommended:** 15 minutes for standard units\n\n**Minimum Off-Time:**\n• How long AC must be OFF before restarting\n• Example: 10 min = protects compressor from rapid restarts\n• **Recommended:** 10 minutes (or 3 minutes if AC has built-in protection)\n\n**Enforce Off-Time Protection:**\n• ✅ **ON (Recommended):** Blueprint enforces minimum off-time delay\n• ❌ **OFF:** Allows immediate restart (use if AC has hardware protection)\n\n**When to disable enforcement:**\n• Your AC is modern (2015+) with built-in delay timer\n• You want to rely on AC hardware protection only\n• Testing/debugging automation behavior",
         "data": {
           "min_runtime_minutes": "⏱️ Minimum Runtime • How long AC must run before intensity changes",
