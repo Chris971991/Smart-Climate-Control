@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.75
+  name: Ultimate Smart Climate Control - v3.0.76
 
   description: |
-    **Ultimate Smart Climate Control v3.0.75**
+    **Ultimate Smart Climate Control v3.0.76**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -194,7 +194,7 @@ blueprint:
             • **OFF:** Use temperature from the first A/C unit only
 
             **Important:** Turn OFF when using a single external sensor for all units to avoid conflicts.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -245,7 +245,7 @@ blueprint:
             • **OFF:** Heating disabled - cooling only (perfect for people who run hot)
             
             **Use cases:** Seasonal control, energy management, personal preference, cooling-only setups.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -258,7 +258,7 @@ blueprint:
             • **OFF:** Cooling disabled - heating only (perfect for cold climates)
             
             **Use cases:** Seasonal control, energy management, heating-only setups, winter operation.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -320,7 +320,7 @@ blueprint:
             • Allows fine-tuning of comfort zones and trigger points
 
             **Recommendation:** Most users should leave this disabled and use the base target temperature.
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -620,7 +620,7 @@ blueprint:
             **Turn off or set to eco** when everyone leaves.
 
             Automatically manages climate control based on home occupancy for **energy savings**.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -646,7 +646,7 @@ blueprint:
             **Pre-cool/heat when approaching home**.
 
             Uses proximity sensors to start conditioning before arrival for **immediate comfort**.
-          default: true
+          default: True
           selector:
             boolean:
 
@@ -871,7 +871,7 @@ blueprint:
             **How it works:** Detects when AC job is complete (thermal equilibrium reached) to save energy.
 
             **Note:** Works even when people are still in room. **Requires** temperature history helper.
-          default: false
+          default: False
           selector:
             boolean:
 
@@ -952,7 +952,7 @@ blueprint:
             • Separate weekend schedule option
 
             **Note:** Overrides base target temperature when enabled.
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1030,7 +1030,7 @@ blueprint:
             • More flexible scheduling for leisure days
 
             **Note:** Weekend morning period: 6am-10am (vs weekday 6am-9am)
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1105,7 +1105,7 @@ blueprint:
             • **Automatic resumption** when closed
 
             **Requirement:** Binary sensors on doors/windows.
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1183,7 +1183,7 @@ blueprint:
             • **Cool outdoor weather:** Lower targets for efficiency
 
             **Result:** Maintains comfort while optimizing energy usage based on natural conditions.
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1417,7 +1417,7 @@ blueprint:
             **Different from Stability:** This responds to being in **comfort zone**, not temperature stability
             
             **Recommended:** Use Stability: OFF + Eco Mode: ON for maximum efficiency
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1496,7 +1496,7 @@ blueprint:
             - Older AC units without built-in protection
             - Extending compressor lifespan
             - Conservative safety approach
-          default: true
+          default: True
           selector:
             boolean:
 
@@ -1511,7 +1511,7 @@ blueprint:
             • Reduces wear on AC equipment
 
             **Recommendation:** For most users for optimal comfort and efficiency.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -1521,7 +1521,7 @@ blueprint:
             **Temperature thresholds** that override Manual mode for safety.
 
             **Emergency override:** Above high or below low will activate climate even in Manual mode.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -1582,7 +1582,7 @@ blueprint:
             • **Learns** your AC's effectiveness over time
 
             **Requirement:** Helper entities for temperature tracking and analysis.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -1834,7 +1834,7 @@ blueprint:
             • **WARNING:** Creates many log entries!
 
             **Recommendation:** Enable only when troubleshooting - disable for normal operation.
-          default: false
+          default: False
           selector:
             boolean:
         
@@ -1895,7 +1895,7 @@ blueprint:
             • Simpler to configure and understand
 
             **Safety:** Disabled by default. Won't affect existing automations.
-          default: false
+          default: False
           selector:
             boolean:
 
@@ -1951,7 +1951,7 @@ blueprint:
             **Enable push notifications** when the climate control system makes changes.
 
             **Notifications include:** Mode switches, temperature adjustments, and system status updates.
-          default: true
+          default: True
           selector:
             boolean:
         
@@ -2004,7 +2004,7 @@ blueprint:
             • **Smart Mode** must be properly configured
 
             **Use cases:** Automatic comfort when you enter, energy savings when you leave.
-          default: false
+          default: False
           selector:
             boolean:
         
