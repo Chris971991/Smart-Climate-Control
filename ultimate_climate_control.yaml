@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.72
+  name: Ultimate Smart Climate Control - v3.0.73
 
   description: |
-    **Ultimate Smart Climate Control v3.0.72**
+    **Ultimate Smart Climate Control v3.0.73**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -3906,7 +3906,8 @@ action:
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
@@ -4234,7 +4235,8 @@ action:
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'heating_medium' %}
                   {% if temp_gap <= 0.5 %}
@@ -4548,7 +4550,8 @@ action:
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
@@ -4865,7 +4868,8 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
@@ -5202,7 +5206,8 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
@@ -5518,7 +5523,8 @@ action:
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'cooling_low' %}
                   {% if distance <= 0.2 %}
@@ -8199,7 +8205,8 @@ action:
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
+                {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
+                {% set current_fan = selected_fan %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
