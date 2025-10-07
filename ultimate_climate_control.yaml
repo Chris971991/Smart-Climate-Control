@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.68
+  name: Ultimate Smart Climate Control - v3.0.69
 
   description: |
-    **Ultimate Smart Climate Control v3.0.68**
+    **Ultimate Smart Climate Control v3.0.69**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2880,7 +2880,7 @@ action:
         {% if wrong_direction_boost_enabled %}
           {{ escalation_level_with_boost }}
         {% else %}
-          {{ final_escalation_level }}
+          {{ escalation_level }}
         {% endif %}
 
       # Hysteresis logic - prevent rapid switching at temperature boundaries
@@ -3332,7 +3332,7 @@ action:
         {% endif %}
       
       should_deescalate: >
-        {{ definal_escalation_level > 0 }}
+        {{ de_escalation_level > 0 }}
 
       # Calculate expected fan speed for debug display
       calculated_fan_speed: >
@@ -3362,11 +3362,11 @@ action:
 
         {% if predicted_mode in ['cooling_high', 'heating_high'] %}
           {# HIGH mode fan selection logic #}
-          {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+          {% if de_escalation_level == 3 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+          {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
             {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}{% endif %}
-          {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+          {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
             {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}{% endif %}
           {% else %}
             {% set desired_max_fan = fan_speed_max %}
@@ -3374,18 +3374,18 @@ action:
           {% endif %}
         {% elif predicted_mode in ['cooling_medium', 'heating_medium'] %}
           {# MEDIUM mode fan selection logic #}
-          {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+          {% if de_escalation_level == 3 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+          {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
             {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
-          {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+          {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
             {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else fans[-1] }}{% endif %}
           {% else %}
             {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[-2] if fans|length > 1 else fans[0] }}{% endif %}
           {% endif %}
         {% elif predicted_mode in ['cooling_low', 'heating_low'] %}
           {# LOW mode fan selection logic #}
-          {% if definal_escalation_level >= 2 and final_escalation_level == 0 %}
+          {% if de_escalation_level >= 2 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
           {% else %}
             {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
@@ -3513,7 +3513,7 @@ action:
                 • Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
                 • People: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home (elsewhere){% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
-                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and definal_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_in_current_mode | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_in_current_mode | round(0) }} min ago){% endif %}
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and de_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_in_current_mode | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and de_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_in_current_mode | round(0) }} min ago){% endif %}
                 • Fan Speed: {{ state_attr(climate_list[0], 'fan_mode') | default('Unknown') | title }}
                 • Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('Unknown') | title }}
                 • Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
@@ -3987,7 +3987,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4012,7 +4012,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -4033,7 +4033,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -4315,7 +4315,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4340,7 +4340,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
                         {% if 'auto' in fans %}
                           auto
@@ -4361,7 +4361,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
@@ -4629,7 +4629,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4654,7 +4654,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 %}
+                        {% elif de_escalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4679,7 +4679,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 %}
+                        {% elif de_escalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if 'low' in fans %}
                           low
@@ -4888,14 +4888,14 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if de_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C remaining)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if de_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
                   {% elif current_effectiveness < 40 and final_escalation_level > 0 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
@@ -4915,7 +4915,7 @@ action:
                   {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif definal_escalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif de_escalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
@@ -4949,7 +4949,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4974,7 +4974,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -4995,7 +4995,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -5148,7 +5148,7 @@ action:
                   data:
                     message: >
                       🔍 HIGH COOL ADAPTIVE FAN: {{ repeat.item }}
-                      {% if definal_escalation_level > 0 %}
+                      {% if de_escalation_level > 0 %}
                       • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
                         {% else %}
                       • Escalation Level: {{ final_escalation_level }}/4
@@ -5158,8 +5158,8 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      {% if definal_escalation_level > 0 %}
-                      • Reason: {{ 'Excellent performance - switching to eco mode' if definal_escalation_level == 3 else 'Good performance - reducing to medium power' if definal_escalation_level == 2 else 'Approaching target - minor reduction' }}
+                      {% if de_escalation_level > 0 %}
+                      • Reason: {{ 'Excellent performance - switching to eco mode' if de_escalation_level == 3 else 'Good performance - reducing to medium power' if de_escalation_level == 2 else 'Approaching target - minor reduction' }}
                       {% endif %}
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
@@ -5225,21 +5225,21 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if de_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
                 📊 {{ current_temp }}°C ≈ {{ target_temp }}°C (within {{ distance }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if definal_escalation_level == 3 %} (ECO MODE - minimal power){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if de_escalation_level == 3 %} (ECO MODE - minimal power){% endif %}
                 ✅ Success! Temperature stabilized
-                  {% elif definal_escalation_level == 3 %}
+                  {% elif de_escalation_level == 3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
                 📈 Ultra-efficient mode - saving energy while maintaining comfort
-                  {% elif current_effectiveness >= 85 and definal_escalation_level > 0 %}
+                  {% elif current_effectiveness >= 85 and de_escalation_level > 0 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
@@ -5291,7 +5291,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5316,7 +5316,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
                         {% if 'auto' in fans %}
                           auto
@@ -5337,7 +5337,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
+                        {% elif de_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
@@ -5478,7 +5478,7 @@ action:
                   data:
                     message: >
                       🔍 MEDIUM COOL ADAPTIVE FAN: {{ repeat.item }}
-                      {% if definal_escalation_level > 0 %}
+                      {% if de_escalation_level > 0 %}
                       • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
                         {% else %}
                       • Escalation Level: {{ final_escalation_level }}/4
@@ -5488,8 +5488,8 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      {% if definal_escalation_level > 0 %}
-                      • Reason: {{ 'Excellent performance - switching to eco mode' if definal_escalation_level == 3 else 'Good performance - reducing to low power' if definal_escalation_level == 2 else 'Approaching target - minor reduction' }}
+                      {% if de_escalation_level > 0 %}
+                      • Reason: {{ 'Excellent performance - switching to eco mode' if de_escalation_level == 3 else 'Good performance - reducing to low power' if de_escalation_level == 2 else 'Approaching target - minor reduction' }}
                       {% endif %}
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
@@ -5541,7 +5541,7 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if de_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_low' %}
@@ -5602,7 +5602,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# De-escalation takes priority when no stall detected #}
-                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
+                      {% if de_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5623,7 +5623,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 2 %}
+                        {% elif de_escalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5640,7 +5640,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif definal_escalation_level == 1 %}
+                        {% elif de_escalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if '1' in fans %}
                           1
@@ -9405,7 +9405,7 @@ action:
             📋 Technical Details:
                 • Temperature: {{ current_temp }}°C
                 • Occupancy: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home but elsewhere{% elif approaching_home %}Approaching{% else %}Away{% endif %}
-                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and definal_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and de_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and de_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
