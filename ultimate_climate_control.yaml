@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.67
+  name: Ultimate Smart Climate Control - v3.0.68
 
   description: |
-    **Ultimate Smart Climate Control v3.0.67**
+    **Ultimate Smart Climate Control v3.0.68**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.67
+    ## 🆕 Latest Update - v3.0.68
 
-    **🎛️ IMPROVED: Fine-Grained Control Adjustments v3.0.67**
-    - 🔧 IMPROVED: Comfort Zone Range now steps by 0.1°C (was 0.5°C) for precise control
-    - 🔧 IMPROVED: Effectiveness Check Interval minimum reduced to 1 minute (was 5 min) for aggressive gaming rooms
-    - 🔧 IMPROVED: Minimum Progress Rate maximum increased to 0.5°C/min (was 0.1) for high-power ACs
-    - 🔧 IMPROVED: Hysteresis Tolerance now steps by 0.01°C (was 0.1°C) for tight control
+    **🚨 NEW FEATURE: Wrong-Direction Escalation Boost v3.0.68**
+    - ✨ NEW: Optional wrong-direction detection boosts escalation when temp moves opposite way
+    - 🎮 GAMING ROOMS: Responds faster to sudden heat spikes (PCs, consoles, cooking)
+    - 🛡️ SAFE: Disabled by default, fully customizable, backward compatible
+    - 📊 DEBUG: Comprehensive logging shows boost decisions and reasoning
+    - ⚙️ CONTROL: 4 new settings (enable, delay, early boost, late boost)
 
-    **📝 Previous Update: Smart Near-Target Logic + Debug Cleanup v3.0.66**
-    - 🎯 ADDED: Very close zone (≤0.5°C, effectiveness ≥85%) → Escalation Level 0
-    - 🔧 IMPROVED: Near-target stall range tightened from ≤1.0°C to 0.5-1.0°C
+    **📝 Previous Update: Fine-Grained Control Adjustments v3.0.67**
+    - 🔧 IMPROVED: Comfort Zone Range, Effectiveness Check, Progress Rate, Hysteresis precision
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.0.68** - 🚨 NEW: Wrong-direction escalation boost (optional feature)
     **v3.0.67** - 🎛️ IMPROVED: Fine-grained control adjustments for gaming rooms
-    **v3.0.66** - 🎯 IMPROVED: Smart near-target logic + debug cleanup
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -1857,6 +1857,99 @@ blueprint:
               unit_of_measurement: minutes
               mode: slider
 
+        enable_wrong_direction_boost:
+          name: Enable Wrong-Direction Escalation Boost
+          description: |
+            **Automatically boost escalation when temperature moves the wrong way.**
+
+            **How it works:**
+            • **Cooling mode:** Boosts power if temperature RISES
+            • **Heating mode:** Boosts power if temperature FALLS
+            • Helps respond quickly to sudden heat/cold spikes
+
+            **When useful:**
+            • Gaming rooms with variable heat load (PCs, consoles)
+            • Rooms with external heat sources (sun, appliances, cooking)
+            • Fast response to unexpected temperature changes
+            • High-occupancy rooms with variable people count
+
+            **Safe to disable if:**
+            • Your room has stable temperature patterns
+            • You prefer slower, more conservative escalation
+            • Testing/debugging automation behavior
+
+            **Safety:** Disabled by default. Won't affect existing automations.
+          default: false
+          selector:
+            boolean:
+
+        wrong_direction_boost_delay:
+          name: Wrong-Direction Detection Delay
+          description: |
+            **Minutes to wait before wrong-direction boost activates.**
+
+            • **1-2 minutes:** Very aggressive (responds quickly to changes)
+            • **3-5 minutes:** Balanced (⭐ recommended - allows AC warm-up)
+            • **5-10 minutes:** Conservative (ensures real problem, not fluctuation)
+
+            **Why delay matters:**
+            ACs need 2-3 minutes to stabilize after starting. Early detection
+            may trigger false alarms from normal warm-up behavior.
+
+            **Recommendation:** Use 3 minutes for gaming rooms, 5 minutes for stable rooms.
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 10
+              step: 1
+              unit_of_measurement: minutes
+
+        wrong_direction_boost_amount_early:
+          name: Wrong-Direction Boost (Early Phase)
+          description: |
+            **Escalation boost levels** when wrong direction detected early.
+
+            **Early Phase:** Detection delay → 8 minutes
+
+            • **+0:** No boost (ignore wrong direction)
+            • **+1:** Gentle boost (⭐ recommended - try one level up)
+            • **+2:** Strong boost (aggressive response)
+            • **+3:** Emergency boost (jump to near-maximum)
+
+            **Example:** Base Level 1 + Boost +1 = Final Level 2 (Fan 3)
+
+            **Recommendation:** Use +1 for balanced response, +2 for gaming rooms.
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 3
+              step: 1
+
+        wrong_direction_boost_amount_late:
+          name: Wrong-Direction Boost (Late Phase)
+          description: |
+            **Escalation boost levels** when wrong direction persists.
+
+            **Late Phase:** After 8+ minutes of wrong direction
+
+            • **+0:** No additional boost
+            • **+1:** Gentle emergency boost
+            • **+2:** Strong emergency boost (⭐ recommended)
+            • **+3:** Maximum emergency boost
+
+            **Rationale:** System has been struggling for 8+ minutes,
+            needs significant intervention to overcome heat/cold load.
+
+            **Example:** Base Level 2 + Boost +2 = Final Level 4 (Fan 5 - Maximum)
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 3
+              step: 1
+
     # Notification Settings
     notifications:
       name: "Notification Settings"
@@ -2745,6 +2838,51 @@ action:
           {% endif %}
         {% endif %}
 
+      # Wrong-direction escalation boost (optional feature)
+      wrong_direction_boost_enabled: "{{ enable_wrong_direction_boost | default(false) }}"
+      wrong_direction_delay_min: "{{ wrong_direction_boost_delay | default(3) }}"
+      wrong_direction_early_boost: "{{ wrong_direction_boost_amount_early | default(1) }}"
+      wrong_direction_late_boost: "{{ wrong_direction_boost_amount_late | default(2) }}"
+
+      wrong_direction_detected: >
+        {% if wrong_direction_boost_enabled and time_in_current_mode >= wrong_direction_delay_min %}
+          {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and calculated_trend == 'rising' %}
+            true
+          {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and calculated_trend == 'falling' %}
+            true
+          {% else %}
+            false
+          {% endif %}
+        {% else %}
+          false
+        {% endif %}
+
+      wrong_direction_boost_amount: >
+        {% if wrong_direction_detected %}
+          {% if time_in_current_mode < 8 %}
+            {{ wrong_direction_early_boost | int(1) }}
+          {% else %}
+            {{ wrong_direction_late_boost | int(2) }}
+          {% endif %}
+        {% else %}
+          0
+        {% endif %}
+
+      escalation_level_with_boost: >
+        {% set base_level = escalation_level | int(0) %}
+        {% set boost = wrong_direction_boost_amount | int(0) %}
+        {% set final_level = base_level + boost %}
+        {{ [final_level, 4] | min }}
+
+      # Use boosted escalation level if feature enabled, otherwise use base
+      # NOTE: All fan speed logic should reference final_escalation_level instead of escalation_level
+      final_escalation_level: >
+        {% if wrong_direction_boost_enabled %}
+          {{ escalation_level_with_boost }}
+        {% else %}
+          {{ final_escalation_level }}
+        {% endif %}
+
       # Hysteresis logic - prevent rapid switching at temperature boundaries
       last_transition: >
         {% if helper_last_transition %}
@@ -2774,7 +2912,7 @@ action:
       
       # Enhanced escalation logic with multiple triggers and graduated response
       should_escalate: >
-        {{ escalation_level > 0 }}
+        {{ final_escalation_level > 0 }}
       
       # Smart mode calculations
       control_mode: >
@@ -3194,7 +3332,7 @@ action:
         {% endif %}
       
       should_deescalate: >
-        {{ deescalation_level > 0 }}
+        {{ definal_escalation_level > 0 }}
 
       # Calculate expected fan speed for debug display
       calculated_fan_speed: >
@@ -3224,11 +3362,11 @@ action:
 
         {% if predicted_mode in ['cooling_high', 'heating_high'] %}
           {# HIGH mode fan selection logic #}
-          {% if deescalation_level == 3 and escalation_level == 0 %}
+          {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif deescalation_level == 2 and escalation_level == 0 %}
+          {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
             {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}{% endif %}
-          {% elif deescalation_level == 1 and escalation_level == 0 %}
+          {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
             {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}{% endif %}
           {% else %}
             {% set desired_max_fan = fan_speed_max %}
@@ -3236,18 +3374,18 @@ action:
           {% endif %}
         {% elif predicted_mode in ['cooling_medium', 'heating_medium'] %}
           {# MEDIUM mode fan selection logic #}
-          {% if deescalation_level == 3 and escalation_level == 0 %}
+          {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
-          {% elif deescalation_level == 2 and escalation_level == 0 %}
+          {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
             {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
-          {% elif deescalation_level == 1 and escalation_level == 0 %}
+          {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
             {% if '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[2] if fans|length > 2 else fans[-1] }}{% endif %}
           {% else %}
             {% if '4' in fans %}4{% elif 'Level 4' in fans %}Level 4{% elif 'high' in fans %}high{% elif 'High' in fans %}High{% elif '3' in fans %}3{% elif 'Level 3' in fans %}Level 3{% elif 'medium' in fans %}medium{% elif 'Medium' in fans %}Medium{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[-2] if fans|length > 1 else fans[0] }}{% endif %}
           {% endif %}
         {% elif predicted_mode in ['cooling_low', 'heating_low'] %}
           {# LOW mode fan selection logic #}
-          {% if deescalation_level >= 2 and escalation_level == 0 %}
+          {% if definal_escalation_level >= 2 and final_escalation_level == 0 %}
             {% if 'quiet' in fans %}quiet{% elif 'Quiet' in fans %}Quiet{% elif 'silence' in fans %}silence{% elif 'Silence' in fans %}Silence{% elif '1' in fans %}1{% elif 'Level 1' in fans %}Level 1{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% else %}{{ fans[0] if fans else 'Auto' }}{% endif %}
           {% else %}
             {% if '2' in fans %}2{% elif 'Level 2' in fans %}Level 2{% elif 'low' in fans %}low{% elif 'Low' in fans %}Low{% elif 'auto' in fans %}auto{% elif 'Auto' in fans %}Auto{% else %}{{ fans[1] if fans|length > 1 else fans[0] }}{% endif %}
@@ -3278,7 +3416,7 @@ action:
             📈 Current Status:
                 • Distance from target: {{ distance_from_target | round(1) }}°C
                 • Current effectiveness: {{ current_effectiveness }}%
-                • Escalation level: {{ escalation_level }}/4
+                • Escalation level: {{ final_escalation_level }}/4
                 • Should escalate: {{ should_escalate }}
           level: debug
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.dynamic"
@@ -3375,7 +3513,7 @@ action:
                 • Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
                 • People: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home (elsewhere){% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Room Presence: {{ 'DETECTED' if room_presence_detected else 'Empty' }} (Mode: {{ presence_validation | default('any') | upper }})
-                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_in_current_mode | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_in_current_mode | round(0) }} min ago){% endif %}
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and definal_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %} (running {{ time_in_current_mode | round(0) }} min){% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING - CONDITIONS NOT MET ⏸️{% else %}STANDBY - LAST: {{ last_mode|title }} ({{ time_in_current_mode | round(0) }} min ago){% endif %}
                 • Fan Speed: {{ state_attr(climate_list[0], 'fan_mode') | default('Unknown') | title }}
                 • Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('Unknown') | title }}
                 • Control Mode: {{ control_mode }} (from: {{ control_mode_helper if control_mode_helper else 'NO HELPER' }})
@@ -3389,7 +3527,7 @@ action:
                 • Heating Triggers: {{ heating_low_temp }}°C (low), {{ heating_medium_temp }}°C (medium), {{ heating_high_temp }}°C (high)
             {% if temp_stability_enabled %}    • Stability: {{ 'ACTIVE - AC OFF' if last_mode in ['stability_off', 'stability_eco'] else 'DETECTED' if temp_stability_detected else 'Continue mode - pursuing target' if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] else 'Monitoring - Outside comfort zone' if current_temp < comfort_min_temp or current_temp > comfort_max_temp else 'Monitoring' }} (±{{ stability_tolerance }}°C for {{ stability_duration }}min, target ±0.5°C){% endif %}
                 • Trend: {{ temp_change_rate }}°C/min, Distance: {{ distance_from_target | round(1) }}°C, Effectiveness: {{ current_effectiveness }}%
-            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min)
+            {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ final_escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min)
                 • Stall Check: distance={{ distance_from_target | round(1) }}≤0.8? time={{ time_in_current_mode | round(1) }}≥15min? trend={{ calculated_trend }} rate={{ temp_change_rate | round(2) }}°C/min{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -3459,9 +3597,71 @@ action:
                 • Distance > {{ (temp_tolerance / 2) | round(1) }}°C: {{ distance_from_target > (temp_tolerance / 2) }}
                 • SHOULD TRIGGER: {{ time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) }}
 
-            ⚡ Result: Escalation Level = {{ escalation_level }}
+            ⚡ Result: Base Escalation Level = {{ escalation_level }}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and dynamic_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} WRONG-DIRECTION BOOST DEBUG
+
+            📊 Feature Status:
+                • Wrong-Direction Boost Enabled: {{ wrong_direction_boost_enabled }}
+                • Detection Delay: {{ wrong_direction_delay_min }} minutes
+                • Early Phase Boost: +{{ wrong_direction_early_boost }} levels
+                • Late Phase Boost: +{{ wrong_direction_late_boost }} levels
+
+            🌡️ Temperature Trend Analysis:
+                • Current Mode: {{ last_mode }}
+                • Temperature Trend: {{ calculated_trend }}
+                • Time in Current Mode: {{ time_in_current_mode | round(1) }} min
+                • Detection Delay Met: {{ time_in_current_mode >= wrong_direction_delay_min }}
+
+            🚨 Wrong Direction Detection:
+                {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] %}
+                • Mode: Cooling
+                • Expected: Temperature FALLING
+                • Actual: Temperature {{ calculated_trend | upper }}
+                • Wrong Direction: {{ calculated_trend == 'rising' }}
+                {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] %}
+                • Mode: Heating
+                • Expected: Temperature RISING
+                • Actual: Temperature {{ calculated_trend | upper }}
+                • Wrong Direction: {{ calculated_trend == 'falling' }}
+                {% else %}
+                • Mode: {{ last_mode }} (not cooling/heating)
+                • Wrong Direction: Not Applicable
+                {% endif %}
+
+            ⚡ Boost Calculation:
+                • Wrong Direction Detected: {{ wrong_direction_detected }}
+                • Phase: {% if time_in_current_mode < 8 %}EARLY (< 8 min){% else %}LATE (≥ 8 min){% endif %}
+                • Boost Amount: +{{ wrong_direction_boost_amount }} levels
+                • Base Escalation: Level {{ escalation_level }}
+                • Boosted Escalation: Level {{ escalation_level_with_boost }}
+                • Final Escalation: Level {{ final_escalation_level }} (capped at 4)
+
+            💡 Reasoning:
+                {% if not wrong_direction_boost_enabled %}
+                • Feature DISABLED - using base escalation only
+                {% elif time_in_current_mode < wrong_direction_delay_min %}
+                • Too early ({{ time_in_current_mode | round(1) }} < {{ wrong_direction_delay_min }} min) - ignoring fluctuations
+                {% elif not wrong_direction_detected %}
+                • Temperature trending correctly - no boost needed
+                {% elif time_in_current_mode < 8 %}
+                • Wrong direction detected! Applying EARLY PHASE boost (+{{ wrong_direction_early_boost }})
+                • AC needs more power to overcome heat/cold load
+                {% else %}
+                • Wrong direction persisting! Applying LATE PHASE boost (+{{ wrong_direction_late_boost }})
+                • Emergency intervention needed - AC struggling for {{ time_in_current_mode | round(0) }} minutes
+                {% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.wrong_direction"
 
   - if:
       - condition: template
@@ -3711,7 +3911,7 @@ action:
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -3787,7 +3987,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -3812,7 +4012,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -3833,7 +4033,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif deescalation_level == 1 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -3858,7 +4058,7 @@ action:
                           {% else %}
                           {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -3879,7 +4079,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -3900,7 +4100,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -3921,7 +4121,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -3986,7 +4186,7 @@ action:
                   data:
                     message: >
                       🔍 HIGH HEAT MAXIMUM FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}/4 (max tier - Level 5 always)
+                      • Escalation Level: {{ final_escalation_level }}/4 (max tier - Level 5 always)
                       • Fan Selection: {{ selected_fan_mode }} (maximum power)
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
@@ -4039,7 +4239,7 @@ action:
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -4115,7 +4315,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4140,7 +4340,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
                         {% if 'auto' in fans %}
                           auto
@@ -4161,7 +4361,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif deescalation_level == 1 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
@@ -4178,7 +4378,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -4199,7 +4399,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -4220,7 +4420,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -4241,7 +4441,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -4302,11 +4502,11 @@ action:
                   data:
                     message: >
                       🔍 MEDIUM HEAT ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}/4
+                      • Escalation Level: {{ final_escalation_level }}/4
                       • Fan Selection: {{ selected_fan_mode }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
+                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -4353,7 +4553,7 @@ action:
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -4429,7 +4629,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4454,7 +4654,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 %}
+                        {% elif definal_escalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4479,7 +4679,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 1 %}
+                        {% elif definal_escalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if 'low' in fans %}
                           low
@@ -4500,7 +4700,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -4521,7 +4721,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -4542,7 +4742,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -4563,7 +4763,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -4619,11 +4819,11 @@ action:
                   data:
                     message: >
                       🔍 LOW HEAT ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}/4
+                      • Escalation Level: {{ final_escalation_level }}/4
                       • Fan Selection: {{ selected_fan_mode }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
+                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -4672,7 +4872,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -4688,21 +4888,21 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C remaining)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
-                  {% elif current_effectiveness < 40 and escalation_level > 0 %}
+                  {% elif current_effectiveness < 40 and final_escalation_level > 0 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATING L{{ escalation_level }} - only {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATING L{{ final_escalation_level }} - only {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ minutes{% endif %}
-                  {% elif escalation_level == 4 %}
+                  {% elif final_escalation_level == 4 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE 🆘
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
@@ -4715,7 +4915,7 @@ action:
                   {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif definal_escalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
@@ -4749,7 +4949,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -4774,7 +4974,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Reduce to medium power #}
                         {% if '3' in fans %}
                           3
@@ -4795,7 +4995,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif deescalation_level == 1 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Reduce to high-medium power #}
                         {% if '4' in fans %}
                           4
@@ -4820,7 +5020,7 @@ action:
                           {% else %}
                           {{ fans[3] if fans|length > 3 else (fans[2] if fans|length > 2 else fans[-1]) }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -4841,7 +5041,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -4862,7 +5062,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -4883,7 +5083,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -4948,20 +5148,20 @@ action:
                   data:
                     message: >
                       🔍 HIGH COOL ADAPTIVE FAN: {{ repeat.item }}
-                      {% if deescalation_level > 0 %}
+                      {% if definal_escalation_level > 0 %}
                       • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
                         {% else %}
-                      • Escalation Level: {{ escalation_level }}/4
+                      • Escalation Level: {{ final_escalation_level }}/4
                       {% endif %}
                       • Selected Fan: {{ selected_fan_mode }}
                       • Current Fan: {{ state_attr(repeat.item, 'fan_mode') | default('Unknown') }}
                       • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      {% if deescalation_level > 0 %}
-                      • Reason: {{ 'Excellent performance - switching to eco mode' if deescalation_level == 3 else 'Good performance - reducing to medium power' if deescalation_level == 2 else 'Approaching target - minor reduction' }}
+                      {% if definal_escalation_level > 0 %}
+                      • Reason: {{ 'Excellent performance - switching to eco mode' if definal_escalation_level == 3 else 'Good performance - reducing to medium power' if definal_escalation_level == 2 else 'Approaching target - minor reduction' }}
                       {% endif %}
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
+                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
@@ -5009,7 +5209,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -5025,34 +5225,34 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
                 📊 {{ current_temp }}°C ≈ {{ target_temp }}°C (within {{ distance }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if definal_escalation_level == 3 %} (ECO MODE - minimal power){% endif %}
                 ✅ Success! Temperature stabilized
-                  {% elif deescalation_level == 3 %}
+                  {% elif definal_escalation_level == 3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
                 📈 Ultra-efficient mode - saving energy while maintaining comfort
-                  {% elif current_effectiveness >= 85 and deescalation_level > 0 %}
+                  {% elif current_effectiveness >= 85 and definal_escalation_level > 0 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min - Perfect balance of power & efficiency
-                  {% elif escalation_level >= 2 %}
+                  {% elif final_escalation_level >= 2 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - BOOSTED ⚡
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATION L{{ escalation_level }} - {{ current_effectiveness }}% effective)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATION L{{ final_escalation_level }} - {{ current_effectiveness }}% effective)
                 ⚠️ Increased fan power for faster cooling
                   {% elif current_effectiveness < 50 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - UNDERPERFORMING ⚠️
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation_level > 0 %} (ESCALATING L{{ escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
                   {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS 📊
@@ -5091,7 +5291,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# Escalation always takes priority over de-escalation when system is stalled #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5116,7 +5316,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 2 and final_escalation_level == 0 %}
                         {# Level 2: HIGH de-escalation - Let AC auto-adjust for optimal efficiency #}
                         {% if 'auto' in fans %}
                           auto
@@ -5137,7 +5337,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif deescalation_level == 1 and escalation_level == 0 %}
+                        {% elif definal_escalation_level == 1 and final_escalation_level == 0 %}
                         {# Level 1: LOW de-escalation - Minor power reduction #}
                         {% if '3' in fans %}
                           3
@@ -5154,7 +5354,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -5175,7 +5375,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -5196,7 +5396,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -5217,7 +5417,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -5278,20 +5478,20 @@ action:
                   data:
                     message: >
                       🔍 MEDIUM COOL ADAPTIVE FAN: {{ repeat.item }}
-                      {% if deescalation_level > 0 %}
+                      {% if definal_escalation_level > 0 %}
                       • De-escalation Level: {{ deescalation_level }}/3 (reducing power)
                         {% else %}
-                      • Escalation Level: {{ escalation_level }}/4
+                      • Escalation Level: {{ final_escalation_level }}/4
                       {% endif %}
                       • Selected Fan: {{ selected_fan_mode }}
                       • Current Fan: {{ state_attr(repeat.item, 'fan_mode') | default('Unknown') }}
                       • Available Fans: {{ available_fans | join(', ') }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      {% if deescalation_level > 0 %}
-                      • Reason: {{ 'Excellent performance - switching to eco mode' if deescalation_level == 3 else 'Good performance - reducing to low power' if deescalation_level == 2 else 'Approaching target - minor reduction' }}
+                      {% if definal_escalation_level > 0 %}
+                      • Reason: {{ 'Excellent performance - switching to eco mode' if definal_escalation_level == 3 else 'Good performance - reducing to low power' if definal_escalation_level == 2 else 'Approaching target - minor reduction' }}
                       {% endif %}
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
+                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
@@ -5341,7 +5541,7 @@ action:
                 {% set distance = (current_temp - target_temp) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
-                {% set esc_display = 'L' ~ escalation_level if escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
+                {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if definal_escalation_level > 0 else 'L0') %}
                 {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Unknown') if climate_list | length > 0 else 'Unknown' %}
 
                 {% if current_mode == 'cooling_low' %}
@@ -5355,10 +5555,10 @@ action:
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 🌿 Ideal conditions - minimal power, maximum comfort
-                  {% elif escalation_level > 0 %}
+                  {% elif final_escalation_level > 0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - ASSISTED 📈
                 📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATED L{{ escalation_level }} for minor boost)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATED L{{ final_escalation_level }} for minor boost)
                 📊 Temporarily increased for quicker response
                   {% elif distance < 1.0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - FINE TUNING 🎚️
@@ -5402,7 +5602,7 @@ action:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
                       {# De-escalation takes priority when no stall detected #}
-                      {% if deescalation_level == 3 and escalation_level == 0 %}
+                      {% if definal_escalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5423,7 +5623,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 2 %}
+                        {% elif definal_escalation_level == 2 %}
                         {# Level 2: HIGH de-escalation - Reduce to quiet/low power #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -5440,7 +5640,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif deescalation_level == 1 %}
+                        {% elif definal_escalation_level == 1 %}
                         {# Level 1: LOW de-escalation - Minimal reduction #}
                         {% if '1' in fans %}
                           1
@@ -5457,7 +5657,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 0 %}
+                        {% elif final_escalation_level == 0 %}
                         {# Escalation Level 0: Start gentle - Fan 1 #}
                         {% if '1' in fans %}
                           1
@@ -5474,7 +5674,7 @@ action:
                           {% else %}
                           {{ fans[0] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Escalation Level 1: Small boost - Fan 2 #}
                         {% if '2' in fans %}
                           2
@@ -5493,7 +5693,7 @@ action:
                           {% else %}
                           {{ fans[1] if fans|length > 1 else fans[0] }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Escalation Level 2: Moderate boost - Fan 3 #}
                         {% if '3' in fans %}
                           3
@@ -5512,7 +5712,7 @@ action:
                           {% else %}
                           {{ fans[2] if fans|length > 2 else fans[-1] }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Escalation Level 3: Strong boost - Fan 4 #}
                         {% if '4' in fans %}
                           4
@@ -5566,11 +5766,11 @@ action:
                   data:
                     message: >
                       🔍 LOW COOL ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ escalation_level }}/4
+                      • Escalation Level: {{ final_escalation_level }}/4
                       • Fan Selection: {{ selected_fan_mode }}
                       • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
                       • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      • Escalation Reason: {% if escalation_level == 0 %}Working well - no escalation needed{% elif escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif escalation_level == 3 %}Stalled progress - high escalation{% elif escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
+                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -5936,7 +6136,7 @@ action:
               - conditions:
                   - condition: template
                     value_template: >
-                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and (escalation_level > 0 or time_in_current_mode > runtime_min)) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and (final_escalation_level > 0 or time_in_current_mode > runtime_min)) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
                       {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
                 sequence:
                   - repeat:
@@ -6155,7 +6355,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -6359,7 +6559,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -7597,7 +7797,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -7823,7 +8023,7 @@ action:
             value_template: >
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -8004,7 +8204,7 @@ action:
             value_template: >
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
-                {{ escalation_level > 0 or time_in_current_mode > runtime_min }}
+                {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
               {% elif last_mode == 'off' and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
                 {{ time_in_current_mode > offtime_min }}
@@ -8672,14 +8872,14 @@ action:
           - service: system_log.write
             data:
               message: >
-                🔥 {{ room_name | upper }} SMART ESCALATION LEVEL {{ escalation_level }}/4 ACTIVATED
+                🔥 {{ room_name | upper }} SMART ESCALATION LEVEL {{ final_escalation_level }}/4 ACTIVATED
                 Effectiveness: {{ current_effectiveness }}% • Distance: {{ distance_from_target | round(1) }}°C • Runtime: {{ time_in_current_mode }}min
-                Reason: {% if escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
-                {% elif escalation_level == 3 %}🔥 HIGH - {{ 'Still far after 5min' if distance_from_target > 3 else 'Poor effectiveness' if current_effectiveness <= 25 else 'Progress stalled' }}
-                {% elif escalation_level == 2 %}⚡ MEDIUM - {{ 'Moderate distance' if distance_from_target > 2 else 'Below average performance' }}
-                {% elif escalation_level == 1 %}📈 LOW - {{ 'Minor distance issue' if distance_from_target > 1 else 'Mediocre effectiveness' }}
+                Reason: {% if final_escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
+                {% elif final_escalation_level == 3 %}🔥 HIGH - {{ 'Still far after 5min' if distance_from_target > 3 else 'Poor effectiveness' if current_effectiveness <= 25 else 'Progress stalled' }}
+                {% elif final_escalation_level == 2 %}⚡ MEDIUM - {{ 'Moderate distance' if distance_from_target > 2 else 'Below average performance' }}
+                {% elif final_escalation_level == 1 %}📈 LOW - {{ 'Minor distance issue' if distance_from_target > 1 else 'Mediocre effectiveness' }}
                 {% endif %}
-                Power Level: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
+                Power Level: {{ 'MAXIMUM' if final_escalation_level == 4 else 'HIGH' if final_escalation_level == 3 else 'ELEVATED' if final_escalation_level == 2 else 'MODERATE' if final_escalation_level == 1 else 'NORMAL' }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
@@ -8742,7 +8942,7 @@ action:
                     # Smart escalation fan speed selection
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% if escalation_level == 4 %}
+                      {% if final_escalation_level == 4 %}
                         {# Level 4: MAXIMUM power - use highest available speed #}
                         {% set desired = fan_speed_max %}
                         {% if desired in fans %}
@@ -8766,7 +8966,7 @@ action:
                           {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 3 %}
+                        {% elif final_escalation_level == 3 %}
                         {# Level 3: HIGH power - use high speed #}
                         {% if 'high' in fans %}
                           high
@@ -8783,7 +8983,7 @@ action:
                           {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 2 %}
+                        {% elif final_escalation_level == 2 %}
                         {# Level 2: ELEVATED power - use medium-high speed #}
                         {% if '4' in fans %}
                           4
@@ -8804,7 +9004,7 @@ action:
                           {% else %}
                           {{ fans[-1] if fans else 'Auto' }}
                         {% endif %}
-                        {% elif escalation_level == 1 %}
+                        {% elif final_escalation_level == 1 %}
                         {# Level 1: MODERATE power - use medium speed #}
                         {% set desired = fan_speed_medium %}
                         {% if desired in fans %}
@@ -8839,10 +9039,10 @@ action:
                 - service: system_log.write
                   data:
                     message: >
-                      🔍 SMART ESCALATION FAN LEVEL {{ escalation_level }}: {{ repeat.item }}
+                      🔍 SMART ESCALATION FAN LEVEL {{ final_escalation_level }}: {{ repeat.item }}
                       • Available: {{ available_fans | join(', ') }}
                       • Selected: {{ selected_fan_mode }}
-                      • Power: {{ 'MAXIMUM' if escalation_level == 4 else 'HIGH' if escalation_level == 3 else 'ELEVATED' if escalation_level == 2 else 'MODERATE' if escalation_level == 1 else 'NORMAL' }}
+                      • Power: {{ 'MAXIMUM' if final_escalation_level == 4 else 'HIGH' if final_escalation_level == 3 else 'ELEVATED' if final_escalation_level == 2 else 'MODERATE' if final_escalation_level == 1 else 'NORMAL' }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
@@ -9205,7 +9405,7 @@ action:
             📋 Technical Details:
                 • Temperature: {{ current_temp }}°C
                 • Occupancy: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home but elsewhere{% elif approaching_home %}Approaching{% else %}Away{% endif %}
-                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and escalation_level > 0 %} - ESCALATING L{{ escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
+                • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and definal_escalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and definal_escalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
