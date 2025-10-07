@@ -1938,32 +1938,33 @@ blueprint:
             number:
               min: 0
               max: 2
+              step: 1
 
-      wrong_direction_min_rate:
-        name: Wrong-Direction Minimum Rate
-        description: |
-          Minimum temperature change rate to trigger wrong-direction escalation (°C/min).
+        wrong_direction_min_rate:
+          name: Wrong-Direction Minimum Rate
+          description: |
+            Minimum temperature change rate to trigger wrong-direction escalation (°C/min).
 
-          This filters out sensor noise and minor fluctuations, only triggering escalation
-          when temperature is meaningfully moving in the wrong direction.
+            This filters out sensor noise and minor fluctuations, only triggering escalation
+            when temperature is meaningfully moving in the wrong direction.
 
-          **Examples:**
-          • **0.03°C/min:** Very sensitive (1.8°C/hour) - triggers on small trends
-          • **0.05°C/min:** Balanced (3°C/hour) - filters noise, catches real issues
-          • **0.10°C/min:** Conservative (6°C/hour) - only triggers on strong trends
+            **Examples:**
+            • **0.03°C/min:** Very sensitive (1.8°C/hour) - triggers on small trends
+            • **0.05°C/min:** Balanced (3°C/hour) - filters noise, catches real issues
+            • **0.10°C/min:** Conservative (6°C/hour) - only triggers on strong trends
 
-          **Recommendation:**
-          • **Most rooms:** 0.05°C/min (balanced sensitivity)
-          • **Noisy sensors:** 0.08-0.10°C/min (reduce false triggers)
-          • **High precision:** 0.03°C/min (maximum sensitivity)
-        default: 0.05
-        selector:
-          number:
-            min: 0.01
-            max: 0.20
-            step: 0.01
-            unit_of_measurement: "°C/min"
-            mode: slider
+            **Recommendation:**
+            • **Most rooms:** 0.05°C/min (balanced sensitivity)
+            • **Noisy sensors:** 0.08-0.10°C/min (reduce false triggers)
+            • **High precision:** 0.03°C/min (maximum sensitivity)
+          default: 0.05
+          selector:
+            number:
+              min: 0.01
+              max: 0.20
+              step: 0.01
+              unit_of_measurement: "°C/min"
+              mode: slider
 
     # Notification Settings
     notifications:
