@@ -757,6 +757,15 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                         mode="slider",
                     )
                 ),
+                vol.Optional("wrong_direction_min_rate", default=0.05): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.01,
+                        max=0.20,
+                        step=0.01,
+                        mode="slider",
+                        unit_of_measurement="°C/min",
+                    )
+                ),
             }
         )
 

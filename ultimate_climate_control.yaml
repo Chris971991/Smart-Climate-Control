@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.81
+  name: Ultimate Smart Climate Control - v3.0.82
 
   description: |
-    **Ultimate Smart Climate Control v3.0.81**
+    **Ultimate Smart Climate Control v3.0.82**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.81
+    ## 🆕 Latest Update - v3.0.82
 
-    **🐛 CRITICAL FIX: No More Fan Speed Jumps on Startup v3.0.81**
-    - 🔊 FIXED: Fan no longer jumps to high speed then drops to low when AC starts
-    - 🎯 ROOT CAUSE: Escalation logic used time from OFF mode causing immediate Level 3 escalation
-    - ✅ IMPACT: Smooth startup with appropriate fan speed from the beginning
-    - 🔧 BONUS: v3.0.80 runtime protection fix also included
+    **✨ NEW: Customizable Wrong-Direction Threshold v3.0.82**
+    - 🎯 NEW FEATURE: Minimum rate threshold for wrong-direction escalation (default: 0.05°C/min)
+    - 🔇 BENEFIT: Filters sensor noise while catching real temperature trends
+    - 🎛️ CUSTOMIZABLE: Adjust sensitivity from 0.01-0.20°C/min based on sensor quality
+    - 🧠 SMART: Only triggers escalation when temperature meaningfully moves wrong direction
+    - 📊 DEBUG: Enhanced logging shows threshold comparison and current rate
 
-    **📝 Previous Update: Runtime Protection Fixed v3.0.80**
-    - 🛡️ FIXED: Minimum Runtime and Off Time protection now work correctly
-    - ⏱️ AC stays on for full configured runtime even if target reached early
+    **📝 Previous Updates:**
+    - v3.0.81: 🔊 Fixed fan speed jumps on startup
+    - v3.0.80: 🛡️ Fixed runtime protection
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +84,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.81** - 🐛 CRITICAL FIX: No more fan speed jumps on startup
-    **v3.0.80** - 🛡️ FIXED: Runtime protection now works correctly
+    **v3.0.82** - ✨ NEW: Customizable wrong-direction threshold (filters noise)
+    **v3.0.81** - 🐛 FIXED: No more fan speed jumps on startup
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -1937,7 +1938,32 @@ blueprint:
             number:
               min: 0
               max: 2
-              step: 1
+
+      wrong_direction_min_rate:
+        name: Wrong-Direction Minimum Rate
+        description: |
+          Minimum temperature change rate to trigger wrong-direction escalation (°C/min).
+
+          This filters out sensor noise and minor fluctuations, only triggering escalation
+          when temperature is meaningfully moving in the wrong direction.
+
+          **Examples:**
+          • **0.03°C/min:** Very sensitive (1.8°C/hour) - triggers on small trends
+          • **0.05°C/min:** Balanced (3°C/hour) - filters noise, catches real issues
+          • **0.10°C/min:** Conservative (6°C/hour) - only triggers on strong trends
+
+          **Recommendation:**
+          • **Most rooms:** 0.05°C/min (balanced sensitivity)
+          • **Noisy sensors:** 0.08-0.10°C/min (reduce false triggers)
+          • **High precision:** 0.03°C/min (maximum sensitivity)
+        default: 0.05
+        selector:
+          number:
+            min: 0.01
+            max: 0.20
+            step: 0.01
+            unit_of_measurement: "°C/min"
+            mode: slider
 
     # Notification Settings
     notifications:
@@ -2830,14 +2856,15 @@ action:
       # Wrong-direction incremental escalation (optional feature)
       wrong_direction_enabled: !input enable_wrong_direction_escalation
       wrong_direction_per_check: !input wrong_direction_escalation_per_check
+      wrong_direction_min_rate: !input wrong_direction_min_rate
 
       # Count how many effectiveness checks have detected wrong direction
       # This is cumulative - resets when mode changes or temp goes right direction
       wrong_direction_detected: >
         {{
           (wrong_direction_enabled and wrong_direction_per_check > 0) and
-          ((last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > 0) or
-           (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < 0))
+          ((last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > wrong_direction_min_rate) or
+           (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < -wrong_direction_min_rate))
         }}
 
       # Helper to track consecutive wrong-direction checks
@@ -3613,6 +3640,9 @@ action:
 
             ⚡ Incremental Escalation Calculation:
                 • Wrong Direction Detected: {{ wrong_direction_detected }}
+                • Minimum Rate Threshold: {{ wrong_direction_min_rate }}°C/min
+                • Current Rate: {{ temp_change_rate | round(3) }}°C/min
+                • Exceeds Threshold: {{ (temp_change_rate | abs) > wrong_direction_min_rate }}
                 • Escalation Add (This Check): +{{ wrong_direction_escalation_add }} levels
                 • Base Escalation: Level {{ escalation_level }}
                 • Final Escalation: Level {{ final_escalation_level }} (base + wrong_dir_add, capped at 4)
