@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.76
+  name: Ultimate Smart Climate Control - v3.0.77
 
   description: |
-    **Ultimate Smart Climate Control v3.0.76**
+    **Ultimate Smart Climate Control v3.0.77**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -194,7 +194,7 @@ blueprint:
             • **OFF:** Use temperature from the first A/C unit only
 
             **Important:** Turn OFF when using a single external sensor for all units to avoid conflicts.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -245,7 +245,7 @@ blueprint:
             • **OFF:** Heating disabled - cooling only (perfect for people who run hot)
             
             **Use cases:** Seasonal control, energy management, personal preference, cooling-only setups.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -258,7 +258,7 @@ blueprint:
             • **OFF:** Cooling disabled - heating only (perfect for cold climates)
             
             **Use cases:** Seasonal control, energy management, heating-only setups, winter operation.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -320,7 +320,7 @@ blueprint:
             • Allows fine-tuning of comfort zones and trigger points
 
             **Recommendation:** Most users should leave this disabled and use the base target temperature.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -620,7 +620,7 @@ blueprint:
             **Turn off or set to eco** when everyone leaves.
 
             Automatically manages climate control based on home occupancy for **energy savings**.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -646,7 +646,7 @@ blueprint:
             **Pre-cool/heat when approaching home**.
 
             Uses proximity sensors to start conditioning before arrival for **immediate comfort**.
-          default: True
+          default: true
           selector:
             boolean:
 
@@ -871,7 +871,7 @@ blueprint:
             **How it works:** Detects when AC job is complete (thermal equilibrium reached) to save energy.
 
             **Note:** Works even when people are still in room. **Requires** temperature history helper.
-          default: False
+          default: false
           selector:
             boolean:
 
@@ -952,7 +952,7 @@ blueprint:
             • Separate weekend schedule option
 
             **Note:** Overrides base target temperature when enabled.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1030,7 +1030,7 @@ blueprint:
             • More flexible scheduling for leisure days
 
             **Note:** Weekend morning period: 6am-10am (vs weekday 6am-9am)
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1105,7 +1105,7 @@ blueprint:
             • **Automatic resumption** when closed
 
             **Requirement:** Binary sensors on doors/windows.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1183,7 +1183,7 @@ blueprint:
             • **Cool outdoor weather:** Lower targets for efficiency
 
             **Result:** Maintains comfort while optimizing energy usage based on natural conditions.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1417,7 +1417,7 @@ blueprint:
             **Different from Stability:** This responds to being in **comfort zone**, not temperature stability
             
             **Recommended:** Use Stability: OFF + Eco Mode: ON for maximum efficiency
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1496,7 +1496,7 @@ blueprint:
             - Older AC units without built-in protection
             - Extending compressor lifespan
             - Conservative safety approach
-          default: True
+          default: true
           selector:
             boolean:
 
@@ -1511,7 +1511,7 @@ blueprint:
             • Reduces wear on AC equipment
 
             **Recommendation:** For most users for optimal comfort and efficiency.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -1521,7 +1521,7 @@ blueprint:
             **Temperature thresholds** that override Manual mode for safety.
 
             **Emergency override:** Above high or below low will activate climate even in Manual mode.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -1582,7 +1582,7 @@ blueprint:
             • **Learns** your AC's effectiveness over time
 
             **Requirement:** Helper entities for temperature tracking and analysis.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -1834,7 +1834,7 @@ blueprint:
             • **WARNING:** Creates many log entries!
 
             **Recommendation:** Enable only when troubleshooting - disable for normal operation.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -1895,7 +1895,7 @@ blueprint:
             • Simpler to configure and understand
 
             **Safety:** Disabled by default. Won't affect existing automations.
-          default: False
+          default: false
           selector:
             boolean:
 
@@ -1951,7 +1951,7 @@ blueprint:
             **Enable push notifications** when the climate control system makes changes.
 
             **Notifications include:** Mode switches, temperature adjustments, and system status updates.
-          default: True
+          default: true
           selector:
             boolean:
         
@@ -2004,7 +2004,7 @@ blueprint:
             • **Smart Mode** must be properly configured
 
             **Use cases:** Automatic comfort when you enter, energy savings when you leave.
-          default: False
+          default: false
           selector:
             boolean:
         
@@ -2438,10 +2438,10 @@ action:
           {% if interval > 0 %}
             {{ (mins % interval) == 0 }}
           {% else %}
-            True
+            true
           {% endif %}
         {% else %}
-          True
+          true
         {% endif %}
   
   # Continue with automation if conditions are met
@@ -2616,7 +2616,7 @@ action:
           {% endfor %}
           {{ open.value }}
         {% else %}
-          False
+          false
         {% endif %}
       
       anyone_home: >
@@ -2640,7 +2640,7 @@ action:
           {{ is_state(direction_sensor, 'towards') and 
              states(proximity_sensor) | float(10000) < home_zone_distance }}
         {% else %}
-          False
+          false
         {% endif %}
       
       time_since_change: >
@@ -2727,18 +2727,18 @@ action:
           {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone %}
             {% if temp_stability_time >= time_threshold %}
               {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] %}
-                True
+                true
               {% else %}
-                False
+                false
               {% endif %}
             {% else %}
-              False
+              false
             {% endif %}
           {% else %}
-            False
+            false
           {% endif %}
         {% else %}
-          False
+          false
         {% endif %}
       
       distance_from_target: >
@@ -2828,7 +2828,7 @@ action:
         {% endif %}
 
       # Wrong-direction incremental escalation (optional feature)
-      wrong_direction_enabled: "{{ enable_wrong_direction_escalation | default(False) }}"
+      wrong_direction_enabled: "{{ enable_wrong_direction_escalation | default(false) }}"
       wrong_direction_per_check: "{{ wrong_direction_escalation_per_check | default(1) | int }}"
 
       # Count how many effectiveness checks have detected wrong direction
@@ -2836,14 +2836,14 @@ action:
       wrong_direction_detected: >
         {% if wrong_direction_enabled and wrong_direction_per_check > 0 %}
           {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > 0 %}
-            True
+            true
           {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < 0 %}
-            True
+            true
           {% else %}
-            False
+            false
           {% endif %}
         {% else %}
-          False
+          false
         {% endif %}
 
       # Helper to track consecutive wrong-direction checks
@@ -2909,7 +2909,7 @@ action:
         
         {# If no sensors configured, always return false #}
         {% if sensor_count == 0 %}
-          False
+          false
         {% else %}
           {# Categorize sensors and check their states #}
           {% set sensors_triggered = namespace(count=0) %}
@@ -3077,39 +3077,39 @@ action:
       
       smart_presence_active: >
         {% if control_mode == 'Manual' %}
-          False
+          false
         {% elif control_mode == 'Smart' %}
           {# Smart mode with grace period for short absences (bathroom trips, etc.) #}
           {% if room_presence_detected %}
-            True
+            true
           {% elif minutes_since_presence < presence_timeout %}
-            True
+            true
           {% elif approaching_home %}
-            True
+            true
           {% else %}
-            False
+            false
           {% endif %}
         {% elif room_presence_detected %}
-          True
+          true
         {% elif minutes_since_presence < presence_timeout %}
-          True
+          true
         {% elif proximity_zone == 'home' %}
-          True
+          true
         {% elif anyone_home and control_mode == 'Auto' %}
-          True
+          true
         {% else %}
-          False
+          false
         {% endif %}
       
       extreme_temp_detected: >
         {% if not extreme_override %}
-          False
+          false
         {% elif current_temp > extreme_high %}
           hot
         {% elif current_temp < extreme_low %}
           cold
         {% else %}
-          False
+          false
         {% endif %}
       
       # Check if user manually changed AC settings (from HA or remote)
@@ -3123,47 +3123,47 @@ action:
 
           {# Only detect manual changes if enough time has passed since last automation change #}
           {% if time_since_change < 2 %}
-            False
+            false
           {# If automation should be acting now, don't treat state changes as manual #}
           {% elif room_presence_detected and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp) or (actual_state == 'on' and current_temp > comfort_min_temp and current_temp < comfort_max_temp + 2)) %}
-            False
+            false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
             {# AC turned on when automation expects it off - likely manual #}
-            True
+            true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
             {# AC turned off when automation expects it running - likely manual #}
-            True
+            true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'on' %}
             {# AC is running as expected - this is NORMAL operation, not manual change #}
-            False
+            false
             {% else %}
-              False
+              false
             {% endif %}
           {% else %}
-            False
+            false
           {% endif %}
         {% else %}
-          False
+          false
         {% endif %}
 
       # Manual Override - NEVER active when user explicitly switches modes
       manual_override_active: >
         {% if trigger.id == 'mode_change' %}
-          False
+          false
         {% elif not manual_change_detected %}
-          False
+          false
         {% elif adaptive_override_timeout <= 0 %}
-          False
+          false
         {% elif control_mode == 'Manual' %}
-          False
+          false
         {% else %}
           {% set last_change = states(helper_change) %}
           {% if last_change not in ['unknown', 'unavailable', ''] %}
             {% set time_since_manual = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
             {{ time_since_manual < adaptive_override_timeout }}
           {% else %}
-            False
+            false
           {% endif %}
         {% endif %}
 
@@ -3176,16 +3176,16 @@ action:
         {% if control_mode == 'Manual' %}
           {# In manual mode, only activate for extreme temperatures with presence #}
           {% if extreme_temp_detected not in [false, 'false'] and (room_presence_detected or approaching_home) %}
-            True
+            true
           {% else %}
-            False
+            false
           {% endif %}
         {% elif manual_override_active %}
           {# User manually changed settings - respect the override timeout #}
-          False
+          false
         {% elif control_mode == 'Smart' %}
           {% if not room_presence_detected and smart_behavior == 'off' and not extreme_temp_detected %}
-            False
+            false
           {% else %}
             {{ smart_presence_active }}
           {% endif %}
@@ -3211,7 +3211,7 @@ action:
           {% set minutes_since_last = (current_timestamp - last_presence_timestamp) / 60 %}
           {{ minutes_since_last <= (presence_timeout + 5) }}
         {% else %}
-          False
+          false
         {% endif %}
   
   # Only update timestamp if:
@@ -3716,7 +3716,7 @@ action:
             {% set presence_time = (as_timestamp(now()) - as_timestamp(states(presence_detected_helper))) / 60 %}
             {{ presence_time >= adaptive_occupied_delay }}
           {% else %}
-            False
+            false
           {% endif %}
       - condition: template
         value_template: "{{ actual_ac_state == 'off' }}"
@@ -3773,10 +3773,10 @@ action:
                       {% set time_in_manual = (as_timestamp(now()) - change_timestamp) / 3600 %}
                       {{ time_in_manual >= manual_timeout_hours }}
                     {% else %}
-                      False
+                      false
                     {% endif %}
                   {% else %}
-                    False
+                    false
                   {% endif %}
             then:
               - service: system_log.write
@@ -3893,7 +3893,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4222,7 +4222,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4537,7 +4537,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -4857,7 +4857,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -5195,7 +5195,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -6343,7 +6343,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -6547,7 +6547,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -7083,7 +7083,7 @@ action:
               {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
                 {{ not is_state(adaptive_override_helper, 'on') }}
               {% else %}
-                True
+                true
               {% endif %}
           - condition: template
             value_template: >
@@ -7093,10 +7093,10 @@ action:
                   {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
                   {{ time_since_change >= adaptive_override_timeout }}
                 {% else %}
-                  True
+                  true
                 {% endif %}
               {% else %}
-                True
+                true
               {% endif %}
         sequence:
           # Debug logging for Adaptive Control evaluation
@@ -7169,7 +7169,7 @@ action:
                         {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                         {{ (vacant_time / 60) >= adaptive_vacant_delay }}
                         {% else %}
-                        False
+                        false
                       {% endif %}
               # Handle case where already in Manual mode but AC still running and room vacant
               - condition: and
@@ -7185,7 +7185,7 @@ action:
                         {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                         {{ (vacant_time / 60) >= adaptive_vacant_delay }}
                         {% else %}
-                        False
+                        false
                       {% endif %}
                   - condition: template
                     value_template: >
@@ -7193,7 +7193,7 @@ action:
                         {% set first_climate_state = states(climate_list[0]) %}
                         {{ first_climate_state not in ['off', 'Off', 'unavailable', 'unknown'] }}
                         {% else %}
-                        False
+                        false
                       {% endif %}
           
           # Execute actions when conditions are met
@@ -7403,7 +7403,7 @@ action:
                             {% set presence_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                             {{ (presence_time / 60) >= adaptive_occupied_delay }}
                             {% else %}
-                            False
+                            false
                           {% endif %}
                   # Check if vacant conditions would be met
                   - condition: and
@@ -7419,7 +7419,7 @@ action:
                             {% set vacant_time = as_timestamp(now()) - as_timestamp(last_presence) %}
                             {{ (vacant_time / 60) >= adaptive_vacant_delay }}
                             {% else %}
-                            False
+                            false
                           {% endif %}
         sequence:
           - service: system_log.write
@@ -7785,7 +7785,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
@@ -8011,7 +8011,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - condition: template
@@ -8192,7 +8192,7 @@ action:
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
-                True
+                true
               {% endif %}
         sequence:
           - service: system_log.write
