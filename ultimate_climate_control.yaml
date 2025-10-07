@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.78
+  name: Ultimate Smart Climate Control - v3.0.79
 
   description: |
-    **Ultimate Smart Climate Control v3.0.78**
+    **Ultimate Smart Climate Control v3.0.79**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2828,8 +2828,8 @@ action:
         {% endif %}
 
       # Wrong-direction incremental escalation (optional feature)
-      wrong_direction_enabled: "{{ enable_wrong_direction_escalation | default(false) }}"
-      wrong_direction_per_check: "{{ wrong_direction_escalation_per_check | default(1) | int }}"
+      wrong_direction_enabled: !input enable_wrong_direction_escalation
+      wrong_direction_per_check: !input wrong_direction_escalation_per_check
 
       # Count how many effectiveness checks have detected wrong direction
       # This is cumulative - resets when mode changes or temp goes right direction
