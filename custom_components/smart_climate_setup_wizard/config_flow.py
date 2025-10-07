@@ -748,28 +748,11 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         # Build schema for advanced escalation settings
         data_schema = vol.Schema(
             {
-                vol.Optional("enable_wrong_direction_boost", default=False): selector.BooleanSelector(),
-                vol.Optional("wrong_direction_boost_delay", default=3): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=1,
-                        max=10,
-                        step=1,
-                        unit_of_measurement="minutes",
-                        mode="slider",
-                    )
-                ),
-                vol.Optional("wrong_direction_boost_amount_early", default=1): selector.NumberSelector(
+                vol.Optional("enable_wrong_direction_escalation", default=False): selector.BooleanSelector(),
+                vol.Optional("wrong_direction_escalation_per_check", default=1): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=0,
-                        max=3,
-                        step=1,
-                        mode="slider",
-                    )
-                ),
-                vol.Optional("wrong_direction_boost_amount_late", default=2): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=0,
-                        max=3,
+                        max=2,
                         step=1,
                         mode="slider",
                     )
