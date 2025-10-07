@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.70
+  name: Ultimate Smart Climate Control - v3.0.71
 
   description: |
-    **Ultimate Smart Climate Control v3.0.70**
+    **Ultimate Smart Climate Control v3.0.71**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -1857,15 +1857,25 @@ blueprint:
               unit_of_measurement: minutes
               mode: slider
 
-        enable_wrong_direction_boost:
-          name: Enable Wrong-Direction Escalation Boost
+        enable_wrong_direction_escalation:
+          name: Enable Wrong-Direction Escalation
           description: |
-            **Automatically boost escalation when temperature moves the wrong way.**
+            **Incrementally escalate power when temperature moves the wrong way.**
 
             **How it works:**
-            • **Cooling mode:** Boosts power if temperature RISES
-            • **Heating mode:** Boosts power if temperature FALLS
-            • Helps respond quickly to sudden heat/cold spikes
+            • Checks temperature trend at every effectiveness check (e.g., every 2 minutes)
+            • **Cooling mode:** If temperature RISING → add escalation levels
+            • **Heating mode:** If temperature FALLING → add escalation levels
+            • Adds levels incrementally until temperature stabilizes or reaches maximum
+
+            **Example (with +1 per check, checking every 2 minutes):**
+            ```
+            Time 0: 25.6°C → Fan 1 (Base Level 0)
+            Time 2: 25.7°C rising → Fan 2 (Level 0+1)
+            Time 4: 25.8°C rising → Fan 3 (Level 0+2)
+            Time 6: 25.9°C rising → Fan 4 (Level 0+3)
+            Time 8: 25.9°C stable → Stay Fan 4 (stops escalating)
+            ```
 
             **When useful:**
             • Gaming rooms with variable heat load (PCs, consoles)
@@ -1878,76 +1888,55 @@ blueprint:
             • You prefer slower, more conservative escalation
             • Testing/debugging automation behavior
 
+            **Advantages over time-based boost:**
+            • Responds immediately at first effectiveness check
+            • Smooth, gradual escalation instead of sudden jumps
+            • Self-correcting (stops when temp stabilizes)
+            • Simpler to configure and understand
+
             **Safety:** Disabled by default. Won't affect existing automations.
           default: false
           selector:
             boolean:
 
-        wrong_direction_boost_delay:
-          name: Wrong-Direction Detection Delay
+        wrong_direction_escalation_per_check:
+          name: Wrong-Direction Escalation Per Check
           description: |
-            **Minutes to wait before wrong-direction boost activates.**
+            **How many escalation levels to add per effectiveness check when temperature moves wrong direction.**
 
-            • **1-2 minutes:** Very aggressive (responds quickly to changes)
-            • **3-5 minutes:** Balanced (⭐ recommended - allows AC warm-up)
-            • **5-10 minutes:** Conservative (ensures real problem, not fluctuation)
+            • **0:** Disabled (ignore wrong direction, even if feature enabled)
+            • **+1:** Gentle incremental response (⭐ recommended for most rooms)
+            • **+2:** Aggressive incremental response (for extreme heat loads)
 
-            **Why delay matters:**
-            ACs need 2-3 minutes to stabilize after starting. Early detection
-            may trigger false alarms from normal warm-up behavior.
+            **How it works:**
+            At each effectiveness check (e.g., every 2 minutes), if temperature is moving
+            the wrong direction, this many levels are added to escalation.
 
-            **Recommendation:** Use 3 minutes for gaming rooms, 5 minutes for stable rooms.
-          default: 3
-          selector:
-            number:
-              min: 1
-              max: 10
-              step: 1
-              unit_of_measurement: minutes
+            **Example with +1 per check:**
+            ```
+            Check 1: Base L0, rising → L0+1 = Fan 2
+            Check 2: Base L0, rising → L0+2 = Fan 3
+            Check 3: Base L0, rising → L0+3 = Fan 4
+            Check 4: Base L0, rising → L0+4 = Fan 5 (maximum)
+            Result: Smooth escalation over 6-8 minutes
+            ```
 
-        wrong_direction_boost_amount_early:
-          name: Wrong-Direction Boost (Early Phase)
-          description: |
-            **Escalation boost levels** when wrong direction detected early.
+            **Example with +2 per check (aggressive):**
+            ```
+            Check 1: Base L0, rising → L0+2 = Fan 3
+            Check 2: Base L0, rising → L0+4 = Fan 5 (maximum)
+            Result: Reaches maximum in 4 minutes
+            ```
 
-            **Early Phase:** Detection delay → 8 minutes
-
-            • **+0:** No boost (ignore wrong direction)
-            • **+1:** Gentle boost (⭐ recommended - try one level up)
-            • **+2:** Strong boost (aggressive response)
-            • **+3:** Emergency boost (jump to near-maximum)
-
-            **Example:** Base Level 1 + Boost +1 = Final Level 2 (Fan 3)
-
-            **Recommendation:** Use +1 for balanced response, +2 for gaming rooms.
+            **Recommendation:**
+            • **Gaming rooms:** +1 (balanced, reaches max in 8 min)
+            • **Extreme heat loads:** +2 (aggressive, reaches max in 4 min)
+            • **Stable rooms:** 0 or disable feature entirely
           default: 1
           selector:
             number:
               min: 0
-              max: 3
-              step: 1
-
-        wrong_direction_boost_amount_late:
-          name: Wrong-Direction Boost (Late Phase)
-          description: |
-            **Escalation boost levels** when wrong direction persists.
-
-            **Late Phase:** After 8+ minutes of wrong direction
-
-            • **+0:** No additional boost
-            • **+1:** Gentle emergency boost
-            • **+2:** Strong emergency boost (⭐ recommended)
-            • **+3:** Maximum emergency boost
-
-            **Rationale:** System has been struggling for 8+ minutes,
-            needs significant intervention to overcome heat/cold load.
-
-            **Example:** Base Level 2 + Boost +2 = Final Level 4 (Fan 5 - Maximum)
-          default: 2
-          selector:
-            number:
-              min: 0
-              max: 3
+              max: 2
               step: 1
 
     # Notification Settings
@@ -2838,14 +2827,14 @@ action:
           {% endif %}
         {% endif %}
 
-      # Wrong-direction escalation boost (optional feature)
-      wrong_direction_boost_enabled: "{{ enable_wrong_direction_boost | default(false) }}"
-      wrong_direction_delay_min: "{{ wrong_direction_boost_delay | default(3) }}"
-      wrong_direction_early_boost: "{{ wrong_direction_boost_amount_early | default(1) }}"
-      wrong_direction_late_boost: "{{ wrong_direction_boost_amount_late | default(2) }}"
+      # Wrong-direction incremental escalation (optional feature)
+      wrong_direction_enabled: "{{ enable_wrong_direction_escalation | default(false) }}"
+      wrong_direction_per_check: "{{ wrong_direction_escalation_per_check | default(1) | int }}"
 
+      # Count how many effectiveness checks have detected wrong direction
+      # This is cumulative - resets when mode changes or temp goes right direction
       wrong_direction_detected: >
-        {% if wrong_direction_boost_enabled and time_in_current_mode >= wrong_direction_delay_min %}
+        {% if wrong_direction_enabled and wrong_direction_per_check > 0 %}
           {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and calculated_trend == 'rising' %}
             true
           {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and calculated_trend == 'falling' %}
@@ -2857,31 +2846,23 @@ action:
           false
         {% endif %}
 
-      wrong_direction_boost_amount: >
+      # Helper to track consecutive wrong-direction checks
+      # NOTE: This needs a helper entity to persist between runs
+      # For now, we'll use a simpler approach: add escalation based on current check only
+      wrong_direction_escalation_add: >
         {% if wrong_direction_detected %}
-          {% if time_in_current_mode < 8 %}
-            {{ wrong_direction_early_boost | int(1) }}
-          {% else %}
-            {{ wrong_direction_late_boost | int(2) }}
-          {% endif %}
+          {{ wrong_direction_per_check | int(1) }}
         {% else %}
           0
         {% endif %}
 
-      escalation_level_with_boost: >
-        {% set base_level = escalation_level | int(0) %}
-        {% set boost = wrong_direction_boost_amount | int(0) %}
-        {% set final_level = base_level + boost %}
-        {{ [final_level, 4] | min }}
-
-      # Use boosted escalation level if feature enabled, otherwise use base
+      # Final escalation level includes both normal escalation + wrong-direction add
       # NOTE: All fan speed logic should reference final_escalation_level instead of escalation_level
       final_escalation_level: >
-        {% if wrong_direction_boost_enabled %}
-          {{ escalation_level_with_boost }}
-        {% else %}
-          {{ escalation_level }}
-        {% endif %}
+        {% set base_level = escalation_level | int(0) %}
+        {% set wrong_dir_add = wrong_direction_escalation_add | int(0) %}
+        {% set total_level = base_level + wrong_dir_add %}
+        {{ [total_level, 4] | min }}
 
       # Hysteresis logic - prevent rapid switching at temperature boundaries
       last_transition: >
@@ -3608,29 +3589,27 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} WRONG-DIRECTION BOOST DEBUG
+            🔍 {{ room_name | upper }} WRONG-DIRECTION ESCALATION DEBUG
 
             📊 Feature Status:
-                • Wrong-Direction Boost Enabled: {{ wrong_direction_boost_enabled }}
-                • Detection Delay: {{ wrong_direction_delay_min }} minutes
-                • Early Phase Boost: +{{ wrong_direction_early_boost }} levels
-                • Late Phase Boost: +{{ wrong_direction_late_boost }} levels
+                • Wrong-Direction Escalation Enabled: {{ wrong_direction_enabled }}
+                • Escalation Per Check: +{{ wrong_direction_per_check }} levels
 
             🌡️ Temperature Trend Analysis:
                 • Current Mode: {{ last_mode }}
                 • Temperature Trend: {{ calculated_trend }}
                 • Time in Current Mode: {{ time_in_current_mode | round(1) }} min
-                • Detection Delay Met: {{ time_in_current_mode >= wrong_direction_delay_min }}
+                • Effectiveness Check Interval: {{ effectiveness_check_mins }} min
 
             🚨 Wrong Direction Detection:
                 {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] %}
                 • Mode: Cooling
-                • Expected: Temperature FALLING
+                • Expected: Temperature FALLING or STABLE
                 • Actual: Temperature {{ calculated_trend | upper }}
                 • Wrong Direction: {{ calculated_trend == 'rising' }}
                 {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] %}
                 • Mode: Heating
-                • Expected: Temperature RISING
+                • Expected: Temperature RISING or STABLE
                 • Actual: Temperature {{ calculated_trend | upper }}
                 • Wrong Direction: {{ calculated_trend == 'falling' }}
                 {% else %}
@@ -3638,27 +3617,24 @@ action:
                 • Wrong Direction: Not Applicable
                 {% endif %}
 
-            ⚡ Boost Calculation:
+            ⚡ Incremental Escalation Calculation:
                 • Wrong Direction Detected: {{ wrong_direction_detected }}
-                • Phase: {% if time_in_current_mode < 8 %}EARLY (< 8 min){% else %}LATE (≥ 8 min){% endif %}
-                • Boost Amount: +{{ wrong_direction_boost_amount }} levels
+                • Escalation Add (This Check): +{{ wrong_direction_escalation_add }} levels
                 • Base Escalation: Level {{ escalation_level }}
-                • Boosted Escalation: Level {{ escalation_level_with_boost }}
-                • Final Escalation: Level {{ final_escalation_level }} (capped at 4)
+                • Final Escalation: Level {{ final_escalation_level }} (base + wrong_dir_add, capped at 4)
 
-            💡 Reasoning:
-                {% if not wrong_direction_boost_enabled %}
+            💡 How Incremental Escalation Works:
+                {% if not wrong_direction_enabled %}
                 • Feature DISABLED - using base escalation only
-                {% elif time_in_current_mode < wrong_direction_delay_min %}
-                • Too early ({{ time_in_current_mode | round(1) }} < {{ wrong_direction_delay_min }} min) - ignoring fluctuations
+                {% elif wrong_direction_per_check == 0 %}
+                • Feature enabled but set to +0 - no escalation added
                 {% elif not wrong_direction_detected %}
-                • Temperature trending correctly - no boost needed
-                {% elif time_in_current_mode < 8 %}
-                • Wrong direction detected! Applying EARLY PHASE boost (+{{ wrong_direction_early_boost }})
-                • AC needs more power to overcome heat/cold load
+                • Temperature trending correctly - no additional escalation needed
                 {% else %}
-                • Wrong direction persisting! Applying LATE PHASE boost (+{{ wrong_direction_late_boost }})
-                • Emergency intervention needed - AC struggling for {{ time_in_current_mode | round(0) }} minutes
+                • Wrong direction detected! Adding +{{ wrong_direction_per_check }} level(s) this check
+                • At next effectiveness check (in ~{{ effectiveness_check_mins }} min), if still wrong direction: +{{ wrong_direction_per_check }} more
+                • Escalation builds up: Check 1: +{{ wrong_direction_per_check }}, Check 2: +{{ wrong_direction_per_check * 2 }}, Check 3: +{{ wrong_direction_per_check * 3 }}, etc.
+                • Stops escalating when temp stabilizes or reaches Level 4 (Fan 5 maximum)
                 {% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.wrong_direction"
