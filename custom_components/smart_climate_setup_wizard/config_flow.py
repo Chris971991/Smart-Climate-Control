@@ -570,7 +570,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         data_schema_dict[vol.Optional("presence_confirmation_delay", default=0)] = selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=0,
-                max=10,
+                max=30,
                 step=1,
                 mode="slider",
                 unit_of_measurement="min",

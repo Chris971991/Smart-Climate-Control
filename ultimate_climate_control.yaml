@@ -726,11 +726,13 @@ blueprint:
 
             • **0 minutes:** Immediate response (default, current behavior)
             • **2-5 minutes:** Filter brief visits and BLE sensor flickers
-            • **10 minutes:** Only activate for extended stays
+            • **10-15 minutes:** Moderate filtering for high-traffic areas
+            • **20-30 minutes:** Only activate for confirmed extended stays
 
             **Use cases:**
             • **Bedrooms with BLE:** 3-5 min to filter boundary flickers
-            • **High-traffic rooms:** 5+ min to avoid activating when passing through
+            • **High-traffic rooms:** 10-20 min to avoid activating when passing through
+            • **Guest rooms:** 20-30 min to ensure actual occupancy
             • **Dedicated rooms (office, gaming):** 0 min for immediate comfort
 
             **Note:** This only affects initial turn-on. Once running, AC stays on for the full `presence_timeout` period after you leave.
@@ -738,7 +740,7 @@ blueprint:
           selector:
             number:
               min: 0
-              max: 10
+              max: 30
               step: 1
               unit_of_measurement: minutes
               mode: slider
