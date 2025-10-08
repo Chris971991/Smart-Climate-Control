@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.83
+  name: Ultimate Smart Climate Control - v3.0.84
 
   description: |
-    **Ultimate Smart Climate Control v3.0.83**
+    **Ultimate Smart Climate Control v3.0.84**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,10 +56,10 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.83
+    ## 🆕 Latest Update - v3.0.84
 
-    **✨ NEW: Presence Confirmation Delay (Smart Mode) v3.0.83**
-    - ⏱️ NEW FEATURE: Adjustable delay (0-10 min) before turning AC ON in Smart mode
+    **✨ NEW: Presence Confirmation Delay (Smart Mode) v3.0.84**
+    - ⏱️ NEW FEATURE: Adjustable delay (0-30 min) before turning AC ON in Smart mode
     - 🔇 BENEFIT: Filters BLE flicker and prevents rapid on/off cycling
     - 🎛️ CUSTOMIZABLE: 0 min = immediate (default), 5 min = filter noise
     - 🛏️ PERFECT FOR: Bedrooms with BLE sensors at room boundaries
@@ -84,8 +84,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.83** - ✨ NEW: Presence confirmation delay (prevents BLE flicker cycling)
-    **v3.0.82** - ✨ NEW: Customizable wrong-direction threshold (filters noise)
+    **v3.0.84** - ✨ NEW: Presence confirmation delay 0-30 min (prevents BLE cycling)
+    **v3.0.83** - ✨ NEW: Presence confirmation delay 0-10 min (initial release)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
