@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.84
+  name: Ultimate Smart Climate Control - v3.0.85
 
   description: |
-    **Ultimate Smart Climate Control v3.0.84**
+    **Ultimate Smart Climate Control v3.0.85**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.84
+    ## 🆕 Latest Update - v3.0.85
 
-    **✨ NEW: Presence Confirmation Delay (Smart Mode) v3.0.84**
-    - ⏱️ NEW FEATURE: Adjustable delay (0-30 min) before turning AC ON in Smart mode
-    - 🔇 BENEFIT: Filters BLE flicker and prevents rapid on/off cycling
-    - 🎛️ CUSTOMIZABLE: 0 min = immediate (default), 5 min = filter noise
-    - 🛏️ PERFECT FOR: Bedrooms with BLE sensors at room boundaries
-    - 📊 Works with existing presence timeout for smooth operation
+    **🐛 CRITICAL FIX: Runtime Protection v3.0.85**
+    - 🔒 FIXED: AC now stays on for full minimum runtime (12 min) even if you change settings
+    - 🛡️ PROTECTION: Prevents compressor damage from rapid on/off cycling
+    - ⚙️ APPLIES TO: All 6 tiers (heating/cooling LOW/MEDIUM/HIGH)
+    - ✅ RESULT: Smooth operation, no more instant shutoffs when adjusting comfort zones
 
     **📝 Previous Updates:**
+    - v3.0.84: ⏱️ Presence confirmation delay (0-30 min)
     - v3.0.82: 🎯 Customizable wrong-direction threshold
-    - v3.0.81: 🔊 Fixed fan speed jumps on startup
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -84,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.84** - ✨ NEW: Presence confirmation delay 0-30 min (prevents BLE cycling)
-    **v3.0.83** - ✨ NEW: Presence confirmation delay 0-10 min (initial release)
+    **v3.0.85** - 🐛 CRITICAL FIX: Runtime protection now properly enforced (AC stays on for minimum runtime)
+    **v3.0.84** - ✨ NEW: Presence confirmation delay extended to 30 min max
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -3937,7 +3936,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_high' %}
                 {# Continue HIGH only if AC running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
@@ -4266,7 +4267,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_medium' %}
                 {# Already heating medium - continue only if AC running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
@@ -4583,7 +4586,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_low' %}
                 {# Already heating low - continue only if AC running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
@@ -4901,7 +4906,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_high' %}
                 {# Continue HIGH only if AC is actually running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
@@ -5239,7 +5246,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_medium' %}
                 {# Already cooling medium - continue only if AC running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
@@ -5570,7 +5579,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_low' %}
                 {# Already cooling low - continue only if AC running AND temp needs adjustment #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
+                {% if time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
+                {% elif (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
