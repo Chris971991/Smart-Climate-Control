@@ -730,6 +730,25 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     )
                 ),
                 vol.Optional("enable_eco_mode", default=True): selector.BooleanSelector(),
+                vol.Optional("fan_speed_eco", default="Level 1"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "Auto", "value": "Auto"},
+                            {"label": "auto", "value": "auto"},
+                            {"label": "Quiet", "value": "Quiet"},
+                            {"label": "Silence", "value": "Silence"},
+                            {"label": "Level 1 ⭐ Recommended (quietest)", "value": "Level 1"},
+                            {"label": "Level 2", "value": "Level 2"},
+                            {"label": "Level 3", "value": "Level 3"},
+                            {"label": "1", "value": "1"},
+                            {"label": "2", "value": "2"},
+                            {"label": "3", "value": "3"},
+                            {"label": "low", "value": "low"},
+                            {"label": "Low", "value": "Low"},
+                        ],
+                        mode="dropdown",
+                    )
+                ),
                 vol.Optional("enable_notifications", default=False): selector.BooleanSelector(),
             }
         )
@@ -1300,6 +1319,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     "smart_mode_behavior": config.get("smart_mode_behavior", "eco"),
                     "stability_behavior": config.get("stability_behavior", "off"),
                     "enable_eco_mode": config.get("enable_eco_mode", True),
+                    "fan_speed_eco": config.get("fan_speed_eco", "Level 1"),
                     "enable_notifications": config.get("enable_notifications", False),
                 },
             },

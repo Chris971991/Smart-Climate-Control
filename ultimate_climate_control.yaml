@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.85
+  name: Ultimate Smart Climate Control - v3.0.86
 
   description: |
-    **Ultimate Smart Climate Control v3.0.85**
+    **Ultimate Smart Climate Control v3.0.86**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.85
+    ## 🆕 Latest Update - v3.0.86
 
-    **🐛 CRITICAL FIX: Runtime Protection v3.0.85**
-    - 🔒 FIXED: AC now stays on for full minimum runtime (12 min) even if you change settings
-    - 🛡️ PROTECTION: Prevents compressor damage from rapid on/off cycling
-    - ⚙️ APPLIES TO: All 6 tiers (heating/cooling LOW/MEDIUM/HIGH)
-    - ✅ RESULT: Smooth operation, no more instant shutoffs when adjusting comfort zones
+    **🐛 CRITICAL FIX: ECO Mode Fan Speed Now Customizable v3.0.86**
+    - 🔧 FIXED: ECO mode now respects your configured `fan_speed_eco` setting
+    - 🎛️ CUSTOMIZE: Set ECO fan to Silence, Quiet, Level 1-5, or any available speed
+    - 🛠️ WIZARD: Setup wizard now asks for ECO fan speed preference during initial setup
+    - ✅ ALL ECO MODES: Applied to comfort zone, stability, smart mode, and away mode ECO
 
     **📝 Previous Updates:**
+    - v3.0.85: 🐛 Runtime protection properly enforced (no instant shutoffs)
     - v3.0.84: ⏱️ Presence confirmation delay (0-30 min)
-    - v3.0.82: 🎯 Customizable wrong-direction threshold
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.0.86** - 🐛 CRITICAL FIX: ECO mode fan speed now customizable (was hardcoded, ignoring user setting)
     **v3.0.85** - 🐛 CRITICAL FIX: Runtime protection now properly enforced (AC stays on for minimum runtime)
-    **v3.0.84** - ✨ NEW: Presence confirmation delay extended to 30 min max
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -2270,6 +2270,7 @@ variables:
   # Fan speed settings
   fan_speed_max: !input fan_speed_max
   fan_speed_medium: !input fan_speed_medium
+  fan_speed_eco: !input fan_speed_eco
   # Dynamic adaptation settings
   dynamic_enabled: !input enable_dynamic_adaptation
   effectiveness_check_mins: !input effectiveness_check_minutes
@@ -6879,32 +6880,41 @@ action:
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
-                  # Set auto fan mode for maximum efficiency in comfort zone
+                  # Set eco fan mode for maximum efficiency in comfort zone
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: "{{ fan_speed_eco }}"
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: >
-                              {% if 'Auto' in available_fans %}
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                                {% elif 'Auto' in available_fans %}
                                 Auto
                                 {% elif 'auto' in available_fans %}
                                 auto
-                                {% elif 'low' in available_fans %}
-                                low
                                 {% elif 'Quiet' in available_fans %}
                                 Quiet
+                                {% elif 'quiet' in available_fans %}
+                                quiet
                                 {% elif 'Silence' in available_fans %}
                                 Silence
-                                {% elif '1' in available_fans %}
-                                1
+                                {% elif 'silence' in available_fans %}
+                                silence
                                 {% elif 'Level 1' in available_fans %}
                                 Level 1
+                                {% elif '1' in available_fans %}
+                                1
+                                {% elif 'low' in available_fans %}
+                                low
+                                {% elif 'Low' in available_fans %}
+                                Low
                                 {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
@@ -7128,6 +7138,45 @@ action:
                         Current: {{ current_temp | round(1) }}°C → Stable for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+                  # Set eco fan mode for efficient stability eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: "{{ fan_speed_eco }}"
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                                {% elif 'Auto' in available_fans %}
+                                Auto
+                                {% elif 'auto' in available_fans %}
+                                auto
+                                {% elif 'Quiet' in available_fans %}
+                                Quiet
+                                {% elif 'quiet' in available_fans %}
+                                quiet
+                                {% elif 'Silence' in available_fans %}
+                                Silence
+                                {% elif 'silence' in available_fans %}
+                                silence
+                                {% elif 'Level 1' in available_fans %}
+                                Level 1
+                                {% elif '1' in available_fans %}
+                                1
+                                {% elif 'low' in available_fans %}
+                                low
+                                {% elif 'Low' in available_fans %}
+                                Low
+                                {% else %}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
+                              {% endif %}
           
           - service: input_text.set_value
             target:
@@ -7662,7 +7711,46 @@ action:
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-              
+
+                  # Set eco fan mode for efficient smart room eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: "{{ fan_speed_eco }}"
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: >
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                                {% elif 'Auto' in available_fans %}
+                                Auto
+                                {% elif 'auto' in available_fans %}
+                                auto
+                                {% elif 'Quiet' in available_fans %}
+                                Quiet
+                                {% elif 'quiet' in available_fans %}
+                                quiet
+                                {% elif 'Silence' in available_fans %}
+                                Silence
+                                {% elif 'silence' in available_fans %}
+                                silence
+                                {% elif 'Level 1' in available_fans %}
+                                Level 1
+                                {% elif '1' in available_fans %}
+                                1
+                                {% elif 'low' in available_fans %}
+                                low
+                                {% elif 'Low' in available_fans %}
+                                Low
+                                {% else %}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
+                              {% endif %}
+
               - conditions:
                   - condition: template
                     value_template: "{{ smart_behavior == 'maintain' }}"
@@ -7792,32 +7880,41 @@ action:
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
-                  # Set auto fan mode for efficient away eco mode
+                  # Set eco fan mode for efficient away eco mode
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: "{{ fan_speed_eco }}"
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: >
-                              {% if 'Auto' in available_fans %}
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                                {% elif 'Auto' in available_fans %}
                                 Auto
                                 {% elif 'auto' in available_fans %}
                                 auto
-                                {% elif 'low' in available_fans %}
-                                low
                                 {% elif 'Quiet' in available_fans %}
                                 Quiet
+                                {% elif 'quiet' in available_fans %}
+                                quiet
                                 {% elif 'Silence' in available_fans %}
                                 Silence
-                                {% elif '1' in available_fans %}
-                                1
+                                {% elif 'silence' in available_fans %}
+                                silence
                                 {% elif 'Level 1' in available_fans %}
                                 Level 1
+                                {% elif '1' in available_fans %}
+                                1
+                                {% elif 'low' in available_fans %}
+                                low
+                                {% elif 'Low' in available_fans %}
+                                Low
                                 {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
