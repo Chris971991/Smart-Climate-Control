@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.88
+  name: Ultimate Smart Climate Control - v3.0.89
 
   description: |
-    **Ultimate Smart Climate Control v3.0.88**
+    **Ultimate Smart Climate Control v3.0.89**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.88
+    ## 🆕 Latest Update - v3.0.89
 
-    **🐛 CRITICAL FIX: Smart Mode Turn-Off Now Works v3.0.88**
-    - 🔧 FIXED: AC now properly turns off after 15-minute grace period in Smart mode
-    - ⏱️ BUG FIX: Used wrong variable (time_since_change vs time_in_current_mode)
-    - ✅ RELIABLE: No more AC staying on indefinitely when room is vacant
-    - 🎯 RUNTIME PROTECTION: Still respects 12-minute minimum runtime before shutoff
+    **🐛 CRITICAL FIX: Manual Override Now Respects User Shutoff v3.0.89**
+    - 🔧 FIXED: AC now stays off when you manually turn it off (remote or dashboard)
+    - 🛑 BUG FIX: Removed logic that overrode manual shutoff when temp conditions warranted AC
+    - ✅ RESPECTS USER: Manual changes now properly detected and honored for configured timeout
+    - ⏱️ TIMEOUT: Respects adaptive_override_timeout setting (default: 3 hours)
 
     **📝 Previous Updates:**
+    - v3.0.88: 🐛 Smart mode turn-off after grace period (was staying on forever)
     - v3.0.87: 🐛 Bedroom mode BLE fallback (works when phone BT off)
-    - v3.0.86: 🐛 ECO mode fan speed now customizable
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -83,8 +83,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.0.89** - 🐛 CRITICAL FIX: Manual override now respects user shutoff (AC stays off when turned off manually)
     **v3.0.88** - 🐛 CRITICAL FIX: Smart mode turn-off now works (AC shuts off after grace period when room vacant)
-    **v3.0.87** - 🐛 CRITICAL FIX: Bedroom mode now works when phone Bluetooth off/dead (smart BLE fallback)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -3207,15 +3207,12 @@ action:
           {# Only detect manual changes if enough time has passed since last automation change #}
           {% if time_since_change < 2 %}
             false
-          {# If automation should be acting now, don't treat state changes as manual #}
-          {% elif room_presence_detected and control_mode != 'Manual' and ((current_temp >= cooling_low_temp) or (current_temp <= heating_low_temp) or (actual_state == 'on' and current_temp > comfort_min_temp and current_temp < comfort_max_temp + 2)) %}
-            false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state == 'off' and actual_state == 'on' %}
             {# AC turned on when automation expects it off - likely manual #}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
-            {# AC turned off when automation expects it running - likely manual #}
+            {# AC turned off when automation expects it running - MANUAL SHUTOFF #}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'on' %}
             {# AC is running as expected - this is NORMAL operation, not manual change #}
