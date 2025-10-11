@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.1
+  name: Ultimate Smart Climate Control - v3.1.2
 
   description: |
-    **Ultimate Smart Climate Control v3.1.1**
+    **Ultimate Smart Climate Control v3.1.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -2971,8 +2971,8 @@ action:
             4  {# Cooling but temperature rising above comfort zone #}
           {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
             4  {# Heating but temperature falling below comfort zone #}
-          {% elif time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 0.3 %}
-            4  {# EXTENDED STALL: Stuck for extended period with no progress - emergency escalation (user-configurable) #}
+          {% elif time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 1.5 %}
+            4  {# EXTENDED STALL: Stuck for extended period with no progress AND far from target - emergency escalation (user-configurable) #}
 
           {# Level 0: VERY CLOSE TO TARGET - Don't escalate, maintain only #}
           {% elif distance_from_target <= 0.5 and current_effectiveness >= 85 %}
@@ -3829,9 +3829,9 @@ action:
                 • Extended threshold: {{ (stall_time_threshold * extended_stall_multiplier) | round(0) }}min ({{ stall_time_threshold }}min × {{ extended_stall_multiplier }})
                 • Time in mode: {{ time_in_current_mode | round(1) }}min
                 • Time ≥ threshold: {{ time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) }}
-                • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }}
-                • Distance > 0.3°C: {{ distance_from_target > 0.3 }}
-                • SHOULD TRIGGER EMERGENCY: {{ time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 0.3 }}
+                • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)
+                • Distance > 1.5°C: {{ distance_from_target > 1.5 }} (current: {{ distance_from_target | round(1) }}°C)
+                • SHOULD TRIGGER EMERGENCY: {{ time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 1.5 }}
 
             ⚡ Result: Base Escalation Level = {{ escalation_level }}
           level: warning
