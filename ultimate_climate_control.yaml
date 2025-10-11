@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.8
+  name: Ultimate Smart Climate Control - v3.1.9
 
   description: |
-    **Ultimate Smart Climate Control v3.1.8**
+    **Ultimate Smart Climate Control v3.1.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -13,7 +13,7 @@ blueprint:
     **⚠️ Don't create helpers manually!** Install the companion **Setup Wizard** for automated setup:
 
     ✅ **2-Minute Setup** - Complete automation in ~2 minutes
-    ✅ **Zero Manual Work** - All 13 helpers created automatically
+    ✅ **Zero Manual Work** - All 15 helpers created automatically
     ✅ **Dashboard Card Generator** - Animated control card included
     ✅ **Safe & Isolated** - Package-based helpers won't affect existing setup
 
@@ -56,22 +56,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.1.8
+    ## 🆕 Latest Update - v3.1.9
 
-    **🐛 CRITICAL FIX: Manual Override Time-Based Persistence Removed v3.1.8**
-    - ✅ FIXED: Removed flawed time-based persistence logic that caused false re-triggers
-    - 🛡️ SIMPLIFIED: Override now ONLY active when manual_change_detected is currently true
-    - ⚡ BEHAVIOR: Override is instantaneous (blocks ONE cycle), then re-evaluates on next check
-    - 🎯 IMPACT: Eliminates all false override re-activation scenarios
+    **🐛 PROPER FIX: Manual Override with Dedicated Flag System v3.1.9**
+    - ✅ PROPER: Implemented separate helper_override_active flag and helper_override_time timestamp
+    - 🛡️ CORRECT: Manual override now properly persists for full timeout period (e.g., 1 hour)
+    - ⚡ FIXED: Separated override tracking from helper_change (which is used for 2-minute buffer)
+    - 🎯 RESOLVED: Eliminates ALL false re-triggers while maintaining intended 1-hour blocking
 
     **What Changed:**
-    - **Before:** v3.1.6/v3.1.7 used timestamp-based persistence → ANY recent helper_change triggered override
-    - **After:** Override directly mirrors manual_change_detected state → No persistence, no false triggers
-    - **Result:** Clean, simple logic - manual change detected NOW = override active NOW
+    - **v3.1.6-v3.1.8 (BROKEN):** Single timestamp for both 2-min buffer AND 1-hour persistence → Conflicting requirements
+    - **v3.1.9 (PROPER FIX):** Separate tracking with dedicated flag and timestamp → Each purpose has its own data
+    - **Result:** Manual changes properly detected, override persists for timeout, automation actions don't trigger false overrides
 
     **📝 Previous Updates:**
+    - v3.1.5: 🐛 Manual shutoff detection during settling period (safety priority)
     - v3.1.4: 🐛 Manual override false detection fix (mode change protection)
-    - v3.1.3: 🐛 Smart mode grace period fix (confirmation delay requirement)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -158,7 +158,43 @@ blueprint:
 
         • `input_datetime.climate_last_change_office`
 
-        **Used for:** Timing calculations and manual override protection.
+        **Used for:** Timing calculations and false detection protection (2-minute buffer).
+      selector:
+        entity:
+          domain: input_datetime
+
+    helper_override_active:
+      name: Manual Override Flag Helper *
+      description: |
+        Input Boolean helper to track **manual override state**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_boolean.climate_override_active_living_room`
+
+        • `input_boolean.climate_override_active_bedroom`
+
+        • `input_boolean.climate_override_active_office`
+
+        **Purpose:** Flag that is set when user manually changes AC, cleared when timeout expires or mode switched.
+      selector:
+        entity:
+          domain: input_boolean
+
+    helper_override_time:
+      name: Manual Override Time Helper *
+      description: |
+        Input DateTime helper to track **when manual override was activated**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_datetime.climate_override_time_living_room`
+
+        • `input_datetime.climate_override_time_bedroom`
+
+        • `input_datetime.climate_override_time_office`
+
+        **Purpose:** Timestamp used to calculate if override timeout period has expired.
       selector:
         entity:
           domain: input_datetime
@@ -2343,6 +2379,8 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
+  helper_override_flag: !input helper_override_active
+  helper_override_timestamp: !input helper_override_time
   proximity_sensor_input: !input proximity_sensor
   direction_sensor_input: !input direction_sensor
   
@@ -2665,6 +2703,11 @@ action:
             {% endif %}
         continue_on_error: true
 
+      # Clear manual override flag on mode changes (user switching modes = intentional control)
+      - service: input_boolean.turn_off
+        target:
+          entity_id: "{{ helper_override_flag }}"
+        continue_on_error: true
 
       - if:
           - condition: template
@@ -3390,18 +3433,36 @@ action:
           false
         {% endif %}
 
-      # Manual Override - ONLY active when manual change is CURRENTLY detected
-      # v3.1.8 FIX: Removed time-based persistence - it caused false re-triggers
-      # Now override is instantaneous: detects manual change, blocks ONE cycle, then re-evaluates
+      # Manual Override - Proper flag-based system with separate tracking
+      # v3.1.9 PROPER FIX: Uses dedicated helper_override_flag and helper_override_timestamp
+      # This separates override state from helper_change (which tracks automation actions for 2-min buffer)
       manual_override_active: >
         {% if trigger.id == 'mode_change' %}
+          {# Mode changes always clear override (user switching between Auto/Smart/Manual) #}
           false
         {% elif control_mode == 'Manual' %}
+          {# Manual mode means user is in full control - no override blocking needed #}
           false
         {% elif adaptive_override_timeout <= 0 %}
+          {# Timeout disabled - no override functionality #}
           false
+        {% elif helper_override_flag and is_state(helper_override_flag, 'on') %}
+          {# Override flag is set - check if timeout has expired #}
+          {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
+            {% set override_time = as_timestamp(states(helper_override_timestamp)) %}
+            {% if override_time %}
+              {% set time_since_override = (as_timestamp(now()) - override_time) / 3600 %}
+              {{ time_since_override < adaptive_override_timeout }}
+            {% else %}
+              false
+            {% endif %}
+          {% else %}
+            {# No valid timestamp - clear the flag #}
+            false
+          {% endif %}
         {% else %}
-          {{ manual_change_detected }}
+          {# Flag not set - no override active #}
+          false
         {% endif %}
 
       # DEBUG: Manual change detection values
@@ -3480,6 +3541,71 @@ action:
           entity_id: "{{ presence_detected_helper }}"
         data:
           datetime: "{{ (now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # Manual Override Flag Management - SET flag when manual change detected
+  # v3.1.9: Proper flag-based override system with separate tracking
+  - if:
+      - condition: template
+        value_template: "{{ manual_change_detected and not manual_override_active }}"
+      - condition: template
+        value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      # SET the override flag
+      - service: input_boolean.turn_on
+        target:
+          entity_id: "{{ helper_override_flag }}"
+        continue_on_error: true
+
+      # Record the timestamp when override was activated
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_override_timestamp }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
+      # Debug log
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🚨 {{ room_name | upper }} MANUAL OVERRIDE ACTIVATED
+                • Reason: Manual change detected (user intervention)
+                • Helper state: {{ states(helper_mode) | default('off') }}
+                • Actual AC state: {{ actual_ac_state }}
+                • Override will block automation for {{ adaptive_override_timeout }} hour(s)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+  # CLEAR override flag if timeout has expired
+  - if:
+      - condition: template
+        value_template: "{{ is_state(helper_override_flag, 'on') and not manual_override_active }}"
+      - condition: template
+        value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      # Clear the override flag (timeout expired)
+      - service: input_boolean.turn_off
+        target:
+          entity_id: "{{ helper_override_flag }}"
+        continue_on_error: true
+
+      # Debug log
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                ✅ {{ room_name | upper }} MANUAL OVERRIDE CLEARED
+                • Reason: Timeout period expired ({{ adaptive_override_timeout }} hour(s))
+                • Automation control resuming
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   # Update temperature stability tracking - record when temp became stable
   - condition: template
