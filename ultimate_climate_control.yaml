@@ -3971,40 +3971,40 @@ action:
       - service: system_log.write
         data:
           message: >
-        🎯 {{ room_name | upper }} DEBUG: Dynamic Target Adjustment
+            🎯 {{ room_name | upper }} DEBUG: Dynamic Target Adjustment
 
-        🔧 Smart Escalation Boost Active:
+            🔧 Smart Escalation Boost Active:
             • Feature Enabled: {{ enable_dynamic_target }}
             • User Desired Temperature: {{ target_temp }}°C
             • Final Escalation Level: {{ final_escalation_level }}
             • Offset Per Level: {{ escalation_offset }}°C
             • Total Adjustment: {{ (final_escalation_level * escalation_offset) | round(1) }}°C
 
-        🌡️ Target Calculation:
-            • Current Mode: {{ last_mode }}
-            {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-            • Cooling Mode: LOWERING target to make AC work harder
-            • Formula: {{ target_temp }}°C - ({{ final_escalation_level }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C
-            • AC will cool to {{ adjusted_target }}°C instead of {{ target_temp }}°C
-            • Creates {{ (target_temp - adjusted_target) | round(1) }}°C buffer zone below user target
-            {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-            • Heating Mode: RAISING target to make AC work harder
-            • Formula: {{ target_temp }}°C + ({{ final_escalation_level }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C
-            • AC will heat to {{ adjusted_target }}°C instead of {{ target_temp }}°C
-            • Creates {{ (adjusted_target - target_temp) | round(1) }}°C buffer zone above user target
-            {% endif %}
+            🌡️ Target Calculation:
+                • Current Mode: {{ last_mode }}
+                {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                • Cooling Mode: LOWERING target to make AC work harder
+                • Formula: {{ target_temp }}°C - ({{ final_escalation_level }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C
+                • AC will cool to {{ adjusted_target }}°C instead of {{ target_temp }}°C
+                • Creates {{ (target_temp - adjusted_target) | round(1) }}°C buffer zone below user target
+                {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                • Heating Mode: RAISING target to make AC work harder
+                • Formula: {{ target_temp }}°C + ({{ final_escalation_level }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C
+                • AC will heat to {{ adjusted_target }}°C instead of {{ target_temp }}°C
+                • Creates {{ (adjusted_target - target_temp) | round(1) }}°C buffer zone above user target
+                {% endif %}
 
-        💡 Why This Helps:
-            • AC compressor works harder with more aggressive target
-            • Combined with Fan Level {{ final_escalation_level }} = maximum effectiveness
-            • Buffer zone prevents immediate drift back when escalation reduces
-            • Auto-reverts to {{ target_temp }}°C once temperature stable
+            💡 Why This Helps:
+                • AC compressor works harder with more aggressive target
+                • Combined with Fan Level {{ final_escalation_level }} = maximum effectiveness
+                • Buffer zone prevents immediate drift back when escalation reduces
+                • Auto-reverts to {{ target_temp }}°C once temperature stable
 
-        ⚙️ Behavior:
-            • Target sent to AC: {{ adjusted_target }}°C ({{ "%.1f" | format(adjusted_target - target_temp) }}°C {% if adjusted_target > target_temp %}above{% else %}below{% endif %} user target)
-            • Once stable and escalation drops to 0: Returns to {{ target_temp }}°C
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.target_adjustment"
+            ⚙️ Behavior:
+                • Target sent to AC: {{ adjusted_target }}°C ({{ "%.1f" | format(adjusted_target - target_temp) }}°C {% if adjusted_target > target_temp %}above{% else %}below{% endif %} user target)
+                • Once stable and escalation drops to 0: Returns to {{ target_temp }}°C
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.target_adjustment"
 
   - if:
       - condition: template
