@@ -812,23 +812,32 @@ Additional:
 
 ## Version History
 
-### **v3.1.3** (Current) - Smart Mode Grace Period Fix
+### **v3.1.4** (Current) - Manual Override False Detection Fix
+
+**🐛 CRITICAL FIX: MANUAL OVERRIDE FALSE DETECTION**
+- **✅ FIXED** - Mode changes no longer trigger false manual override detection
+- **🛡️ ENHANCED** - Manual detection strictly distinguishes automation actions from user actions
+- **⚡ BEHAVIOR** - Added 5-minute buffer after mode changes + never flags 'off' state as manual
+- **🎯 IMPACT** - Stops automation from blocking itself after legitimate mode switches
+
+**What Changed:**
+- **Before:** Smart→Manual→Smart switch → Helper='off' + AC='on' → False manual detection → Automation blocked for 1 hour
+- **After:** Ignores state mismatches when helper='off' (automation-created) OR within 5 minutes of mode start
+- **Result:** Mode changes work smoothly without triggering override protection
+
+**Technical Details:**
+- **New exclusion 1:** `helper_last_mode == 'off'` is NEVER flagged as manual (only automation sets this during mode changes)
+- **New exclusion 2:** Within 5 minutes of `helper_mode_start_time` change (automation settling period)
+- **Existing protection:** Already had 2-minute buffer after ANY automation action
+- **Clear definition:** ONLY user actions via HA UI or physical remote are considered "manual"
+
+### **v3.1.3** - Smart Mode Grace Period Fix
 
 **🐛 CRITICAL FIX: GRACE PERIOD ACTIVATION BUG**
 - **✅ FIXED** - Grace period no longer activates from momentary sensor blips
 - **🛡️ ENHANCED** - Confirmation delay now properly prevents false activations
 - **⚡ BEHAVIOR** - Grace period requires prior CONFIRMED presence (not random motion detection)
 - **🎯 IMPACT** - Stops AC from turning on when nobody is actually in the room
-
-**What Changed:**
-- **Before:** 1-second motion sensor blip → 10-minute grace period → AC turns on with no presence
-- **After:** Grace period ONLY activates after confirmed sustained presence (>= confirmation delay)
-- **With 15-min confirmation + 10-min grace:** Proper protection against false triggers
-
-**Technical Fix:**
-- Grace period condition now requires `presence_confirmation_delay == 0` to activate from timeout alone
-- When confirmation delay is enabled, grace period only works AFTER confirmed sustained presence
-- Prevents sensor glitches and brief motion detections from triggering full automation cycles
 
 ### **v3.0.11** - Comprehensive Test Suite & Validation
 
