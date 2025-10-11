@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.89
+  name: Ultimate Smart Climate Control - v3.0.90
 
   description: |
-    **Ultimate Smart Climate Control v3.0.89**
+    **Ultimate Smart Climate Control v3.0.90**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,17 +56,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.89
+    ## 🆕 Latest Update - v3.0.90
 
-    **🐛 CRITICAL FIX: Manual Override Now Respects User Shutoff v3.0.89**
-    - 🔧 FIXED: AC now stays off when you manually turn it off (remote or dashboard)
-    - 🛑 BUG FIX: Removed logic that overrode manual shutoff when temp conditions warranted AC
-    - ✅ RESPECTS USER: Manual changes now properly detected and honored for configured timeout
-    - ⏱️ TIMEOUT: Respects adaptive_override_timeout setting (default: 3 hours)
+    **🐛 CRITICAL FIX: Manual Override Now PROPERLY Blocks Automation v3.0.90**
+    - 🔧 FIXED: Added global manual override check BEFORE all choose blocks
+    - 🛑 BUG FIX: AC no longer turns back on after you manually turn it off
+    - ✅ ROOT CAUSE: Manual override was checked INSIDE each choose block, but temperature conditions evaluated FIRST
+    - 📊 ENHANCED: Comprehensive debug logging for manual override, escalation, de-escalation, and presence delay
+
+    **🔍 New Debug Logging (enable_debug_logging: true):**
+    - Manual Override: Detection status, timeout remaining, blocking actions
+    - Escalation/De-escalation: Detailed analysis of why Level X was chosen, distance from target
+    - Presence Confirmation Delay: Shows timer status, required delay, grace period tracking
 
     **📝 Previous Updates:**
-    - v3.0.88: 🐛 Smart mode turn-off after grace period (was staying on forever)
-    - v3.0.87: 🐛 Bedroom mode BLE fallback (works when phone BT off)
+    - v3.0.89: 🐛 Attempted manual override fix (incomplete - fixed properly in v3.0.90)
+    - v3.0.88: 🐛 Smart mode turn-off after grace period
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3669,6 +3674,72 @@ action:
       - service: system_log.write
         data:
           message: >
+            🔽 {{ room_name | upper }} DE-ESCALATION DEBUG
+
+            📊 De-escalation Conditions:
+                • distance_from_target: {{ distance_from_target | round(1) }}°C
+                • deescalation_threshold: {{ deescalation_threshold }}°C (start reducing power within this distance)
+                • close_threshold: {{ deescalation_threshold / 2 }}°C (very close to target)
+                • current_effectiveness: {{ current_effectiveness }}%
+                • calculated_trend: {{ calculated_trend }}
+                • temp_change_rate: {{ temp_change_rate | round(3) }}°C/min
+                • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
+
+            🎯 De-escalation Level Analysis:
+                {% if not dynamic_enabled %}
+                • Dynamic Escalation DISABLED - no de-escalation
+                {% elif distance_from_target > deescalation_threshold %}
+                • Level 0: Too far from target ({{ distance_from_target | round(1) }}°C > {{ deescalation_threshold }}°C)
+                • NO de-escalation - maintain current power
+                {% elif calculated_trend == 'stable' or calculated_trend == '' %}
+                • Level 0: No clear temperature trend detected
+                • Cannot predict if we'll overshoot - maintain current power
+                {% elif distance_from_target <= (deescalation_threshold / 2) and current_effectiveness >= 90 %}
+                • Level 3: MAXIMUM de-escalation
+                • Very close ({{ distance_from_target | round(1) }}°C) AND highly effective ({{ current_effectiveness }}%)
+                • Action: Switch to maintenance/eco mode to prevent overshoot
+                {% elif distance_from_target <= 0.3 %}
+                • Level 3: MAXIMUM de-escalation
+                • Extremely close to target ({{ distance_from_target | round(1) }}°C ≤ 0.3°C)
+                • Action: Final approach - minimal power
+                {% elif distance_from_target <= 0.8 and current_effectiveness >= 80 %}
+                • Level 2: HIGH de-escalation
+                • Close to target ({{ distance_from_target | round(1) }}°C ≤ 0.8°C) with good effectiveness ({{ current_effectiveness }}%)
+                • Action: Reduce to medium power
+                {% elif distance_from_target <= 1.5 and calculated_trend != 'stable' %}
+                • Level 2: HIGH de-escalation
+                • Getting close ({{ distance_from_target | round(1) }}°C ≤ 1.5°C) with clear progress
+                • Action: Preventive reduction to avoid overshoot
+                {% elif distance_from_target <= deescalation_threshold and current_effectiveness >= 40 %}
+                • Level 1: LOW de-escalation
+                • Approaching target ({{ distance_from_target | round(1) }}°C ≤ {{ deescalation_threshold }}°C)
+                • Action: Minor power reduction
+                {% else %}
+                • Level 0: Continue current power level
+                • Not yet close enough or effectiveness too low
+                {% endif %}
+
+            ⚡ Result: De-escalation Level = {{ deescalation_level }}
+
+            🎯 Office Specific Settings:
+                • Your de-escalation threshold: {{ deescalation_threshold }}°C (0.8°C = very aggressive)
+                • Current distance: {{ distance_from_target | round(1) }}°C
+                • Will de-escalate when: {{ distance_from_target | round(1) }}°C ≤ {{ deescalation_threshold }}°C
+                {% if distance_from_target > deescalation_threshold %}
+                • ⚠️ Still {{ (distance_from_target - deescalation_threshold) | round(1) }}°C away from de-escalation range
+                {% else %}
+                • ✅ In de-escalation range - reducing power!
+                {% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.deescalation"
+
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and dynamic_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
             🔍 {{ room_name | upper }} WRONG-DIRECTION ESCALATION DEBUG
 
             📊 Feature Status:
@@ -3787,6 +3858,89 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
+  # Manual Override Debug Logging
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔒 {{ room_name | upper }} MANUAL OVERRIDE DEBUG
+
+            🔍 Detection Status:
+                • manual_change_detected: {{ manual_change_detected }}
+                • manual_override_active: {{ manual_override_active }}
+                • adaptive_override_timeout: {{ adaptive_override_timeout }} hours
+                • control_mode: {{ control_mode }}
+
+            📊 State Analysis:
+                • last_mode_state (helper): {{ states(helper_mode) | default('unknown') }}
+                • actual_ac_state: {{ actual_ac_state }}
+                • time_since_change: {{ time_since_change | round(1) }}min
+
+            {% if manual_change_detected %}
+            ✅ MANUAL CHANGE DETECTED:
+                • Detection reason: {% if states(helper_mode) == 'off' and actual_ac_state == 'on' %}AC turned ON when automation expects OFF{% elif states(helper_mode) in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' %}AC turned OFF when automation expects ON{% else %}State mismatch detected{% endif %}
+                • Override will last: {{ adaptive_override_timeout }} hours from detection
+            {% else %}
+            ℹ️ No manual change detected - automation in full control
+            {% endif %}
+
+            {% if manual_override_active %}
+            🚫 MANUAL OVERRIDE ACTIVE:
+                • Duration: {{ ((adaptive_override_timeout * 3600) - ((as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 0)) / 60 | round(0) }} minutes remaining
+                • should_activate: {{ should_activate }} (forced to FALSE by override)
+                • Action: Automation is PAUSED - respecting user's manual changes
+            {% else %}
+            ✅ Override INACTIVE - automation free to operate normally
+            {% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override"
+
+  # Presence Confirmation Delay Debug Logging (Smart Mode)
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled and control_mode == 'Smart' }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            👤 {{ room_name | upper }} PRESENCE CONFIRMATION DEBUG
+
+            ⏱️ Delay Configuration:
+                • presence_confirmation_delay: {{ presence_confirmation_delay }} minutes
+                • presence_timeout (grace period): {{ presence_timeout }} minutes
+
+            🔍 Current Status:
+                • room_presence_detected: {{ room_presence_detected }}
+                • minutes_with_presence: {{ minutes_with_presence | round(1) }} min
+                • minutes_since_presence: {{ minutes_since_presence | round(0) }} min
+                • smart_presence_active: {{ smart_presence_active }}
+
+            {% if presence_confirmation_delay > 0 %}
+            📋 Confirmation Delay Logic:
+                {% if room_presence_detected %}
+                ✅ Presence detected NOW:
+                    • Time with presence: {{ minutes_with_presence | round(1) }} minutes
+                    • Required delay: {{ presence_confirmation_delay }} minutes
+                    • Status: {% if minutes_with_presence >= presence_confirmation_delay %}✅ CONFIRMED - Can activate AC{% else %}⏳ WAITING - {{ (presence_confirmation_delay - minutes_with_presence) | round(1) }} min until activation{% endif %}
+                {% else %}
+                ❌ No presence detected:
+                    • Last seen: {{ minutes_since_presence | round(0) }} minutes ago
+                    • Grace period: {{ presence_timeout }} minutes
+                    • Status: {% if minutes_since_presence < presence_timeout %}⏳ GRACE PERIOD ACTIVE - AC will stay on{% else %}❌ GRACE PERIOD EXPIRED - AC will turn off{% endif %}
+                {% endif %}
+            {% else %}
+            ℹ️ Instant activation enabled (no confirmation delay)
+            {% endif %}
+
+            🎯 Final Decision:
+                • smart_presence_active: {{ smart_presence_active }}
+                • AC will: {% if smart_presence_active %}✅ STAY ON / ACTIVATE{% else %}❌ TURN OFF / STAY OFF{% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.presence_delay"
+
   # ADAPTIVE CONTROL REACTIVATION: Clear adaptive_off when room is occupied and heating/cooling needed
   - if:
       - condition: template
@@ -3837,6 +3991,39 @@ action:
               entity_id: "{{ helper_mode_time }}"
             data:
               datetime: "{{ now() }}"
+
+  # GLOBAL MANUAL OVERRIDE CHECK - Exit before choose blocks if override is active
+  # This prevents automation from turning AC back on when user manually turned it off
+  - if:
+      - condition: template
+        value_template: "{{ manual_override_active and control_mode != 'Manual' }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🚫 {{ room_name | upper }} MANUAL OVERRIDE - BLOCKING AUTOMATION
+
+                ⏸️ Automation Paused:
+                    • User manually changed AC settings
+                    • Override timeout: {{ adaptive_override_timeout }} hours
+                    • Time remaining: {{ ((adaptive_override_timeout * 3600) - ((as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 0)) / 60 | round(0) }} minutes
+                    • Control mode: {{ control_mode }}
+
+                🔒 Respecting User Control:
+                    • Last mode (helper): {{ states(helper_mode) | default('off') }}
+                    • Actual AC state: {{ actual_ac_state }}
+                    • All automation actions blocked until override expires
+
+                ℹ️ Override will clear automatically after {{ adaptive_override_timeout }} hours
+                   or immediately if you switch to Manual mode
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override_block"
+      # Exit immediately - don't process any choose blocks
+      - stop: "Manual override active - respecting user's manual changes"
 
   - choose:
       # Handle Manual mode - True manual control with optional timeout
