@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.4
+  name: Ultimate Smart Climate Control - v3.1.5
 
   description: |
-    **Ultimate Smart Climate Control v3.1.4**
+    **Ultimate Smart Climate Control v3.1.5**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,22 +56,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.1.4
+    ## 🆕 Latest Update - v3.1.5
 
-    **🐛 CRITICAL FIX: Manual Override False Detection Bug v3.1.4**
-    - 🐛 FIXED: Mode changes no longer trigger false manual override detection
-    - 🛡️ ENHANCED: Manual detection now strictly distinguishes automation actions from user actions
-    - ⚡ BEHAVIOR: Added 5-minute buffer after mode changes and never flags 'off' state as manual
-    - 🎯 IMPACT: Stops automation from blocking itself after legitimate mode switches
+    **🐛 ENHANCED: Manual Shutoff Detection During Settling Period v3.1.5**
+    - ✅ FIXED: Manual AC shutoffs now detected immediately, even within 5-min settling buffer
+    - 🛡️ SAFETY: User can always turn off AC manually, automation respects it instantly
+    - ⚡ BEHAVIOR: 5-min buffer prevents false positives but allows critical shutoff detection
+    - 🎯 IMPACT: Best of both worlds - no false triggers from mode changes, but shutoffs work
 
     **What Changed:**
-    - **Before:** Smart→Manual→Smart mode switch → Helper='off' + AC='on' → False manual detection → 1hr block
-    - **After:** Ignores state mismatches when helper='off' (automation-created) or within 5min of mode start
-    - **Result:** Mode changes work smoothly without triggering override protection
+    - **Before:** 5-min buffer blocked ALL manual detection including critical AC shutoffs
+    - **After:** Buffer has exception for AC shutoffs - always detected for user safety
+    - **Result:** Mode changes don't false-trigger, but you can always shut off AC manually
 
     **📝 Previous Updates:**
+    - v3.1.4: 🐛 Manual override false detection fix (mode change protection)
     - v3.1.3: 🐛 Smart mode grace period fix (confirmation delay requirement)
-    - v3.1.2: 🐛 Extended stall detection distance requirement (1.5°C)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3364,12 +3364,15 @@ action:
             {# Helper cleared to 'off' by automation during mode change - NOT a manual change #}
             false
           {# NEVER flag as manual within 5 minutes of mode start - automation still settling #}
-          {% elif time_since_mode_start < 5 %}
+          {# BUT: Always detect AC shutoffs regardless of timing (user safety override) #}
+          {% elif time_since_mode_start < 5 and not (last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
             {# Mode just changed - give automation time to sync state - NOT a manual change #}
+            {# Exception: Always detect manual shutoffs even during settling period #}
             false
           {# Detect unexpected state changes that indicate manual intervention #}
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' %}
             {# AC turned off when automation expects it running - MANUAL SHUTOFF #}
+            {# This catches: Physical remote shutoff, HA UI shutoff, voice command shutoff #}
             true
           {% elif last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'on' %}
             {# AC is running as expected - this is NORMAL operation, not manual change #}
