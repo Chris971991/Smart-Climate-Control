@@ -4109,6 +4109,13 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override"
 
+  # TEST: Unconditional log to verify execution reaches this point
+  - service: system_log.write
+    data:
+      message: "🧪 {{ room_name | upper }} TEST: About to check presence debug - debug_enabled={{ debug_enabled }}, control_mode={{ control_mode }}"
+      level: warning
+      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.test"
+
   # Presence Confirmation Delay Debug Logging (Smart Mode)
   - if:
       - condition: template
