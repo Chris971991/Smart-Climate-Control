@@ -812,7 +812,25 @@ Additional:
 
 ## Version History
 
-### **v3.1.6** (Current) - False Manual Override from AC Response Delay
+### **v3.1.7** (Current) - Manual Override Re-Triggering After Mode Switch
+
+**🐛 CRITICAL FIX: v3.1.6 REGRESSION**
+- **✅ FIXED** - helper_change update now skips mode_change triggers to preserve timestamp clearing
+- **🛡️ ENHANCED** - Mode change handler's PAST timestamp setting is now respected
+- **⚡ BEHAVIOR** - Manual→Smart switch sets timestamp 2+ hours in past, no longer overwritten
+- **🎯 IMPACT** - Override properly clears when switching from Manual mode and stays cleared
+
+**What Changed:**
+- **Before (v3.1.6):** helper_change updated on EVERY run → Overwrote PAST timestamp → Override re-activated
+- **After (v3.1.7):** Skip update when `trigger.id == 'mode_change'` → Preserves timestamp → Override stays cleared
+- **Result:** Manual→Smart/Auto switch properly clears override permanently
+
+**Real-World Impact:**
+- User switches Manual→Smart at 02:39 → Mode handler sets helper_change to 00:39 (2 hrs past)
+- v3.1.6: Next check at 02:42 updates to NOW → 3.8 min ago → Override RE-ACTIVATES ❌
+- v3.1.7: Next check skips update → Stays at 00:39 → 2+ hrs ago → Override STAYS CLEARED ✅
+
+### **v3.1.6** - False Manual Override from AC Response Delay
 
 **🐛 CRITICAL FIX: HELPER_CHANGE TIMESTAMP STALE DATA**
 - **✅ FIXED** - Manual override no longer triggers when AC takes time to respond to commands
