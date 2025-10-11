@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.91
+  name: Ultimate Smart Climate Control - v3.0.92
 
   description: |
-    **Ultimate Smart Climate Control v3.0.91**
+    **Ultimate Smart Climate Control v3.0.92**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,23 +56,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.91
+    ## 🆕 Latest Update - v3.0.92
 
-    **⚡ NEW FEATURE: Extended Stall Escalation (Configurable Emergency Trigger) v3.0.91**
-    - ✨ NEW INPUT: `extended_stall_multiplier` - Control when Level 4/Fan 5 triggers after extended stalling
-    - 🎯 USER-REQUESTED: "AC should pump harder when stuck for too long at same temp"
-    - 🚀 CONFIGURABLE: 5x-100x multiplier (default 30x = 60min with 2min stall time)
-    - 📊 EXAMPLE: With 20x multiplier, if stuck for 40+ minutes with poor progress → Emergency Level 4!
-    - 🔍 DEBUG: New extended stall detection logging shows threshold and trigger status
+    **🐛 CRITICAL BUG FIXES: Smart Mode Protection Finally Works v3.0.92**
+    - 🔧 FIXED: `presence_confirmation_delay` timer now RESETS when presence lost (was never resetting!)
+    - 🔧 FIXED: `min_off_time_minutes` protection now ENFORCED in all tier start conditions
+    - 📝 CLARIFIED: `adaptive_occupied_delay` description - it's for Manual→Auto/Smart switching only
+    - 🎯 USER REPORT: "AC turned off then immediately back on despite 8min off protection and presence delay!"
 
-    **How It Works:**
-    - Time-based stall (Level 3) triggers after `stall_escalation_time` minutes
-    - Extended stall (Level 4) triggers after `stall_escalation_time × multiplier` minutes
-    - Gives you control over when system goes to maximum power during extended stalling
+    **What Was Broken:**
+    - Presence timer kept counting from old timestamp even after leaving room → BLE flickers ignored delay
+    - Off-time protection not checked in 4/6 tier start conditions → AC could start after 31 seconds instead of 8 minutes
+    - Adaptive occupied delay description unclear → users confused about which setting protects Smart mode
 
     **📝 Previous Updates:**
+    - v3.0.91: ⚡ Extended stall escalation multiplier (user-configurable Level 4 trigger)
     - v3.0.90: 🐛 Manual override properly blocks automation
-    - v3.0.89: 🐛 Manual override detection fixed
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2115,12 +2114,17 @@ blueprint:
         adaptive_occupied_delay:
           name: Occupied Delay (minutes)
           description: |
-            **How long to wait** after detecting room presence before switching to Auto/Smart mode (only if currently in Manual).
+            **ADAPTIVE CONTROL MODE SWITCHING ONLY:** How long to wait after detecting room presence before switching FROM Manual mode TO Auto/Smart mode.
 
-            • **Shorter delays:** More responsive but may switch too frequently
-            • **Longer delays:** Less responsive but avoids unnecessary switching
+            **This setting does NOT affect Smart mode turn-on protection** - use "Presence Confirmation Delay" for that instead.
+
+            • **Shorter delays (1-3 min):** Quickly switch from Manual to Auto/Smart when you enter
+            • **Longer delays (5-10 min):** Avoid switching too soon if you manually changed the mode
+            • **Very long (15-60 min):** Stay in Manual mode longer after you manually set it
 
             **Recommended:** 5 minutes for balanced behavior.
+
+            **Example:** You manually set AC to OFF, then enter the room. Adaptive control will wait 5 minutes of continuous presence before switching back to Auto/Smart mode and turning the AC on.
           default: 5
           selector:
             number:
@@ -3363,7 +3367,22 @@ action:
           entity_id: "{{ presence_detected_helper }}"
         data:
           datetime: "{{ now() }}"
-  
+
+  # CRITICAL FIX v3.0.92: Reset presence timer when presence is LOST
+  # This ensures minutes_with_presence resets to 0 when room becomes empty,
+  # which is required for presence_confirmation_delay to work correctly
+  - if:
+      - condition: template
+        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: "{{ had_recent_presence }}"
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
+          datetime: "{{ now() }}"
+
   # Update temperature stability tracking - record when temp became stable
   - condition: template
     value_template: "{{ helper_temp_stable_since not in [none, '', 'unavailable', 'unknown'] and helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
@@ -4542,7 +4561,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -4859,7 +4879,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -5521,7 +5542,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
+                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -5852,7 +5874,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and (control_mode != 'Smart' or smart_presence_active) }}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
+                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
