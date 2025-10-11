@@ -4233,7 +4233,9 @@ action:
 
             {% if manual_override_active %}
             🚫 MANUAL OVERRIDE ACTIVE:
-                • Duration: {{ ((adaptive_override_timeout * 3600) - ((as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 0)) / 60 | round(0) }} minutes remaining
+                • Override Flag: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
+                • Override Since: {{ states(helper_override_timestamp) if helper_override_timestamp else 'unknown' }}
+                • Timeout: {{ adaptive_override_timeout }} hour(s)
                 • should_activate: {{ should_activate }} (forced to FALSE by override)
                 • Action: Automation is PAUSED - respecting user's manual changes
             {% else %}
