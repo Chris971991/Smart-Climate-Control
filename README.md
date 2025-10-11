@@ -812,24 +812,46 @@ Additional:
 
 ## Version History
 
-### **v3.1.4** (Current) - Manual Override False Detection Fix
+### **v3.1.6** (Current) - False Manual Override from AC Response Delay
+
+**🐛 CRITICAL FIX: HELPER_CHANGE TIMESTAMP STALE DATA**
+- **✅ FIXED** - Manual override no longer triggers when AC takes time to respond to commands
+- **🛡️ ENHANCED** - `helper_change` now updates after EVERY automation action (not just mode changes)
+- **⚡ BEHAVIOR** - 2-minute buffer now properly applies to most recent AC state change
+- **🎯 IMPACT** - Eliminates false "manual change detected" when AC initialization is delayed
+
+**What Changed:**
+- **Before:** `helper_change` only updated on mode changes → Stale timestamps → False detections within 21 seconds of AC activation
+- **After:** `helper_change` updates after ALL AC state changes → Fresh timestamps → Accurate 2-minute buffer protection
+- **Result:** No more false manual override triggers from AC response delays or state synchronization issues
+
+**Technical Details:**
+- **Root Cause:** AC initialization didn't update `helper_change`, so manual detection compared against stale timestamp
+- **Fix Location:** Added `helper_change` update at line 9980 (after main choose block, before final debug)
+- **Protection:** Conditional block ensures helper exists before updating (`continue_on_error: true` for safety)
+- **Coverage:** Applies to ALL AC state changes: turn on, turn off, temperature adjust, fan change, mode change
+
+**Real-World Example (Office AC):**
+- **02:05:00**: AC initialized to cooling_low (helper_change NOT updated - BUG!)
+- **02:05:21** (21 sec later): Check runs, sees AC off, `time_since_change` = 0.4 min from OLD timestamp
+- **Result:** False manual override triggered → 1-hour block → Temperature rose to 24.3°C unchecked
+- **With Fix:** `helper_change` updated at 02:05:00 → 02:05:21 check sees 0.35 min < 2 min → No false detection
+
+### **v3.1.5** - Manual Shutoff Detection During Settling Period
+
+**🛡️ SAFETY ENHANCEMENT**
+- **✅ FIXED** - Manual AC shutoffs now detected immediately, even within 5-min settling buffer
+- **🛡️ SAFETY** - User can always turn off AC manually, automation respects it instantly
+- **⚡ BEHAVIOR** - 5-min buffer prevents false positives but allows critical shutoff detection
+- **🎯 IMPACT** - Best of both worlds - no false triggers from mode changes, but shutoffs work
+
+### **v3.1.4** - Manual Override False Detection Fix
 
 **🐛 CRITICAL FIX: MANUAL OVERRIDE FALSE DETECTION**
 - **✅ FIXED** - Mode changes no longer trigger false manual override detection
 - **🛡️ ENHANCED** - Manual detection strictly distinguishes automation actions from user actions
 - **⚡ BEHAVIOR** - Added 5-minute buffer after mode changes + never flags 'off' state as manual
 - **🎯 IMPACT** - Stops automation from blocking itself after legitimate mode switches
-
-**What Changed:**
-- **Before:** Smart→Manual→Smart switch → Helper='off' + AC='on' → False manual detection → Automation blocked for 1 hour
-- **After:** Ignores state mismatches when helper='off' (automation-created) OR within 5 minutes of mode start
-- **Result:** Mode changes work smoothly without triggering override protection
-
-**Technical Details:**
-- **New exclusion 1:** `helper_last_mode == 'off'` is NEVER flagged as manual (only automation sets this during mode changes)
-- **New exclusion 2:** Within 5 minutes of `helper_mode_start_time` change (automation settling period)
-- **Existing protection:** Already had 2-minute buffer after ANY automation action
-- **Clear definition:** ONLY user actions via HA UI or physical remote are considered "manual"
 
 ### **v3.1.3** - Smart Mode Grace Period Fix
 

@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.5
+  name: Ultimate Smart Climate Control - v3.1.6
 
   description: |
-    **Ultimate Smart Climate Control v3.1.5**
+    **Ultimate Smart Climate Control v3.1.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,18 +56,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.1.5
+    ## 🆕 Latest Update - v3.1.6
 
-    **🐛 ENHANCED: Manual Shutoff Detection During Settling Period v3.1.5**
-    - ✅ FIXED: Manual AC shutoffs now detected immediately, even within 5-min settling buffer
-    - 🛡️ SAFETY: User can always turn off AC manually, automation respects it instantly
-    - ⚡ BEHAVIOR: 5-min buffer prevents false positives but allows critical shutoff detection
-    - 🎯 IMPACT: Best of both worlds - no false triggers from mode changes, but shutoffs work
+    **🐛 CRITICAL FIX: False Manual Override from AC Response Delay v3.1.6**
+    - ✅ FIXED: Manual override no longer triggers when AC takes time to respond to commands
+    - 🛡️ ENHANCED: helper_change now updates after EVERY automation action (not just mode changes)
+    - ⚡ BEHAVIOR: 2-minute buffer now properly applies to most recent AC state change
+    - 🎯 IMPACT: Eliminates false "manual change detected" when AC initialization is delayed
 
     **What Changed:**
-    - **Before:** 5-min buffer blocked ALL manual detection including critical AC shutoffs
-    - **After:** Buffer has exception for AC shutoffs - always detected for user safety
-    - **Result:** Mode changes don't false-trigger, but you can always shut off AC manually
+    - **Before:** helper_change only updated on mode changes → stale timestamps → false detections
+    - **After:** helper_change updates after ALL AC actions → fresh timestamps → accurate detection
+    - **Result:** No more false manual override triggers from AC response delays or state sync issues
 
     **📝 Previous Updates:**
     - v3.1.4: 🐛 Manual override false detection fix (mode change protection)
@@ -88,8 +88,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.91** - ⚡ NEW: Extended stall escalation (configurable Level 4 trigger after extended stalling)
-    **v3.0.90** - 🐛 CRITICAL FIX: Manual override properly blocks automation (AC stays off when turned off manually)
+    **v3.1.6** - 🐛 CRITICAL FIX: False manual override from AC response delays (helper_change updates after ALL actions)
+    **v3.1.5** - 🛡️ ENHANCED: Manual shutoff detection during settling period (shutoffs always detected for safety)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -9976,6 +9976,20 @@ action:
                     📋 Temperature {{ current_temp }}°C is in comfort zone - no cooling/heating needed
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  # CRITICAL FIX v3.1.6: Update helper_change after ANY AC state change
+  # This ensures the 2-minute manual detection buffer applies to the MOST RECENT automation action
+  # Prevents false manual override detection when AC takes time to respond to commands
+  - if:
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown', []] and helper_change is string and helper_change != '' }}"
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
 
   # Debug: No conditions matched
   - if:
