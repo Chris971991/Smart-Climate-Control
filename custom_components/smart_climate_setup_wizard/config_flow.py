@@ -107,6 +107,19 @@ HELPER_DEFINITIONS = {
         "icon": "mdi:hand-back-right",
         "initial": False,
     },
+    "override_active": {
+        "domain": "input_boolean",
+        "name": "{room} Climate Override Active",
+        "icon": "mdi:alert-circle",
+        "initial": False,
+    },
+    "override_time": {
+        "domain": "input_datetime",
+        "name": "{room} Climate Override Time",
+        "icon": "mdi:clock-alert",
+        "has_date": True,
+        "has_time": True,
+    },
     "proximity_override": {
         "domain": "input_boolean",
         "name": "{room} Climate Proximity Override",
@@ -147,7 +160,7 @@ FEATURE_HELPERS = {
         "temp_stable_since",
         "last_transition",
     ],
-    "manual_override": ["manual_override", "proximity_override"],
+    "manual_override": ["manual_override", "override_active", "override_time", "proximity_override"],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected"],
 }
@@ -1281,6 +1294,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if config.get("enable_manual_override", True):
             if "helper_proximity_override" not in helpers:
                 helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
+            helpers["helper_override_active"] = f"input_boolean.climate_override_active_{sanitized_name}"
+            helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
 
         # Build automation config with auto-calculated optimal settings
         comfort_width = config.get("comfort_zone_width", 1.0)
@@ -1930,6 +1945,12 @@ Copy this YAML and add it to your dashboard:
             helpers_to_delete.extend([
                 f"input_datetime.climate_presence_detected_{sanitized_name}",
                 f"input_boolean.climate_proximity_override_{sanitized_name}",
+            ])
+
+        if config_entry.data.get("enable_manual_override", True):
+            helpers_to_delete.extend([
+                f"input_boolean.climate_override_active_{sanitized_name}",
+                f"input_datetime.climate_override_time_{sanitized_name}",
             ])
 
         if config_entry.data.get("enable_dynamic_adaptation", True):
