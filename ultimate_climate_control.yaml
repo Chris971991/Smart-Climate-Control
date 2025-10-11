@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.0.90
+  name: Ultimate Smart Climate Control - v3.0.91
 
   description: |
-    **Ultimate Smart Climate Control v3.0.90**
+    **Ultimate Smart Climate Control v3.0.91**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,22 +56,23 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.0.90
+    ## 🆕 Latest Update - v3.0.91
 
-    **🐛 CRITICAL FIX: Manual Override Now PROPERLY Blocks Automation v3.0.90**
-    - 🔧 FIXED: Added global manual override check BEFORE all choose blocks
-    - 🛑 BUG FIX: AC no longer turns back on after you manually turn it off
-    - ✅ ROOT CAUSE: Manual override was checked INSIDE each choose block, but temperature conditions evaluated FIRST
-    - 📊 ENHANCED: Comprehensive debug logging for manual override, escalation, de-escalation, and presence delay
+    **⚡ NEW FEATURE: Extended Stall Escalation (Configurable Emergency Trigger) v3.0.91**
+    - ✨ NEW INPUT: `extended_stall_multiplier` - Control when Level 4/Fan 5 triggers after extended stalling
+    - 🎯 USER-REQUESTED: "AC should pump harder when stuck for too long at same temp"
+    - 🚀 CONFIGURABLE: 5x-100x multiplier (default 30x = 60min with 2min stall time)
+    - 📊 EXAMPLE: With 20x multiplier, if stuck for 40+ minutes with poor progress → Emergency Level 4!
+    - 🔍 DEBUG: New extended stall detection logging shows threshold and trigger status
 
-    **🔍 New Debug Logging (enable_debug_logging: true):**
-    - Manual Override: Detection status, timeout remaining, blocking actions
-    - Escalation/De-escalation: Detailed analysis of why Level X was chosen, distance from target
-    - Presence Confirmation Delay: Shows timer status, required delay, grace period tracking
+    **How It Works:**
+    - Time-based stall (Level 3) triggers after `stall_escalation_time` minutes
+    - Extended stall (Level 4) triggers after `stall_escalation_time × multiplier` minutes
+    - Gives you control over when system goes to maximum power during extended stalling
 
     **📝 Previous Updates:**
-    - v3.0.89: 🐛 Attempted manual override fix (incomplete - fixed properly in v3.0.90)
-    - v3.0.88: 🐛 Smart mode turn-off after grace period
+    - v3.0.90: 🐛 Manual override properly blocks automation
+    - v3.0.89: 🐛 Manual override detection fixed
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -88,8 +89,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.0.89** - 🐛 CRITICAL FIX: Manual override now respects user shutoff (AC stays off when turned off manually)
-    **v3.0.88** - 🐛 CRITICAL FIX: Smart mode turn-off now works (AC shuts off after grace period when room vacant)
+    **v3.0.91** - ⚡ NEW: Extended stall escalation (configurable Level 4 trigger after extended stalling)
+    **v3.0.90** - 🐛 CRITICAL FIX: Manual override properly blocks automation (AC stays off when turned off manually)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -1718,6 +1719,52 @@ blueprint:
               max: 3.0
               step: 0.1
               unit_of_measurement: "°C"
+
+        extended_stall_multiplier:
+          name: Extended Stall Multiplier
+          description: |
+            **How many times the stall time** before triggering maximum escalation (Level 4/Fan 5).
+
+            **How it works:**
+            When AC has been running with poor progress for `stall_escalation_time × multiplier`,
+            escalation jumps to Level 4 (emergency/maximum power).
+
+            **Examples with stall_escalation_time = 2 minutes:**
+            • **10x:** Emergency after 20 minutes stuck → Very aggressive
+            • **20x:** Emergency after 40 minutes stuck → Aggressive (recommended)
+            • **30x:** Emergency after 60 minutes stuck → Balanced
+            • **50x:** Emergency after 100 minutes stuck → Patient
+            • **100x:** Emergency after 200 minutes stuck → Very patient
+
+            **User scenario (20x multiplier, 2min stall time):**
+            ```
+            Time 0: AC starts cooling, 25°C → 22°C target
+            Time 2: Still 25°C, slow progress → Level 3 (time-based stall)
+            Time 10: Still 24.8°C, poor progress → Level 3 (waiting)
+            Time 40: Still 24.5°C after 40 min → Level 4! (emergency)
+            Result: Maximum fan power after extended stalling
+            ```
+
+            **When to use lower values (aggressive):**
+            • Gaming rooms with high, variable heat loads
+            • Rooms that need fast temperature correction
+            • Poor insulation or external heat sources
+            • Testing/debugging escalation behavior
+
+            **When to use higher values (patient):**
+            • Bedrooms (avoid sudden fan noise increases)
+            • Well-insulated rooms with stable temps
+            • Efficient AC units that eventually catch up
+            • Rooms where you rarely need maximum power
+
+            **Recommendation:** Start with 20x-30x, adjust based on how long your AC typically takes to reach target.
+          default: 30
+          selector:
+            number:
+              min: 5
+              max: 100
+              step: 5
+              mode: slider
         
         deescalation_approach_threshold:
           name: De-escalation Approach Threshold
@@ -2280,6 +2327,7 @@ variables:
   dynamic_enabled: !input enable_dynamic_adaptation
   effectiveness_check_mins: !input effectiveness_check_minutes
   stall_time_threshold: !input stall_escalation_time
+  extended_stall_multiplier: !input extended_stall_multiplier
   min_progress_rate: !input minimum_progress_rate
   temp_tolerance: !input escalation_temp_tolerance
   deescalation_threshold: !input deescalation_approach_threshold
@@ -2846,6 +2894,8 @@ action:
             4  {# Cooling but temperature rising above comfort zone #}
           {% elif last_mode == 'heating' and calculated_trend == 'falling' and current_temp < (comfort_min_temp - 1.0) %}
             4  {# Heating but temperature falling below comfort zone #}
+          {% elif time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 0.3 %}
+            4  {# EXTENDED STALL: Stuck for extended period with no progress - emergency escalation (user-configurable) #}
 
           {# Level 0: VERY CLOSE TO TARGET - Don't escalate, maintain only #}
           {% elif distance_from_target <= 0.5 and current_effectiveness >= 85 %}
@@ -3662,6 +3712,14 @@ action:
                 • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)
                 • Distance > {{ (temp_tolerance / 2) | round(1) }}°C: {{ distance_from_target > (temp_tolerance / 2) }}
                 • SHOULD TRIGGER: {{ time_in_current_mode >= stall_time_threshold and temp_change_rate | abs < min_progress_rate and distance_from_target > (temp_tolerance / 2) }}
+
+            🚨 Extended Stall Detection (Level 4 Emergency):
+                • Extended threshold: {{ (stall_time_threshold * extended_stall_multiplier) | round(0) }}min ({{ stall_time_threshold }}min × {{ extended_stall_multiplier }})
+                • Time in mode: {{ time_in_current_mode | round(1) }}min
+                • Time ≥ threshold: {{ time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) }}
+                • Progress rate < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate }}
+                • Distance > 0.3°C: {{ distance_from_target > 0.3 }}
+                • SHOULD TRIGGER EMERGENCY: {{ time_in_current_mode >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate | abs < min_progress_rate and distance_from_target > 0.3 }}
 
             ⚡ Result: Base Escalation Level = {{ escalation_level }}
           level: warning
