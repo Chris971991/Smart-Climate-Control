@@ -1321,6 +1321,10 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     "enable_eco_mode": config.get("enable_eco_mode", True),
                     "fan_speed_eco": config.get("fan_speed_eco", "Level 1"),
                     "enable_notifications": config.get("enable_notifications", False),
+
+                    # Dynamic target adjustment (new in v3.1.0)
+                    "enable_dynamic_target_adjustment": False,  # Default off (safe)
+                    "escalation_target_offset": 1.0,  # Default 1.0°C per level
                 },
             },
         }
