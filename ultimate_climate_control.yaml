@@ -4355,8 +4355,9 @@ action:
 
                 ⏸️ Automation Paused:
                     • User manually changed AC settings
-                    • Override timeout: {{ adaptive_override_timeout }} hours
-                    • Time remaining: {{ ((adaptive_override_timeout * 3600) - ((as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 0)) / 60 | round(0) }} minutes
+                    • Override Flag: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
+                    • Override Since: {{ states(helper_override_timestamp) if helper_override_timestamp else 'unknown' }}
+                    • Timeout: {{ adaptive_override_timeout }} hour(s)
                     • Control mode: {{ control_mode }}
 
                 🔒 Respecting User Control:
@@ -4364,7 +4365,7 @@ action:
                     • Actual AC state: {{ actual_ac_state }}
                     • All automation actions blocked until override expires
 
-                ℹ️ Override will clear automatically after {{ adaptive_override_timeout }} hours
+                ℹ️ Override will clear automatically after {{ adaptive_override_timeout }} hour(s)
                    or immediately if you switch to Manual mode
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override_block"
