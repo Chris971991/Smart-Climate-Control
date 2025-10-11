@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.0
+  name: Ultimate Smart Climate Control - v3.0.93
 
   description: |
-    **Ultimate Smart Climate Control v3.1.0**
+    **Ultimate Smart Climate Control v3.0.93**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -3461,9 +3461,9 @@ action:
         data:
           datetime: "{{ now() }}"
 
-  # CRITICAL FIX v3.0.92: Reset presence timer when presence is LOST
-  # This ensures minutes_with_presence resets to 0 when room becomes empty,
-  # which is required for presence_confirmation_delay to work correctly
+  # CRITICAL FIX v3.0.93: Reset presence timer when presence is LOST
+  # Set to 1 week ago so had_recent_presence becomes FALSE, allowing fresh timer on return
+  # This ensures minutes_with_presence resets properly when re-entering room
   - if:
       - condition: template
         value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
@@ -3474,7 +3474,7 @@ action:
         target:
           entity_id: "{{ presence_detected_helper }}"
         data:
-          datetime: "{{ now() }}"
+          datetime: "{{ (now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S') }}"
 
   # Update temperature stability tracking - record when temp became stable
   - condition: template
