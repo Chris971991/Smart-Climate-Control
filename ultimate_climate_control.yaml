@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.10
+  name: Ultimate Smart Climate Control - v3.1.11
 
   description: |
-    **Ultimate Smart Climate Control v3.1.10**
+    **Ultimate Smart Climate Control v3.1.11**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
 
@@ -56,23 +56,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.1.10
+    ## 🆕 Latest Update - v3.1.11
 
-    **🐛 CRITICAL: Boolean Type Conversion Fix v3.1.10**
-    - ✅ FIXED: Jinja2 multiline templates returning strings instead of booleans
-    - 🛡️ CRITICAL: String "false" is TRUTHY in Python - caused override to always block
-    - ⚡ RESOLVED: Rewrote manual_change_detected and manual_override_active as pure boolean expressions
-    - 🎯 ENHANCED: Added comprehensive pre-condition debug logging for troubleshooting
-
-    **What Changed:**
-    - **Problem:** `{% if %}...false...{% endif %}` returned string `"false"`, not boolean `false`
-    - **Impact:** String `"false"` evaluates as TRUE (non-empty string) → Override always active
-    - **Solution:** Changed to `{{ (condition1) and (condition2) }}` syntax → Returns actual boolean
-    - **Result:** Manual override now correctly activates/deactivates based on actual conditions
+    **🔧 METADATA FIX: Corrected Blueprint Source URL v3.1.11**
+    - ✅ FIXED: Changed placeholder source_url to actual repository path
+    - 🛡️ RESOLVED: Blueprint re-import now works correctly in Home Assistant UI
+    - ⚡ IMPACT: Users can now update blueprint without 404 errors
 
     **📝 Previous Updates:**
+    - v3.1.10: 🐛 CRITICAL boolean type conversion fix (string "false" vs boolean false)
     - v3.1.9: 🐛 Proper manual override with dedicated flag system (architecture rewrite)
-    - v3.1.5: 🐛 Manual shutoff detection during settling period (safety priority)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -98,7 +91,7 @@ blueprint:
 
     **Blueprint Direct Import:** `https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml`
   domain: automation
-  source_url: https://github.com/yourusername/ultimate-climate-control
+  source_url: https://github.com/Chris971991/Smart-Climate-Control/blob/main/ultimate_climate_control.yaml
   input:
     # Basic required settings (always visible)
     room_name:
