@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.3.2
+  name: Ultimate Smart Climate Control - v3.3.3
 
   description: |
-    **Ultimate Smart Climate Control v3.3.2**
+    **Ultimate Smart Climate Control v3.3.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.3.2
+    ## 🆕 Latest Update - v3.3.3
 
-    **🐛 CRITICAL FIX: 12-Minute Off-Time Protection Bug**
-    - ✅ FIXED: Mode changes no longer bypass 12-minute compressor protection
-    - ✅ FIXED: System now checks BOTH helper mode AND actual AC state for off-time enforcement
-    - 🛡️ PROTECTION: Prevents rapid on/off cycles that can damage compressor
-    - 🎯 SCENARIO: Smart→Manual→Smart no longer turns AC back on within 1 minute
+    **🐛 CRITICAL FIX: Manual Override False Detection on Mode Changes**
+    - ✅ FIXED: Manual override no longer activates when switching modes (Smart→Manual→Smart)
+    - ✅ FIXED: Added 5-minute buffer after mode changes to prevent false detections
+    - 🛡️ PROTECTION: Mode transitions won't block automation for 1 hour anymore
+    - 🎯 RESULT: Clean mode switching without triggering override protection
 
     **📝 Previous Updates:**
+    - v3.3.2: 🐛 FIXED - 12-minute off-time protection bypass on mode changes
     - v3.3.1: 🐛 FIXED - Setup Wizard translation labels (UI clarity)
     - v3.3.0: 🎯 NEW - Enhanced Manual Override Detection (temp, fan, swing, HVAC mode changes)
-    - v3.2.2: 🐛 HOTFIX - Template syntax error
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3691,11 +3691,21 @@ action:
 
   # Manual Override Flag Management - SET flag when manual change detected
   # v3.1.9: Proper flag-based override system with separate tracking
+  # v3.3.3: Added mode change buffer to prevent false detections from mode transitions
   - if:
       - condition: template
         value_template: "{{ manual_change_detected and not manual_override_active }}"
       - condition: template
         value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: >
+          {% set mode_change_buffer = 5 %}
+          {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
+            {% set time_since_mode_change = (as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60 %}
+            {{ time_since_mode_change >= mode_change_buffer }}
+          {% else %}
+            true
+          {% endif %}
     then:
       # SET the override flag
       - service: input_boolean.turn_on
@@ -4376,6 +4386,8 @@ action:
                 • Time since automation action: {{ time_since_change | round(1) }}min
                 • Minimum wait required: {{ check_interval }}min
                 • Detection window open: {{ trigger.id == 'periodic_check' and time_since_change >= check_interval }}
+                • Mode change buffer: 5 min (prevents false detection after mode switches)
+                • Time since mode change: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) | round(1) }}min{% else %}unknown{% endif %}
 
             {% if trigger.id == 'periodic_check' and time_since_change >= check_interval %}
 
@@ -4407,7 +4419,14 @@ action:
                 • ✅ Manual HVAC change detected: {% if states(helper_expected_hvac) not in ['unknown', 'unavailable', '', 'none', 'off'] and states(climate_list[0]) not in ['unknown', 'unavailable', '', 'none', 'off'] %}{% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}{% set exp_norm = hvac_map.get(states(helper_expected_hvac), states(helper_expected_hvac)) %}{% set act_norm = hvac_map.get(states(climate_list[0]), states(climate_list[0])) %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
 
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            🎯 FINAL RESULT: {{ '🔒 MANUAL CHANGE DETECTED - OVERRIDE ACTIVE' if manual_change_detected else '✅ No manual changes detected' }}
+            🎯 DETECTION RESULT: {{ 'YES - Manual change detected' if manual_change_detected else 'NO - No manual changes detected' }}
+
+            {% if manual_change_detected %}
+            🛡️ OVERRIDE ACTIVATION CHECK:
+                • Manual change detected: YES
+                • Mode change buffer satisfied: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ 'YES' if ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) >= 5 else 'NO - Within 5 min of mode change' }}{% else %}YES{% endif %}
+                • Will activate override: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ 'YES' if ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) >= 5 else 'NO' }}{% else %}YES{% endif %}
+            {% endif %}
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             {% else %}

@@ -813,7 +813,30 @@ Additional:
 
 ## Version History
 
-### **v3.3.2** (Current) - Off-Time Protection Fix
+### **v3.3.3** (Current) - Manual Override False Detection Fix
+
+**🐛 CRITICAL FIX: MODE CHANGE FALSE OVERRIDE ACTIVATION**
+- **✅ FIXED**: Manual override no longer activates when switching modes (Smart→Manual→Smart)
+- **✅ FIXED**: Added 5-minute buffer after mode changes to prevent false detections
+- **🛡️ PROTECTION**: Mode transitions won't block automation for 1 hour anymore
+- **🎯 RESULT**: Clean mode switching without triggering override protection
+
+**What Was Broken:**
+- **Before**: Smart→Manual→Smart → Periodic check detects state mismatch → Override activates → Automation blocked for 1 hour
+- **Why**: Enhanced detection (v3.3.0) checked parameter mismatches, but mode changes cause temporary mismatches
+- **Impact**: Every mode switch triggered 1-hour automation block (false positive)
+
+**What Changed:**
+- **Line 3700-3708**: Added mode change buffer condition to override activation check
+- **Buffer**: 5 minutes after mode change, override activation is blocked
+- **Logic**: `time_since_mode_change >= 5 minutes` must be TRUE to activate override
+- **Result**: Mode transitions have time to settle before detection runs
+
+**Real-World Impact:**
+- **Before**: Switch Smart→Manual→Smart → Override active for 1 hour → Manual control only ❌
+- **After**: Switch Smart→Manual→Smart → 5-min buffer → Automation resumes normally ✅
+
+### **v3.3.2** - Off-Time Protection Fix
 
 **🐛 CRITICAL FIX: 12-MINUTE COMPRESSOR PROTECTION**
 - **✅ FIXED**: Mode changes no longer bypass 12-minute off-time protection
