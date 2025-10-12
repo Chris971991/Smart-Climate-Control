@@ -13,3 +13,4 @@ custom_components/smart_climate_setup_wizard/__pycache__/config_flow.cpython-312
 proximity_test_helpers.yaml
 proximity_spoof_automation.yaml
 PROXIMITY_TEST_GUIDE.md
+SYSTEM_REFERENCE.md

@@ -26,7 +26,7 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Dynamic Escalation Logic**: Increases power when progress stalls for extended periods
 - **Smart Priority System**: Escalation overrides de-escalation during stall scenarios
 - **Graduated Fan Speeds**: Automatic selection from gentle to maximum power
-- **Smart Thresholds**: Weather-compensated with automatic adjustments
+- **Smart Thresholds**: Outside temperature compensation makes AC work harder on extreme days
 - **Precise Control**: Temperature boundaries with hysteresis to prevent oscillation
 - **Example Configuration (22°C target, ±2°C comfort zone)**:
   - **Comfort Zone**: 20-24°C (Eco/Off mode for energy savings)
@@ -42,7 +42,7 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Smart Presence Detection**: Multiple validation modes (ANY/ALL/SMART/MAJORITY/BLE_PLUS)
 - **6 Temperature Thresholds**: Fully configurable LOW/MEDIUM/HIGH for heating and cooling
 - **Dynamic Fan Speed Selection**: Automatically matches your A/C unit's capabilities
-- **Weather Compensation**: Outdoor temperature affects all thresholds automatically
+- **Outside Temperature Compensation (v3.2.0)**: Makes AC work HARDER on extreme days to achieve your target (not change it)
 - **Time-Based Scheduling**: Different temperatures for morning/day/evening/night
 - **Window Detection**: Automatic AC shutdown when doors/windows open
 - **Temperature Stability Detection**: Auto-off when equilibrium reached
@@ -100,7 +100,7 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
    - Eco mode or complete shutdown within comfort zone
    - Saves 40-60% energy compared to constant operation
    - Configurable eco mode with setpoint offset
-   - Weather-compensated comfort zones
+   - Outside temperature compensation for extreme conditions
 
 5. **Runtime Protection & Hysteresis**
    - Minimum runtime and off-time protection
@@ -463,7 +463,7 @@ Heating HIGH: 18.0°C (maximum, high fan)
 ```
 
 #### Advanced Temperature Features
-- **Weather Compensation**: Outdoor temperature affects all thresholds
+- **Outside Temperature Compensation**: Makes AC work harder to achieve target on extreme days
 - **Time-Based Scheduling**: Different targets for morning/day/evening/night
 - **Hysteresis Protection**: Prevents rapid switching at boundaries
 - **Gradual Adjustments**: Reduces temperature overshooting
@@ -520,10 +520,11 @@ Stability Auto-Off: Enabled (±0.3°C, 15min)
    - Saves energy while maintaining comfort
    - Configurable sensitivity and duration
 
-2. **Weather Compensation**
-   - Adjusts targets based on outdoor conditions
-   - Prevents excessive cooling on mild days
-   - Factor: 0.1-0.3 for moderate adjustment
+2. **Outside Temperature Compensation (v3.2.0)**
+   - Makes AC work HARDER on extreme days (not easier)
+   - Undershoots for cooling, overshoots for heating
+   - Boosts fan speed on hot/cold days automatically
+   - Factor: 0.1-0.2 for moderate compensation (recommended)
 
 3. **Window Detection**
    - Immediate shutdown when windows/doors open
@@ -578,7 +579,7 @@ Presence Sensors:
 Validation Mode: "smart"
 Control Mode: "Smart"
 Scheduling: Enabled
-Weather Compensation: Enabled (factor: 0.2)
+Outside Temperature Compensation: Enabled (factor: 0.2)
 Window Sensors: [binary_sensor.patio_door]
 ```
 
@@ -589,7 +590,7 @@ Target Temperature: 24°C (summer) / 21°C (winter)
 Comfort Zone Width: ±3°C (wider tolerance)
 Eco Mode: Enabled
 Stability Auto-Off: Enabled (±0.3°C, 15min)
-Weather Compensation: Enabled
+Outside Temperature Compensation: Enabled
 Gradual Adjustment: Enabled
 Minimum Runtime: 20 minutes
 Away Mode: "eco" with 2°C offset
@@ -660,7 +661,7 @@ Dynamic Adaptation: Enabled with all helpers
 
 **Solutions**:
 - Check target temperature and comfort zone settings
-- Verify weather compensation isn't causing issues
+- Verify outside temperature compensation isn't causing issues
 - Ensure advanced temperature overrides are correct
 - Test with simple configuration first
 

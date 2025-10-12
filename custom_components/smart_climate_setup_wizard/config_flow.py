@@ -1340,6 +1340,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # Dynamic target adjustment (new in v3.1.0)
                     "enable_dynamic_target_adjustment": False,  # Default off (safe)
                     "escalation_target_offset": 1.0,  # Default 1.0°C per level
+
+                    # Outside Temperature Compensation (new in v3.2.0) - Default disabled for safety
+                    "enable_outside_temp_compensation": False,  # User must enable manually
+                    "outside_compensation_factor": 0.2,  # Mild compensation (recommended)
+                    "max_outside_compensation": 2,  # Conservative 2°C max
+                    "outside_compensation_base_temp": 25,  # Neutral baseline for most climates
                 },
             },
         }

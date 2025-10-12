@@ -1,10 +1,10 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.1.11
+  name: Ultimate Smart Climate Control - v3.2.0
 
   description: |
-    **Ultimate Smart Climate Control v3.1.11**
+    **Ultimate Smart Climate Control v3.2.0**
 
-    🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, and 40-60% energy savings.
+    🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
     ---
 
@@ -49,23 +49,25 @@ blueprint:
     **🔧 Advanced Capabilities:**
     - Universal A/C compatibility (auto-detects HVAC modes, fan speeds, swing modes)
     - Multi-zone support (control 1 or multiple units simultaneously)
-    - Weather compensation (adjusts thresholds based on outdoor temperature)
+    - **NEW v3.2.0:** Outside Temperature Compensation (makes AC work HARDER on extreme days to ACHIEVE your target)
     - Time-based scheduling (morning/day/evening/night + weekends)
     - Window detection with auto-shutoff
     - Manual override protection (respects user changes for 3+ hours)
 
     ---
 
-    ## 🆕 Latest Update - v3.1.11
+    ## 🆕 Latest Update - v3.2.0
 
-    **🔧 METADATA FIX: Corrected Blueprint Source URL v3.1.11**
-    - ✅ FIXED: Changed placeholder source_url to actual repository path
-    - 🛡️ RESOLVED: Blueprint re-import now works correctly in Home Assistant UI
-    - ⚡ IMPACT: Users can now update blueprint without 404 errors
+    **🌡️ NEW FEATURE: Outside Temperature Compensation v3.2.0**
+    - ✅ NEW: Makes AC work HARDER on extreme outdoor temperature days to ACHIEVE your target
+    - 🔥 COOLING: Hot days (35°C outside) → AC undershoots (set to 20°C for 22°C target) + Fan boost
+    - ❄️ HEATING: Cold days (10°C outside) → Heater overshoots (set to 24°C for 22°C target) + Fan boost
+    - ⚡ SMART: Works WITH dynamic escalation - provides intelligent starting point, escalation monitors performance
+    - 🎯 RESULT: Your target is ACHIEVED faster and MAINTAINED even on extreme days
 
     **📝 Previous Updates:**
+    - v3.1.11: 🔧 Fixed blueprint source_url metadata (re-import works correctly now)
     - v3.1.10: 🐛 CRITICAL boolean type conversion fix (string "false" vs boolean false)
-    - v3.1.9: 🐛 Proper manual override with dedicated flag system (architecture rewrite)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -1226,28 +1228,30 @@ blueprint:
               step: 1
               unit_of_measurement: "minutes"
 
-    # Weather Compensation Settings (Optional)
-    weather_compensation_settings:
-      name: "Weather Compensation"
-      icon: mdi:weather-partly-cloudy
+    # Outside Temperature Compensation Settings (Optional)
+    outside_temp_compensation_settings:
+      name: "Outside Temperature Compensation"
+      icon: mdi:sun-thermometer
       collapsed: true
       input:
-        enable_weather_compensation:
-          name: Enable Weather Compensation
+        enable_outside_temp_compensation:
+          name: Enable Outside Temperature Compensation
           description: |
-            **Adjust indoor target temperature** based on outdoor conditions.
+            **Make AC work HARDER on extreme outdoor temperature days** to achieve your target.
 
             **How it works:**
 
-            • **Hot outdoor weather:** Slightly raise AC target (less aggressive cooling)
-            • **Mild outdoor weather:** Use normal targets
-            • **Cool outdoor weather:** Lower targets for efficiency
+            • **Hot outdoor weather (Cooling):** Set AC cooler than target + boost fan speed to counteract heat influx
+            • **Cold outdoor weather (Heating):** Set heater warmer than target + boost fan speed to counteract cold influx
+            • **Mild outdoor weather:** Use normal settings
 
-            **Result:** Maintains comfort while optimizing energy usage based on natural conditions.
+            **Example:** 35°C outside, 22°C target → AC set to 20.5°C with Fan 4 start (undershoots to maintain 22°C)
+
+            **Result:** Your target temperature is ACHIEVED faster and MAINTAINED even on extreme days.
           default: false
           selector:
             boolean:
-        
+
         weather_entity:
           name: Weather Entity
           description: |
@@ -1262,7 +1266,7 @@ blueprint:
           selector:
             entity:
               domain: weather
-        
+
         outdoor_temp_sensor:
           name: Outdoor Temperature Sensor (Optional)
           description: |
@@ -1272,43 +1276,44 @@ blueprint:
             • **Real-time local conditions** vs forecast data
             • **Optional:** Falls back to weather entity if not set
 
-            **Recommended** for users with outdoor temperature sensors.
+            **Recommended** for users with outdoor temperature sensors (e.g., Daikin outdoor units).
           default: []
           selector:
             entity:
               domain: sensor
               device_class: temperature
-        
-        compensation_factor:
-          name: Compensation Factor
+
+        outside_compensation_factor:
+          name: Outside Compensation Factor
           description: |
-            **How much outdoor temperature affects indoor target** (0-1).
+            **How aggressively to compensate for outdoor temperature** (0-1).
 
             **Factor levels:**
 
             • **0.0:** No compensation (disabled)
-            • **0.1-0.2:** Mild adjustment (recommended)
-            • **0.3-0.5:** Moderate adjustment
-            • **0.6-1.0:** Aggressive adjustment
+            • **0.1-0.2:** Mild compensation (recommended for most climates)
+            • **0.3-0.5:** Moderate compensation (hot/cold climates)
+            • **0.6-1.0:** Aggressive compensation (extreme climates)
 
-            **Example:** 0.2 factor with 30°C outside adds ~1°C to cooling target.
+            **Example:** 0.2 factor with 35°C outside (10°C above neutral) → 2°C undershoot (AC set to 20°C for 22°C target)
           default: 0.2
           selector:
             number:
               min: 0
               max: 1
               step: 0.1
-        
-        max_compensation:
-          name: Maximum Compensation
+
+        max_outside_compensation:
+          name: Maximum Outside Compensation
           description: |
-            **Maximum degrees** to adjust target temperature.
+            **Maximum degrees** to undershoot/overshoot AC setpoint.
 
-            • **Safety limit** to prevent extreme adjustments
-            • **1-2°C:** Conservative, maintains close to base target
-            • **3-5°C:** Aggressive, allows significant weather adaptation
+            • **Safety limit** to prevent extreme AC settings
+            • **1-2°C:** Conservative, small adjustments
+            • **3-4°C:** Moderate, noticeable compensation
+            • **5°C:** Aggressive, maximum compensation
 
-            **Prevents** compensation from making indoor temperatures uncomfortable.
+            **Example:** 2°C max → AC won't go below 20°C for 22°C cooling target, or above 24°C for 22°C heating target.
           default: 2
           selector:
             number:
@@ -1316,16 +1321,16 @@ blueprint:
               max: 5
               step: 0.5
               unit_of_measurement: "°C"
-        
-        compensation_base_temp:
-          name: Compensation Base Temperature
-          description: |
-            **Outdoor temperature** considered "neutral" (no compensation).
 
-            • **Temperature where no adjustment** is needed
+        outside_compensation_base_temp:
+          name: Outside Compensation Base Temperature
+          description: |
+            **Outdoor temperature** considered "neutral" (no compensation needed).
+
+            • **Temperature where outdoor conditions don't fight your AC**
             • **25°C:** Good baseline for most climates
-            • **Above baseline:** Targets increase (less aggressive cooling)
-            • **Below baseline:** Targets decrease (more efficient operation)
+            • **Above baseline (cooling):** AC undershoots to counteract heat influx
+            • **Below baseline (heating):** Heater overshoots to counteract cold influx
 
             **Recommendation:** Adjust based on your local climate and comfort preferences.
           default: 25
@@ -2502,13 +2507,13 @@ variables:
   window_sensors: !input window_sensors
   window_open_delay: !input window_open_delay
   window_close_delay: !input window_close_delay
-  # New v2.1+ features - Weather Compensation
-  enable_weather_compensation: !input enable_weather_compensation
+  # New v3.2.0 features - Outside Temperature Compensation (replaces old weather compensation)
+  enable_outside_temp_compensation: !input enable_outside_temp_compensation
   weather_entity: !input weather_entity
   outdoor_temp_sensor: !input outdoor_temp_sensor
-  compensation_factor: !input compensation_factor
-  max_compensation: !input max_compensation
-  compensation_base_temp: !input compensation_base_temp
+  outside_compensation_factor: !input outside_compensation_factor
+  max_outside_compensation: !input max_outside_compensation
+  outside_compensation_base_temp: !input outside_compensation_base_temp
   # New v2.1+ helpers - Stability and Hysteresis
   helper_temp_stable_since: !input helper_temp_stable_since
   helper_last_transition: !input helper_last_transition
@@ -2766,62 +2771,41 @@ action:
           {{ target_temp }}
         {% endif %}
       
-      # Apply weather compensation to target temperature
-      weather_adjusted_target: >
-        {% if enable_weather_compensation %}
+      # Get outdoor temperature for outside temperature compensation
+      outdoor_temperature: >
+        {% if enable_outside_temp_compensation %}
           {% if outdoor_temp_sensor %}
-            {% set outdoor = states(outdoor_temp_sensor) | float(25) %}
+            {{ states(outdoor_temp_sensor) | float(25) }}
           {% else %}
-            {% set outdoor = state_attr(weather_entity, 'temperature') | float(25) %}
+            {{ state_attr(weather_entity, 'temperature') | float(25) }}
           {% endif %}
-          {% set compensation = ((outdoor - compensation_base_temp) * compensation_factor) | round(1) %}
-          {% set compensation = [[-max_compensation, compensation] | max, max_compensation] | min %}
-          {% set result = (scheduled_target_temp + compensation) | round(1) %}
-          {{ [[10, result] | max, 35] | min }}
         {% else %}
-          {{ scheduled_target_temp }}
+          25
         {% endif %}
-      
-      # Calculate weather-adjusted comfort zones and thresholds
-      comfort_min_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_comfort_min + adjustment) | round(1) }}
-      
-      comfort_max_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_comfort_max + adjustment) | round(1) }}
-      
-      cooling_target_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_cooling_target + adjustment) | round(1) }}
-      
-      heating_target_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_heating_target + adjustment) | round(1) }}
-      
-      cooling_low_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_cooling_low + adjustment) | round(1) }}
-      
-      cooling_medium_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_cooling_medium + adjustment) | round(1) }}
-      
-      cooling_high_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_cooling_high + adjustment) | round(1) }}
-      
-      heating_low_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_heating_low + adjustment) | round(1) }}
-      
-      heating_medium_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_heating_medium + adjustment) | round(1) }}
-      
-      heating_high_temp: >
-        {% set adjustment = weather_adjusted_target - target_temp %}
-        {{ (base_heating_high + adjustment) | round(1) }}
+
+      # Calculate outside temperature compensation (undershoot for cooling, overshoot for heating)
+      # This makes AC work HARDER on extreme days to ACHIEVE the target, not change it
+      outside_temp_compensation_amount: >
+        {% if enable_outside_temp_compensation %}
+          {% set outdoor = outdoor_temperature | float(25) %}
+          {% set temp_delta = outdoor - outside_compensation_base_temp %}
+          {% set raw_compensation = (temp_delta * outside_compensation_factor) | abs %}
+          {{ [[0, raw_compensation] | max, max_outside_compensation] | min | round(1) }}
+        {% else %}
+          0
+        {% endif %}
+
+      # Comfort zones and thresholds - NO LONGER ADJUSTED (they stay at user's target)
+      comfort_min_temp: "{{ base_comfort_min | round(1) }}"
+      comfort_max_temp: "{{ base_comfort_max | round(1) }}"
+      cooling_target_temp: "{{ base_cooling_target | round(1) }}"
+      heating_target_temp: "{{ base_heating_target | round(1) }}"
+      cooling_low_temp: "{{ base_cooling_low | round(1) }}"
+      cooling_medium_temp: "{{ base_cooling_medium | round(1) }}"
+      cooling_high_temp: "{{ base_cooling_high | round(1) }}"
+      heating_low_temp: "{{ base_heating_low | round(1) }}"
+      heating_medium_temp: "{{ base_heating_medium | round(1) }}"
+      heating_high_temp: "{{ base_heating_high | round(1) }}"
       
       # Check window sensors
       window_open: >
@@ -3071,32 +3055,88 @@ action:
           0
         {% endif %}
 
-      # Final escalation level includes both normal escalation + wrong-direction add
+      # Outside temperature escalation boost - start with higher fan speed on extreme days
+      outside_temp_escalation_boost: >
+        {% if enable_outside_temp_compensation %}
+          {% set outdoor = outdoor_temperature | float(25) %}
+          {% set outdoor_delta = outdoor - outside_compensation_base_temp %}
+          {% set is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+          {% set is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+
+          {% if is_cooling and outdoor_delta > 0 %}
+            {# Hot outside - boost fan speed for cooling #}
+            {% if outdoor_delta >= 10 %}
+              2  {# 35°C+ outside → Start at Fan 3 (escalation +2) #}
+            {% elif outdoor_delta >= 5 %}
+              1  {# 30°C+ outside → Start at Fan 2 (escalation +1) #}
+            {% else %}
+              0
+            {% endif %}
+          {% elif is_heating and outdoor_delta < 0 %}
+            {# Cold outside - boost fan speed for heating #}
+            {% if outdoor_delta <= -10 %}
+              2  {# 15°C or colder outside → Start at Fan 3 (escalation +2) #}
+            {% elif outdoor_delta <= -5 %}
+              1  {# 20°C or colder outside → Start at Fan 2 (escalation +1) #}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+        {% else %}
+          0
+        {% endif %}
+
+      # Final escalation level includes: normal escalation + wrong-direction + outside temp boost
       # NOTE: All fan speed logic should reference final_escalation_level instead of escalation_level
       final_escalation_level: >
         {% set base_level = escalation_level | int(0) %}
         {% set wrong_dir_add = wrong_direction_escalation_add | int(0) %}
-        {% set total_level = base_level + wrong_dir_add %}
+        {% set outside_boost = outside_temp_escalation_boost | int(0) %}
+        {% set total_level = base_level + wrong_dir_add + outside_boost %}
         {{ [total_level, 4] | min }}
 
-      # Dynamic target adjustment - adjust AC target temperature based on escalation level
-      # This helps struggling AC reach target faster by giving more aggressive cooling/heating target
+      # Combined AC setpoint adjustment:
+      # 1. Outside Temperature Compensation (initial strategy based on outdoor conditions)
+      # 2. Dynamic Escalation (performance monitoring adjustments)
+      # This gives AC the best starting point AND adjusts based on actual performance
       adjusted_target: >
-        {% if not enable_dynamic_target or final_escalation_level == 0 %}
-          {{ target_temp }}
-        {% else %}
-          {% set adjustment = final_escalation_level * escalation_offset %}
-          {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-            {# Cooling: Lower target to make AC work harder #}
-            {% set new_target = target_temp - adjustment %}
-            {{ [[10, new_target] | max, target_temp] | min }}  {# Safety: Never below 10°C or above user target #}
-          {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-            {# Heating: Raise target to make AC work harder #}
-            {% set new_target = target_temp + adjustment %}
-            {{ [[target_temp, new_target] | max, 35] | min }}  {# Safety: Never above 35°C or below user target #}
-          {% else %}
-            {{ target_temp }}
+        {% set base = target_temp %}
+        {% set is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+        {% set is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+
+        {# Step 1: Apply outside temperature compensation if enabled #}
+        {% if enable_outside_temp_compensation and (is_cooling or is_heating) %}
+          {% set outdoor = outdoor_temperature | float(25) %}
+          {% set outdoor_delta = outdoor - outside_compensation_base_temp %}
+
+          {% if is_cooling and outdoor_delta > 0 %}
+            {# Hot outside - undershoot target to counteract heat influx #}
+            {% set base = base - outside_temp_compensation_amount %}
+          {% elif is_heating and outdoor_delta < 0 %}
+            {# Cold outside - overshoot target to counteract cold influx #}
+            {% set base = base + outside_temp_compensation_amount %}
           {% endif %}
+        {% endif %}
+
+        {# Step 2: Apply dynamic escalation adjustment if enabled #}
+        {% if enable_dynamic_target and final_escalation_level > 0 and (is_cooling or is_heating) %}
+          {% set escalation_adj = final_escalation_level * escalation_offset %}
+          {% if is_cooling %}
+            {% set base = base - escalation_adj %}
+          {% elif is_heating %}
+            {% set base = base + escalation_adj %}
+          {% endif %}
+        {% endif %}
+
+        {# Safety limits: 10-35°C, and don't overshoot user's intent #}
+        {% if is_cooling %}
+          {{ [[10, base] | max, target_temp] | min | round(1) }}
+        {% elif is_heating %}
+          {{ [[target_temp, base] | max, 35] | min | round(1) }}
+        {% else %}
+          {{ target_temp }}
         {% endif %}
 
       # Hysteresis logic - prevent rapid switching at temperature boundaries
