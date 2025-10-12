@@ -813,7 +813,30 @@ Additional:
 
 ## Version History
 
-### **v3.3.0** (Current) - Enhanced Manual Override Detection
+### **v3.3.1** (Current) - Off-Time Protection Fix
+
+**🐛 CRITICAL FIX: 12-MINUTE COMPRESSOR PROTECTION**
+- **✅ FIXED**: Mode changes no longer bypass 12-minute off-time protection
+- **✅ FIXED**: System now checks BOTH helper mode AND actual AC state for protection enforcement
+- **🛡️ PROTECTION**: Prevents rapid on/off cycles that can damage compressor
+- **🎯 SCENARIO**: Smart→Manual→Smart no longer allows AC to turn on within 1-2 minutes
+
+**What Was Broken:**
+- **Before**: Mode change cleared helper to "off", state sync set it to "cooling_low", bypassed off-time check
+- **Condition**: `last_mode == 'off'` didn't match "cooling_low", protection skipped
+- **Result**: AC could turn on 1 minute after turning off (violation of 12-minute minimum)
+
+**What Changed:**
+- **Line 5795+**: Changed `last_mode == 'off'` to `(last_mode == 'off' or actual_ac_state == 'off')`
+- **Coverage**: All 10 off-time protection checks (6 tier conditions + 4 inline time_protection_met)
+- **Logic**: Now checks actual physical AC state, not just helper tracking state
+
+**Real-World Impact:**
+- **Scenario**: User switches Smart→Manual→Smart, AC turns off then tries to turn back on
+- **Before**: AC off at 00:09, mode change at 00:08, AC turned on at 00:10 (1 min later) ❌
+- **After**: AC off at 00:09, won't turn on until 00:21 (12 min later) ✅
+
+### **v3.3.0** - Enhanced Manual Override Detection
 
 **🎯 MAJOR NEW FEATURE: SUPER ROBUST PARAMETER-LEVEL DETECTION**
 - **✅ NEW**: Detects temperature setpoint changes (e.g., 20°C → 24°C user adjustment)
