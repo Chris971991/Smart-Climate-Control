@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.3.0
+  name: Ultimate Smart Climate Control - v3.3.2
 
   description: |
-    **Ultimate Smart Climate Control v3.3.0**
+    **Ultimate Smart Climate Control v3.3.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,21 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.3.0
+    ## 🆕 Latest Update - v3.3.2
 
-    **🎯 MAJOR NEW FEATURE: Enhanced Manual Override Detection v3.3.0**
-    - ✅ NEW: Detects temperature setpoint changes (e.g., 20°C → 24°C via HA UI or remote)
-    - ✅ NEW: Detects fan speed changes (e.g., Fan 3 → Fan 5)
-    - ✅ NEW: Detects swing mode changes (e.g., vertical → horizontal)
-    - ✅ NEW: Detects HVAC mode changes (e.g., cool → heat)
-    - ✅ IMPROVED: ON/OFF detection now synchronized with check_interval (no more hardcoded 2-minute wait)
-    - ✅ SUPER ROBUST: Only checks during periodic_check trigger, prevents false positives
-    - 🎯 RESULT: Comprehensive detection of ALL manual changes, respects user control for configured timeout
+    **🐛 CRITICAL FIX: 12-Minute Off-Time Protection Bug**
+    - ✅ FIXED: Mode changes no longer bypass 12-minute compressor protection
+    - ✅ FIXED: System now checks BOTH helper mode AND actual AC state for off-time enforcement
+    - 🛡️ PROTECTION: Prevents rapid on/off cycles that can damage compressor
+    - 🎯 SCENARIO: Smart→Manual→Smart no longer turns AC back on within 1 minute
 
     **📝 Previous Updates:**
+    - v3.3.1: 🐛 FIXED - Setup Wizard translation labels (UI clarity)
+    - v3.3.0: 🎯 NEW - Enhanced Manual Override Detection (temp, fan, swing, HVAC mode changes)
     - v3.2.2: 🐛 HOTFIX - Template syntax error
-    - v3.2.1: 🐛 FIXED - Smart mode presence confirmation delay & manual override detection
-    - v3.2.0: 🌡️ NEW - Outside Temperature Compensation (makes AC work harder on extreme days)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -4742,8 +4739,9 @@ action:
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
@@ -5092,7 +5090,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
                 {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
@@ -5100,8 +5098,9 @@ action:
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
@@ -5436,7 +5435,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
                 {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
@@ -5444,8 +5443,9 @@ action:
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
@@ -5792,8 +5792,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -6151,7 +6152,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
                 {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
@@ -6159,8 +6160,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -6509,7 +6511,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
                 {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
@@ -7193,7 +7195,7 @@ action:
               - conditions:
                   - condition: template
                     value_template: >
-                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and (final_escalation_level > 0 or time_in_current_mode > runtime_min)) or (last_mode == 'off' and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
+                      {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and (final_escalation_level > 0 or time_in_current_mode > runtime_min)) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off']) %}
                       {{ should_activate and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
                 sequence:
                   - repeat:
@@ -7474,8 +7476,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -7702,8 +7705,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -9178,8 +9182,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -9445,8 +9450,9 @@ action:
               {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
                 {# Same cooling tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from heating/eco OR off-time protection disabled #}
@@ -9667,8 +9673,9 @@ action:
               {% if last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
                 {# Same heating tier switching - allow escalation, enforce runtime for de-escalation #}
                 {{ final_escalation_level > 0 or time_in_current_mode > runtime_min }}
-              {% elif last_mode == 'off' and enforce_offtime %}
+              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
                 {# Starting from OFF - enforce off-time if enabled #}
+                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
                 {{ time_in_current_mode > offtime_min }}
               {% else %}
                 {# Switching from cooling/eco OR off-time protection disabled #}
