@@ -126,6 +126,38 @@ HELPER_DEFINITIONS = {
         "icon": "mdi:alert-octagon",
         "initial": False,
     },
+    "expected_temp": {
+        "domain": "input_number",
+        "name": "{room} Climate Expected Temperature",
+        "icon": "mdi:thermometer-chevron-down",
+        "min": 10,
+        "max": 35,
+        "step": 0.5,
+        "initial": 22,
+        "unit_of_measurement": "°C",
+        "mode": "box",
+    },
+    "expected_fan": {
+        "domain": "input_text",
+        "name": "{room} Climate Expected Fan Mode",
+        "icon": "mdi:fan",
+        "initial": "unknown",
+        "max_length": 50,
+    },
+    "expected_swing": {
+        "domain": "input_text",
+        "name": "{room} Climate Expected Swing Mode",
+        "icon": "mdi:arrow-oscillating",
+        "initial": "unknown",
+        "max_length": 50,
+    },
+    "expected_hvac": {
+        "domain": "input_text",
+        "name": "{room} Climate Expected HVAC Mode",
+        "icon": "mdi:air-conditioner",
+        "initial": "unknown",
+        "max_length": 50,
+    },
 
     # ========================================
     # CONTROL MODE HELPERS
@@ -160,7 +192,7 @@ FEATURE_HELPERS = {
         "temp_stable_since",
         "last_transition",
     ],
-    "manual_override": ["manual_override", "override_active", "override_time", "proximity_override"],
+    "manual_override": ["manual_override", "override_active", "override_time", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected"],
 }
@@ -1296,6 +1328,10 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
             helpers["helper_override_active"] = f"input_boolean.climate_override_active_{sanitized_name}"
             helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
+            helpers["helper_expected_temp"] = f"input_number.climate_expected_temp_{sanitized_name}"
+            helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
+            helpers["helper_expected_swing"] = f"input_text.climate_expected_swing_{sanitized_name}"
+            helpers["helper_expected_hvac"] = f"input_text.climate_expected_hvac_{sanitized_name}"
 
         # Build automation config with auto-calculated optimal settings
         comfort_width = config.get("comfort_zone_width", 1.0)
@@ -1957,6 +1993,10 @@ Copy this YAML and add it to your dashboard:
             helpers_to_delete.extend([
                 f"input_boolean.climate_override_active_{sanitized_name}",
                 f"input_datetime.climate_override_time_{sanitized_name}",
+                f"input_number.climate_expected_temp_{sanitized_name}",
+                f"input_text.climate_expected_fan_{sanitized_name}",
+                f"input_text.climate_expected_swing_{sanitized_name}",
+                f"input_text.climate_expected_hvac_{sanitized_name}",
             ])
 
         if config_entry.data.get("enable_dynamic_adaptation", True):
