@@ -813,28 +813,36 @@ Additional:
 
 ## Version History
 
-### **v3.2.1** (Current) - Critical Presence & Manual Override Fixes
+### **v3.2.2** (Current) - Template Syntax Error Hotfix
+
+**🔥 CRITICAL HOTFIX**
+- **✅ FIXED**: Removed inline Jinja2 comments causing TemplateSyntaxError (v3.2.1 broke all automations)
+- **💥 ERROR**: `unexpected char '#' at 858` in manual_change_detected variable
+- **🎯 IMPACT**: v3.2.1 automations couldn't load/reload - v3.2.2 fixes immediately
+
+**What Was Broken:**
+- **v3.2.1**: Inline `{# #}` comments inside parentheses in `manual_change_detected` logic
+- **Result**: ALL automations failed validation with TemplateSyntaxError
+
+**What Changed:**
+- **Line 3444-3445**: Moved inline comments outside expression (before `{% set is_manual_change %}`)
+- **Logic Unchanged**: Only comment placement fixed, detection logic identical
+
+**Real-World Impact:**
+- **Before**: All automations showed error on reload, wouldn't load
+- **After**: Automations load without errors, manual override detection works
+
+### **v3.2.1** - Critical Presence & Manual Override Fixes
 
 **🐛 CRITICAL BUG FIXES**
 - **✅ FIXED**: Smart mode presence confirmation delay now works correctly (was activating instantly)
 - **✅ FIXED**: Manual override now detects HA UI shutoffs (AC turning OFF via climate card)
 - **✅ FIXED**: Manual override now detects HA UI turn-ons (AC turning ON via climate card)
-- **🎯 IMPACT**: Smart mode waits for configured delay, manual HA UI changes are properly respected
-
-**What Was Broken:**
-- **Smart Mode**: Logic fell through to Auto mode conditions, bypassing confirmation delay entirely
-- **Manual Override**: Only detected AC turning OFF, missed AC turning ON via Home Assistant UI
+- **⚠️ BROKEN IN v3.2.1**: Template syntax error from inline comments (fixed in v3.2.2)
 
 **What Changed:**
-- **Line 3403**: Added explicit `{% elif control_mode == 'Auto' %}` block to prevent Smart mode fallthrough
-- **Line 3450**: Added detection for `last_mode == 'off' and actual_state == 'on'` (HA UI turn-on)
-- **Result**: Smart mode properly waits, manual HA UI changes (both on/off) trigger override
-
-**Real-World Impact:**
-- **Before**: Master Bedroom AC turned on instantly despite 5-min confirmation delay configured
-- **After**: AC waits 5 minutes with sustained presence before activating (as configured)
-- **Before**: Turning off AC via HA climate card → automation turned it right back on
-- **After**: Turning off via HA UI → detected as manual, 1-hour override triggered
+- **Line 3403**: Added explicit `{% elif control_mode == 'Auto' %}` block
+- **Line 3450**: Added detection for `last_mode == 'off' and actual_state == 'on'`
 
 ### **v3.2.0** - Outside Temperature Compensation
 

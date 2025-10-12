@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.2.1
+  name: Ultimate Smart Climate Control - v3.2.2
 
   description: |
-    **Ultimate Smart Climate Control v3.2.1**
+    **Ultimate Smart Climate Control v3.2.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -56,17 +56,15 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.2.1
+    ## 🆕 Latest Update - v3.2.2
 
-    **🐛 CRITICAL BUG FIXES: Presence & Manual Override v3.2.1**
-    - ✅ FIXED: Smart mode presence confirmation delay now works correctly (was activating instantly)
-    - ✅ FIXED: Manual override now detects HA UI shutoffs (AC turning OFF via climate card)
-    - ✅ FIXED: Manual override now detects HA UI turn-ons (AC turning ON via climate card)
-    - 🎯 RESULT: Smart mode waits for configured delay, manual HA UI changes are properly respected
+    **🔥 HOTFIX: Template Syntax Error v3.2.2**
+    - ✅ FIXED: Removed inline Jinja2 comments causing TemplateSyntaxError (v3.2.1 broke all automations)
+    - 🎯 RESULT: Automations now load without "unexpected char '#'" errors
 
     **📝 Previous Updates:**
+    - v3.2.1: 🐛 FIXED - Smart mode presence confirmation delay & manual override detection
     - v3.2.0: 🌡️ NEW - Outside Temperature Compensation (makes AC work harder on extreme days)
-    - v3.1.11: 🔧 Fixed blueprint source_url metadata (re-import works correctly now)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
