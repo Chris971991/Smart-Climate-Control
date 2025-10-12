@@ -813,7 +813,43 @@ Additional:
 
 ## Version History
 
-### **v3.1.7** (Current) - Manual Override Re-Triggering After Mode Switch
+### **v3.2.1** (Current) - Critical Presence & Manual Override Fixes
+
+**🐛 CRITICAL BUG FIXES**
+- **✅ FIXED**: Smart mode presence confirmation delay now works correctly (was activating instantly)
+- **✅ FIXED**: Manual override now detects HA UI shutoffs (AC turning OFF via climate card)
+- **✅ FIXED**: Manual override now detects HA UI turn-ons (AC turning ON via climate card)
+- **🎯 IMPACT**: Smart mode waits for configured delay, manual HA UI changes are properly respected
+
+**What Was Broken:**
+- **Smart Mode**: Logic fell through to Auto mode conditions, bypassing confirmation delay entirely
+- **Manual Override**: Only detected AC turning OFF, missed AC turning ON via Home Assistant UI
+
+**What Changed:**
+- **Line 3403**: Added explicit `{% elif control_mode == 'Auto' %}` block to prevent Smart mode fallthrough
+- **Line 3450**: Added detection for `last_mode == 'off' and actual_state == 'on'` (HA UI turn-on)
+- **Result**: Smart mode properly waits, manual HA UI changes (both on/off) trigger override
+
+**Real-World Impact:**
+- **Before**: Master Bedroom AC turned on instantly despite 5-min confirmation delay configured
+- **After**: AC waits 5 minutes with sustained presence before activating (as configured)
+- **Before**: Turning off AC via HA climate card → automation turned it right back on
+- **After**: Turning off via HA UI → detected as manual, 1-hour override triggered
+
+### **v3.2.0** - Outside Temperature Compensation
+
+**🌡️ NEW FEATURE: OUTSIDE TEMPERATURE COMPENSATION**
+- **✅ NEW**: Makes AC work HARDER on extreme outdoor temperature days to ACHIEVE your target
+- **🔥 COOLING**: Hot days (35°C outside) → AC undershoots (set to 20°C for 22°C target) + Fan boost
+- **❄️ HEATING**: Cold days (10°C outside) → Heater overshoots (set to 24°C for 22°C target) + Fan boost
+- **⚡ SMART**: Works WITH dynamic escalation - provides intelligent starting point, escalation monitors performance
+
+### **v3.1.11** - Blueprint Source URL Metadata Fix
+
+**🔧 METADATA FIX**
+- **✅ FIXED**: Blueprint source_url corrected for proper re-import functionality in Home Assistant UI
+
+### **v3.1.7** - Manual Override Re-Triggering After Mode Switch
 
 **🐛 CRITICAL FIX: v3.1.6 REGRESSION**
 - **✅ FIXED** - helper_change update now skips mode_change triggers to preserve timestamp clearing

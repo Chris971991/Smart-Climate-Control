@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.2.0
+  name: Ultimate Smart Climate Control - v3.2.1
 
   description: |
-    **Ultimate Smart Climate Control v3.2.0**
+    **Ultimate Smart Climate Control v3.2.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -56,18 +56,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.2.0
+    ## 🆕 Latest Update - v3.2.1
 
-    **🌡️ NEW FEATURE: Outside Temperature Compensation v3.2.0**
-    - ✅ NEW: Makes AC work HARDER on extreme outdoor temperature days to ACHIEVE your target
-    - 🔥 COOLING: Hot days (35°C outside) → AC undershoots (set to 20°C for 22°C target) + Fan boost
-    - ❄️ HEATING: Cold days (10°C outside) → Heater overshoots (set to 24°C for 22°C target) + Fan boost
-    - ⚡ SMART: Works WITH dynamic escalation - provides intelligent starting point, escalation monitors performance
-    - 🎯 RESULT: Your target is ACHIEVED faster and MAINTAINED even on extreme days
+    **🐛 CRITICAL BUG FIXES: Presence & Manual Override v3.2.1**
+    - ✅ FIXED: Smart mode presence confirmation delay now works correctly (was activating instantly)
+    - ✅ FIXED: Manual override now detects HA UI shutoffs (AC turning OFF via climate card)
+    - ✅ FIXED: Manual override now detects HA UI turn-ons (AC turning ON via climate card)
+    - 🎯 RESULT: Smart mode waits for configured delay, manual HA UI changes are properly respected
 
     **📝 Previous Updates:**
+    - v3.2.0: 🌡️ NEW - Outside Temperature Compensation (makes AC work harder on extreme days)
     - v3.1.11: 🔧 Fixed blueprint source_url metadata (re-import works correctly now)
-    - v3.1.10: 🐛 CRITICAL boolean type conversion fix (string "false" vs boolean false)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3400,14 +3399,19 @@ action:
           {% else %}
             false
           {% endif %}
-        {% elif room_presence_detected %}
-          true
-        {% elif minutes_since_presence < presence_timeout %}
-          true
-        {% elif proximity_zone == 'home' %}
-          true
-        {% elif anyone_home and control_mode == 'Auto' %}
-          true
+        {% elif control_mode == 'Auto' %}
+          {# Auto mode - more permissive presence logic #}
+          {% if room_presence_detected %}
+            true
+          {% elif minutes_since_presence < presence_timeout %}
+            true
+          {% elif proximity_zone == 'home' %}
+            true
+          {% elif anyone_home %}
+            true
+          {% else %}
+            false
+          {% endif %}
         {% else %}
           false
         {% endif %}
@@ -3435,14 +3439,19 @@ action:
             {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
             {% set time_since_mode_start = ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] else 999 %}
 
-            {# Detect manual shutoff: AC was running, now it's off, enough time since last automation change #}
-            {% set is_manual_shutoff = (
+            {# Detect ANY manual change: AC state doesn't match what automation expects #}
+            {# Must wait 2 minutes after automation's last action to avoid false detections #}
+            {% set is_manual_change = (
               time_since_change >= 2 and
-              last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and
-              actual_state == 'off'
+              (
+                {# Case 1: AC turned OFF when automation expects it running #}
+                (last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
+                {# Case 2: AC turned ON when automation expects it off #}
+                (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
+              )
             ) %}
 
-            {% set result = is_manual_shutoff %}
+            {% set result = is_manual_change %}
           {% endif %}
         {% endif %}
         {{ result }}
