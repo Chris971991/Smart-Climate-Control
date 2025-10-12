@@ -813,7 +813,41 @@ Additional:
 
 ## Version History
 
-### **v3.2.2** (Current) - Template Syntax Error Hotfix
+### **v3.3.0** (Current) - Enhanced Manual Override Detection
+
+**🎯 MAJOR NEW FEATURE: SUPER ROBUST PARAMETER-LEVEL DETECTION**
+- **✅ NEW**: Detects temperature setpoint changes (e.g., 20°C → 24°C user adjustment)
+- **✅ NEW**: Detects fan speed changes (e.g., Fan 3 → Fan 5 manual selection)
+- **✅ NEW**: Detects swing mode changes (e.g., vertical → horizontal manual change)
+- **✅ NEW**: Detects HVAC mode changes (e.g., cool → heat manual switch)
+- **✅ IMPROVED**: ON/OFF detection now synchronized with user's check_interval (not hardcoded)
+- **✅ SUPER ROBUST**: Only checks during periodic_check trigger to eliminate false positives
+
+**How It Works:**
+- **Before Every Climate Service Call**: Captures expected values to helper entities
+- **During Periodic Check**: Compares actual AC settings with expected values
+- **Intelligent Tolerances**: ±0.5°C for temperature, case-insensitive for fan/swing modes
+- **100% Coverage**: All 72 climate service calls have capture blocks (complete protection)
+
+**Real-World Examples:**
+1. **Temperature Change**: User changes 22°C → 24°C via HA UI → Detected → Override triggered
+2. **Fan Speed Change**: User boosts Fan 3 → Fan 5 via remote → Detected → Override triggered
+3. **Swing Mode Change**: User changes vertical → horizontal → Detected → Override triggered
+4. **HVAC Mode Change**: User switches cool → heat → Detected → Override triggered
+5. **AC Delayed Response**: AC takes 20 seconds to turn on → NOT detected (within buffer)
+
+**Technical Architecture:**
+- **4 New Helpers Required**: expected_temp, expected_fan, expected_swing, expected_hvac
+- **Setup Wizard v3.9.0**: Auto-creates all 4 new helpers (no manual work)
+- **Graceful Degradation**: All captures use `continue_on_error: true`
+- **Synchronized Detection**: Uses check_interval instead of hardcoded 2-minute wait
+
+**Documentation:**
+- **Complete upgrade plan**: Manual_Override_Upgrade_Plan.md with 5 execution scenarios
+- **README updated**: v3.3.0 features and helper requirements
+- **Setup Wizard updated**: v3.9.0 with automatic helper creation
+
+### **v3.2.2** - Template Syntax Error Hotfix
 
 **🔥 CRITICAL HOTFIX**
 - **✅ FIXED**: Removed inline Jinja2 comments causing TemplateSyntaxError (v3.2.1 broke all automations)

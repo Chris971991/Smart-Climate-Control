@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.2.2
+  name: Ultimate Smart Climate Control - v3.3.0
 
   description: |
-    **Ultimate Smart Climate Control v3.2.2**
+    **Ultimate Smart Climate Control v3.3.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -13,7 +13,7 @@ blueprint:
     **⚠️ Don't create helpers manually!** Install the companion **Setup Wizard** for automated setup:
 
     ✅ **2-Minute Setup** - Complete automation in ~2 minutes
-    ✅ **Zero Manual Work** - All 15 helpers created automatically
+    ✅ **Zero Manual Work** - All 19 helpers created automatically (4 new in v3.3.0)
     ✅ **Dashboard Card Generator** - Animated control card included
     ✅ **Safe & Isolated** - Package-based helpers won't affect existing setup
 
@@ -38,6 +38,7 @@ blueprint:
     - Temperature stability auto-off (prevents wasted runtime)
     - Proximity pre-conditioning (cools/heats before you arrive home)
     - Near-target stall detection (pushes through final degrees)
+    - **NEW v3.3.0:** Enhanced manual override detection (temp, fan, swing, HVAC mode changes)
 
     **⚡ Energy Efficiency:**
     - 40-60% energy savings vs always-on operation
@@ -52,17 +53,23 @@ blueprint:
     - **NEW v3.2.0:** Outside Temperature Compensation (makes AC work HARDER on extreme days to ACHIEVE your target)
     - Time-based scheduling (morning/day/evening/night + weekends)
     - Window detection with auto-shutoff
-    - Manual override protection (respects user changes for 3+ hours)
+    - **ENHANCED v3.3.0:** Comprehensive manual override (detects all parameter changes via HA UI or remote)
 
     ---
 
-    ## 🆕 Latest Update - v3.2.2
+    ## 🆕 Latest Update - v3.3.0
 
-    **🔥 HOTFIX: Template Syntax Error v3.2.2**
-    - ✅ FIXED: Removed inline Jinja2 comments causing TemplateSyntaxError (v3.2.1 broke all automations)
-    - 🎯 RESULT: Automations now load without "unexpected char '#'" errors
+    **🎯 MAJOR NEW FEATURE: Enhanced Manual Override Detection v3.3.0**
+    - ✅ NEW: Detects temperature setpoint changes (e.g., 20°C → 24°C via HA UI or remote)
+    - ✅ NEW: Detects fan speed changes (e.g., Fan 3 → Fan 5)
+    - ✅ NEW: Detects swing mode changes (e.g., vertical → horizontal)
+    - ✅ NEW: Detects HVAC mode changes (e.g., cool → heat)
+    - ✅ IMPROVED: ON/OFF detection now synchronized with check_interval (no more hardcoded 2-minute wait)
+    - ✅ SUPER ROBUST: Only checks during periodic_check trigger, prevents false positives
+    - 🎯 RESULT: Comprehensive detection of ALL manual changes, respects user control for configured timeout
 
     **📝 Previous Updates:**
+    - v3.2.2: 🐛 HOTFIX - Template syntax error
     - v3.2.1: 🐛 FIXED - Smart mode presence confirmation delay & manual override detection
     - v3.2.0: 🌡️ NEW - Outside Temperature Compensation (makes AC work harder on extreme days)
 
@@ -191,6 +198,86 @@ blueprint:
       selector:
         entity:
           domain: input_datetime
+
+    helper_expected_temp:
+      name: Expected Temperature Helper *
+      description: |
+        Input Number helper to track **expected temperature setpoint**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_number.climate_expected_temp_living_room`
+
+        • `input_number.climate_expected_temp_bedroom`
+
+        • `input_number.climate_expected_temp_office`
+
+        **Purpose:** Enhanced manual override detection - tracks what temperature automation expects vs actual AC setpoint.
+
+        **Required for:** Detecting user temperature changes via HA UI or physical remote (e.g., 20°C → 24°C).
+      selector:
+        entity:
+          domain: input_number
+
+    helper_expected_fan:
+      name: Expected Fan Mode Helper *
+      description: |
+        Input Text helper to track **expected fan mode**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_text.climate_expected_fan_living_room`
+
+        • `input_text.climate_expected_fan_bedroom`
+
+        • `input_text.climate_expected_fan_office`
+
+        **Purpose:** Enhanced manual override detection - tracks what fan mode automation expects vs actual AC fan mode.
+
+        **Required for:** Detecting user fan speed changes via HA UI or physical remote (e.g., Fan 3 → Fan 5).
+      selector:
+        entity:
+          domain: input_text
+
+    helper_expected_swing:
+      name: Expected Swing Mode Helper *
+      description: |
+        Input Text helper to track **expected swing mode**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_text.climate_expected_swing_living_room`
+
+        • `input_text.climate_expected_swing_bedroom`
+
+        • `input_text.climate_expected_swing_office`
+
+        **Purpose:** Enhanced manual override detection - tracks what swing mode automation expects vs actual AC swing mode.
+
+        **Required for:** Detecting user swing mode changes via HA UI or physical remote (e.g., vertical → horizontal).
+      selector:
+        entity:
+          domain: input_text
+
+    helper_expected_hvac:
+      name: Expected HVAC Mode Helper *
+      description: |
+        Input Text helper to track **expected HVAC mode**.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_text.climate_expected_hvac_living_room`
+
+        • `input_text.climate_expected_hvac_bedroom`
+
+        • `input_text.climate_expected_hvac_office`
+
+        **Purpose:** Enhanced manual override detection - tracks what HVAC mode automation expects vs actual AC mode.
+
+        **Required for:** Detecting user HVAC mode changes via HA UI or physical remote (e.g., cool → heat).
+      selector:
+        entity:
+          domain: input_text
 
     # Temperature Settings - Simple Mode
     temperature_settings:
@@ -2377,6 +2464,10 @@ variables:
   helper_change: !input helper_last_change
   helper_override_flag: !input helper_override_active
   helper_override_timestamp: !input helper_override_time
+  helper_expected_temp: !input helper_expected_temp
+  helper_expected_fan: !input helper_expected_fan
+  helper_expected_swing: !input helper_expected_swing
+  helper_expected_hvac: !input helper_expected_hvac
   proximity_sensor_input: !input proximity_sensor
   direction_sensor_input: !input direction_sensor
   
@@ -3426,32 +3517,85 @@ action:
         {% endif %}
       
       # Check if user manually changed AC settings (from HA or remote)
-      # v3.1.9d FIX: Boolean type - using explicit boolean expression instead of if/elif returning strings
+      # v3.3.0 SUPER ROBUST: Enhanced detection for temp, fan, swing, HVAC mode changes
+      # Uses check_interval instead of hardcoded 2 minutes, only checks on periodic_check trigger
       manual_change_detected: >
         {% set result = false %}
-        {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-          {% set change_timestamp = as_timestamp(states(helper_change)) %}
-          {% if change_timestamp %}
-            {% set last_mode_state = states(helper_mode) | default('off') %}
-            {% set actual_state = actual_ac_state %}
-            {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
-            {% set time_since_mode_start = ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] else 999 %}
 
-            {# Detect ANY manual change: AC state doesn't match what automation expects #}
-            {# Must wait 2 minutes after automation's last action to avoid false detections #}
-            {# Case 1: AC turned OFF when automation expects it running #}
-            {# Case 2: AC turned ON when automation expects it off #}
-            {% set is_manual_change = (
-              time_since_change >= 2 and
-              (
-                (last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
-                (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
-              )
-            ) %}
+        {% if trigger.id == 'periodic_check' %}
+          {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+            {% set change_timestamp = as_timestamp(states(helper_change)) %}
+            {% if change_timestamp %}
+              {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
 
-            {% set result = is_manual_change %}
+              {% set check_interval_minutes = check_interval | int(5) %}
+
+              {% if time_since_change >= check_interval_minutes %}
+                {% set last_mode_state = states(helper_mode) | default('off') %}
+                {% set actual_state = actual_ac_state %}
+
+                {% set is_onoff_manual = (
+                  (last_mode_state in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
+                  (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
+                ) %}
+
+                {% set expected_temp = states(helper_expected_temp) | float(0) %}
+                {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
+                {% set temp_tolerance = 0.5 %}
+                {% set is_temp_manual = (
+                  actual_state != 'off' and
+                  expected_temp > 0 and
+                  actual_temp > 0 and
+                  (actual_temp - expected_temp) | abs > temp_tolerance
+                ) %}
+
+                {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
+                {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') %}
+                {% set expected_fan_lower = expected_fan | lower %}
+                {% set actual_fan_lower = actual_fan | lower %}
+                {% set is_fan_manual = (
+                  actual_state != 'off' and
+                  expected_fan not in ['unknown', 'unavailable', '', 'none'] and
+                  actual_fan not in ['unknown', 'unavailable', '', 'none'] and
+                  expected_fan_lower != actual_fan_lower
+                ) %}
+
+                {% set expected_swing = states(helper_expected_swing) | default('unknown') %}
+                {% set actual_swing = state_attr(climate_list[0], 'swing_mode') | default('unknown') %}
+                {% set expected_swing_lower = expected_swing | lower %}
+                {% set actual_swing_lower = actual_swing | lower %}
+                {% set expected_normalized = expected_swing_lower.replace('horizontal+vertical', 'both').replace('all', 'both') %}
+                {% set actual_normalized = actual_swing_lower.replace('horizontal+vertical', 'both').replace('all', 'both') %}
+                {% set is_swing_manual = (
+                  actual_state != 'off' and
+                  expected_swing not in ['unknown', 'unavailable', '', 'none'] and
+                  actual_swing not in ['unknown', 'unavailable', '', 'none'] and
+                  expected_normalized != actual_normalized
+                ) %}
+
+                {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
+                {% set actual_hvac = states(climate_list[0]) | default('unknown') %}
+                {% set hvac_map = {
+                  'cool': 'cooling',
+                  'heat': 'heating',
+                  'heat_cool': 'auto',
+                  'fan_only': 'fan',
+                  'dry': 'dehumidify'
+                } %}
+                {% set expected_hvac_normalized = hvac_map.get(expected_hvac, expected_hvac) %}
+                {% set actual_hvac_normalized = hvac_map.get(actual_hvac, actual_hvac) %}
+                {% set is_hvac_manual = (
+                  expected_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
+                  actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
+                  expected_hvac_normalized != actual_hvac_normalized
+                ) %}
+
+                {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+              {% endif %}
+            {% endif %}
           {% endif %}
         {% endif %}
+
         {{ result }}
 
       # Manual Override - Proper flag-based system with separate tracking
@@ -4219,7 +4363,7 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
-  # Manual Override Debug Logging
+  # Manual Override Debug Logging - v3.3.0 Enhanced Detection
   - if:
       - condition: template
         value_template: "{{ debug_enabled }}"
@@ -4227,25 +4371,54 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔒 {{ room_name | upper }} MANUAL OVERRIDE DEBUG
+            🔒 {{ room_name | upper }} MANUAL OVERRIDE DEBUG (v3.3.0 SUPER ROBUST)
 
-            🔍 Detection Status:
-                • manual_change_detected: {{ manual_change_detected }}
-                • manual_override_active: {{ manual_override_active }}
-                • adaptive_override_timeout: {{ adaptive_override_timeout }} hours
-                • control_mode: {{ control_mode }}
+            ⏰ Timing Requirements:
+                • Trigger type: {{ trigger.id }}
+                • Check interval: {{ check_interval }}min
+                • Time since automation action: {{ time_since_change | round(1) }}min
+                • Minimum wait required: {{ check_interval }}min
+                • Detection window open: {{ trigger.id == 'periodic_check' and time_since_change >= check_interval }}
 
-            📊 State Analysis:
-                • last_mode_state (helper): {{ states(helper_mode) | default('unknown') }}
-                • actual_ac_state: {{ actual_ac_state }}
-                • time_since_change: {{ time_since_change | round(1) }}min
+            {% if trigger.id == 'periodic_check' and time_since_change >= check_interval %}
 
-            {% if manual_change_detected %}
-            ✅ MANUAL CHANGE DETECTED:
-                • Detection reason: {% if states(helper_mode) == 'off' and actual_ac_state == 'on' %}AC turned ON when automation expects OFF{% elif states(helper_mode) in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' %}AC turned OFF when automation expects ON{% else %}State mismatch detected{% endif %}
-                • Override will last: {{ adaptive_override_timeout }} hours from detection
+            🔛 ON/OFF Detection:
+                • Helper mode: {{ states(helper_mode) | default('off') }}
+                • Actual AC state: {{ actual_ac_state }}
+                • ✅ Manual ON/OFF detected: {% if (states(helper_mode) in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') or (states(helper_mode) == 'off' and actual_ac_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only']) %}YES{% else %}No{% endif %}
+
+            🌡️ Temperature Detection (±0.5°C tolerance):
+                • Expected: {{ states(helper_expected_temp) }}°C
+                • Actual: {{ state_attr(climate_list[0], 'temperature') }}°C
+                • Difference: {{ (state_attr(climate_list[0], 'temperature') | float(0) - states(helper_expected_temp) | float(0)) | abs | round(2) }}°C
+                • Tolerance: 0.5°C
+                • ✅ Manual temp change detected: {% if actual_ac_state != 'off' and states(helper_expected_temp) | float(0) > 0 and state_attr(climate_list[0], 'temperature') | float(0) > 0 and ((state_attr(climate_list[0], 'temperature') | float(0) - states(helper_expected_temp) | float(0)) | abs > 0.5) %}YES{% else %}No{% endif %}
+
+            💨 Fan Mode Detection (case-insensitive):
+                • Expected: "{{ states(helper_expected_fan) }}"
+                • Actual: "{{ state_attr(climate_list[0], 'fan_mode') }}"
+                • ✅ Manual fan change detected: {% if actual_ac_state != 'off' and states(helper_expected_fan) not in ['unknown', 'unavailable', '', 'none'] and state_attr(climate_list[0], 'fan_mode') | default('unknown') not in ['unknown', 'unavailable', '', 'none'] and (states(helper_expected_fan) | lower) != (state_attr(climate_list[0], 'fan_mode') | default('unknown') | lower) %}YES{% else %}No{% endif %}
+
+            🌊 Swing Mode Detection (normalized):
+                • Expected: "{{ states(helper_expected_swing) }}"
+                • Actual: "{{ state_attr(climate_list[0], 'swing_mode') }}"
+                • ✅ Manual swing change detected: {% if actual_ac_state != 'off' and states(helper_expected_swing) not in ['unknown', 'unavailable', '', 'none'] and state_attr(climate_list[0], 'swing_mode') | default('unknown') not in ['unknown', 'unavailable', '', 'none'] %}{% set exp_norm = (states(helper_expected_swing) | lower).replace('horizontal+vertical', 'both').replace('all', 'both') %}{% set act_norm = (state_attr(climate_list[0], 'swing_mode') | default('unknown') | lower).replace('horizontal+vertical', 'both').replace('all', 'both') %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
+
+            🔧 HVAC Mode Detection:
+                • Expected: "{{ states(helper_expected_hvac) }}"
+                • Actual: "{{ states(climate_list[0]) }}"
+                • ✅ Manual HVAC change detected: {% if states(helper_expected_hvac) not in ['unknown', 'unavailable', '', 'none', 'off'] and states(climate_list[0]) not in ['unknown', 'unavailable', '', 'none', 'off'] %}{% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}{% set exp_norm = hvac_map.get(states(helper_expected_hvac), states(helper_expected_hvac)) %}{% set act_norm = hvac_map.get(states(climate_list[0]), states(climate_list[0])) %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            🎯 FINAL RESULT: {{ '🔒 MANUAL CHANGE DETECTED - OVERRIDE ACTIVE' if manual_change_detected else '✅ No manual changes detected' }}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
             {% else %}
-            ℹ️ No manual change detected - automation in full control
+
+            ⏸️ Detection skipped - waiting for periodic check with sufficient time buffer
+                • Current trigger: {{ trigger.id }}
+                • Time remaining: {{ (check_interval - time_since_change) | round(1) }}min until detection check
+
             {% endif %}
 
             {% if manual_override_active %}
@@ -4622,11 +4795,29 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "heat"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "heat"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -4832,6 +5023,14 @@ action:
                       {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -4954,11 +5153,29 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "heat"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "heat"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -5152,6 +5369,14 @@ action:
                         {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -5272,11 +5497,29 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "heat"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "heat"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -5473,6 +5716,14 @@ action:
                         {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -5595,11 +5846,29 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "cool"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "cool"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -5805,6 +6074,14 @@ action:
                       {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -5941,11 +6218,29 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "cool"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "cool"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -6139,6 +6434,14 @@ action:
                         {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6256,11 +6559,29 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "cool"
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
             data:
               hvac_mode: "cool"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -6431,6 +6752,14 @@ action:
                         {% endif %}
                       {% endif %}
 
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6516,13 +6845,22 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
           - repeat:
               for_each: "{{ climate_list }}"
               sequence:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "cool"
+                  continue_on_error: true
+
                 - service: climate.set_hvac_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6543,7 +6881,15 @@ action:
                         {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ cooling_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -6601,7 +6947,15 @@ action:
                         {% else %}
                         {{ fans[-1] if fans else 'Auto' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6729,7 +7083,15 @@ action:
                                 {% else %}
                                 {{ modes[0] if modes else 'off' }}
                               {% endif %}
-                        
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "cool"
+                          continue_on_error: true
+
                         - service: climate.set_hvac_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -6737,7 +7099,7 @@ action:
                             hvac_mode: >
                               {% set available = state_attr(current_entity, 'hvac_modes') | list %}
                               {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
-                        
+
                         - condition: template
                           value_template: "{{ debug_enabled }}"
                         - service: system_log.write
@@ -6749,13 +7111,21 @@ action:
                               • Reason: Best cooling mode for this AC unit
                             level: debug
                             logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-                  
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ cooling_target_temp }}"
+                    continue_on_error: true
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ cooling_target_temp }}"
-                  
+
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
@@ -6763,11 +7133,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_max_fan: !input fan_speed_max
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            selected_fan_mode: >
                               {% if desired_max_fan in available_fans %}
                                 {{ desired_max_fan }}
                                 {% elif '5' in available_fans %}
@@ -6783,7 +7149,21 @@ action:
                                 {% else %}
                                 {{ available_fans[-1] if available_fans else 'Auto' }}
                               {% endif %}
-                  
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ selected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ selected_fan_mode }}"
+
                   - service: input_text.set_value
                     target:
                       entity_id: !input helper_last_mode
@@ -6842,7 +7222,15 @@ action:
                                 {% else %}
                                 {{ modes[0] if modes else 'off' }}
                               {% endif %}
-                        
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ selected_hvac_mode }}"
+                          continue_on_error: true
+
                         - service: climate.set_hvac_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -6862,7 +7250,15 @@ action:
                               • Reason: Best heating mode for this AC unit
                             level: debug
                             logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-                  
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ heating_target_temp }}"
+                    continue_on_error: true
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -6876,11 +7272,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_max_fan: !input fan_speed_max
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            selected_fan_mode: >
                               {% if desired_max_fan in available_fans %}
                                 {{ desired_max_fan }}
                                 {% elif '5' in available_fans %}
@@ -6896,6 +7288,20 @@ action:
                                 {% else %}
                                 {{ available_fans[-1] if available_fans else 'Auto' }}
                               {% endif %}
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ selected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ selected_fan_mode | trim }}"
                   
                   - service: input_text.set_value
                     target:
@@ -6944,6 +7350,22 @@ action:
                 Temperature: {{ current_temp }}°C needs adjustment
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -6956,7 +7378,15 @@ action:
                 {% else %}
                   heat_cool
                 {% endif %}
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ weather_adjusted_target }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -6973,12 +7403,9 @@ action:
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
-          - service: climate.set_fan_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              fan_mode: >
+
+          - variables:
+              selected_fan_mode: >
                 {% set available_fans = state_attr(climate_list[0], 'fan_modes') | list %}
                 {% set desired_medium_fan = fan_speed_medium %}
                 {% if desired_medium_fan in available_fans %}
@@ -6996,6 +7423,20 @@ action:
                 {% else %}
                   {{ available_fans[-1] if available_fans else 'Auto' }}
                 {% endif %}
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_fan }}"
+            data:
+              value: "{{ selected_fan_mode }}"
+            continue_on_error: true
+
+          - service: climate.set_fan_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              fan_mode: "{{ selected_fan_mode | trim }}"
           
           - condition: template
             value_template: "{{ enable_notifications }}"
@@ -7110,13 +7551,21 @@ action:
                         {% else %}
                         {{ modes[0] if modes else 'off' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_hvac_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: "{{ selected_hvac_mode }}"
-                
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7128,14 +7577,22 @@ action:
                       • Reason: Low cooling mode for gentle temperature control
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ cooling_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
             continue_on_error: true
-          
+
           # Use low fan speed for gentle cooling
           - repeat:
               for_each: "{{ climate_list }}"
@@ -7177,13 +7634,21 @@ action:
                         {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim }}"
-                
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7314,13 +7779,21 @@ action:
                         {% else %}
                         {{ modes[0] if modes else 'off' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_hvac_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     hvac_mode: "{{ selected_hvac_mode }}"
-                
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7332,14 +7805,22 @@ action:
                       • Reason: Medium cooling mode for balanced temperature control
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ cooling_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
             continue_on_error: true
-          
+
           # Use medium fan speed for balanced cooling
           - repeat:
               for_each: "{{ climate_list }}"
@@ -7382,13 +7863,21 @@ action:
                         {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim }}"
-                
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7460,11 +7949,7 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                        - service: climate.set_hvac_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            hvac_mode: >
+                            expected_hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
                                 {% elif 'Auto' in available_modes %}
@@ -7476,7 +7961,29 @@ action:
                                 {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
-                  
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ expected_hvac_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ expected_hvac_mode }}"
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ adjusted_target }}"
+                    continue_on_error: true
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -7502,11 +8009,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_eco_fan: "{{ fan_speed_eco }}"
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            expected_fan_mode: >
                               {% if desired_eco_fan in available_fans %}
                                 {{ desired_eco_fan }}
                                 {% elif 'Auto' in available_fans %}
@@ -7532,7 +8035,21 @@ action:
                                 {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
-                  
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ expected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ expected_fan_mode }}"
+
                   # Set swing mode with compatibility check for eco mode
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -7569,6 +8086,15 @@ action:
                                 {% else %}
                                 {{ available_swings[0] if available_swings else 'Off' }}
                               {% endif %}
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_swing }}"
+                          data:
+                            value: "{{ selected_swing_mode | trim }}"
+                          continue_on_error: true
+
                         - service: climate.set_swing_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -7694,11 +8220,7 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                        - service: climate.set_hvac_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            hvac_mode: >
+                            expected_hvac_mode: >
                               {% if current_temp > comfort_max_temp %}
                                 {% if 'cool' in available_modes %}
                                   cool
@@ -7728,12 +8250,23 @@ action:
                                   {{ available_modes[0] if available_modes else 'off' }}
                                 {% endif %}
                               {% endif %}
-                  
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      temperature: >
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ expected_hvac_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ expected_hvac_mode }}"
+
+                  - variables:
+                      expected_temp: >
                         {% if current_temp > comfort_max_temp %}
                           {{ comfort_max_temp + 1 }}
                           {% elif current_temp < comfort_min_temp %}
@@ -7741,6 +8274,20 @@ action:
                           {% else %}
                           {{ target_temp }}
                         {% endif %}
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ expected_temp }}"
+                    continue_on_error: true
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ expected_temp }}"
 
                   - service: system_log.write
                     data:
@@ -7761,11 +8308,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_eco_fan: "{{ fan_speed_eco }}"
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            expected_fan_mode: >
                               {% if desired_eco_fan in available_fans %}
                                 {{ desired_eco_fan }}
                                 {% elif 'Auto' in available_fans %}
@@ -8281,11 +8824,7 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                        - service: climate.set_hvac_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            hvac_mode: >
+                            expected_hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
                                 {% elif 'Auto' in available_modes %}
@@ -8301,12 +8840,23 @@ action:
                                 {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
-                  
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      temperature: >
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ expected_hvac_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ expected_hvac_mode }}"
+
+                  - variables:
+                      expected_temp: >
                         {% if current_temp > comfort_max_temp %}
                           {{ comfort_max_temp + eco_mode_setpoint_offset }}
                           {% elif current_temp < comfort_min_temp %}
@@ -8314,6 +8864,20 @@ action:
                           {% else %}
                           {{ target_temp }}
                         {% endif %}
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ expected_temp }}"
+                    continue_on_error: true
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ expected_temp }}"
 
                   - service: system_log.write
                     data:
@@ -8334,11 +8898,7 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_eco_fan: "{{ fan_speed_eco }}"
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            expected_fan_mode: >
                               {% if desired_eco_fan in available_fans %}
                                 {{ desired_eco_fan }}
                                 {% elif 'Auto' in available_fans %}
@@ -8365,10 +8925,32 @@ action:
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
 
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ expected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ expected_fan_mode }}"
+
               - conditions:
                   - condition: template
                     value_template: "{{ smart_behavior == 'maintain' }}"
                 sequence:
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ adjusted_target }}"
+                    continue_on_error: true
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -8451,11 +9033,7 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                        - service: climate.set_hvac_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            hvac_mode: >
+                            selected_hvac_mode: >
                               {% if 'auto' in available_modes %}
                                 auto
                                 {% elif 'Auto' in available_modes %}
@@ -8471,7 +9049,34 @@ action:
                                 {% else %}
                                 {{ available_modes[0] if available_modes else 'off' }}
                               {% endif %}
-                  
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ selected_hvac_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ selected_hvac_mode }}"
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: >
+                        {% if current_temp > comfort_max_temp %}
+                          {{ cooling_target_temp + eco_mode_setpoint_offset }}
+                          {% else %}
+                          {{ heating_target_temp - eco_mode_setpoint_offset }}
+                        {% endif %}
+                    continue_on_error: true
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -8502,29 +9107,17 @@ action:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                             desired_eco_fan: "{{ fan_speed_eco }}"
-                        - service: climate.set_fan_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            fan_mode: >
+                            selected_fan_mode: >
                               {% if desired_eco_fan in available_fans %}
                                 {{ desired_eco_fan }}
                                 {% elif 'Auto' in available_fans %}
                                 Auto
                                 {% elif 'auto' in available_fans %}
                                 auto
-                                {% elif 'Quiet' in available_fans %}
-                                Quiet
-                                {% elif 'quiet' in available_fans %}
-                                quiet
-                                {% elif 'Silence' in available_fans %}
-                                Silence
-                                {% elif 'silence' in available_fans %}
-                                silence
-                                {% elif 'Level 1' in available_fans %}
-                                Level 1
                                 {% elif '1' in available_fans %}
                                 1
+                                {% elif 'Level 1' in available_fans %}
+                                Level 1
                                 {% elif 'low' in available_fans %}
                                 low
                                 {% elif 'Low' in available_fans %}
@@ -8532,7 +9125,21 @@ action:
                                 {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
-          
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ selected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ selected_fan_mode }}"
+
           - condition: template
             value_template: "{{ enable_notifications }}"
           
@@ -8639,11 +9246,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
+                    selected_hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
                         {% elif 'Cool' in available_modes %}
@@ -8659,7 +9262,34 @@ action:
                         {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: >
+                {% if gradual_enabled %}
+                  {{ [weather_adjusted_target, current_temp - 2] | min }}
+                {% else %}
+                  {{ weather_adjusted_target }}
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -8699,11 +9329,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                     desired_max_fan: !input fan_speed_max
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
+                    selected_fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
                         {% elif '5' in available_fans %}
@@ -8717,8 +9343,22 @@ action:
                         {% elif 'auto' in available_fans %}
                         auto
                         {% else %}
-                        {{ available_fans[-1] if available_fans else 'Auto' }}
+                        {{ available_fans[0] if available_fans else 'Auto' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode | trim }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -8756,6 +9396,14 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8832,11 +9480,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
+                    selected_hvac_mode: >
                       {% if 'auto' in available_modes %}
                         auto
                         {% elif 'heat_cool' in available_modes %}
@@ -8846,7 +9490,34 @@ action:
                         {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: >
+                {% if gradual_enabled %}
+                  {{ [cooling_target_temp, current_temp - 1] | min }}
+                {% else %}
+                  {{ cooling_target_temp }}
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -8876,11 +9547,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
+                    selected_fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
                         {% elif 'auto' in available_fans %}
@@ -8894,6 +9561,20 @@ action:
                         {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode | trim }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -8931,6 +9612,14 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9042,7 +9731,22 @@ action:
                 Fan: Low/Minimum (efficient)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -9055,7 +9759,15 @@ action:
                 {% else %}
                   heat_cool
                 {% endif %}
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ heating_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -9114,7 +9826,15 @@ action:
                         {% else %}
                         {{ fans[0] if fans else 'Auto' }}
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9169,6 +9889,14 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9246,11 +9974,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
+                    selected_hvac_mode: >
                       {% if 'auto' in available_modes %}
                         auto
                         {% elif 'heat_cool' in available_modes %}
@@ -9260,7 +9984,29 @@ action:
                         {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ heating_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -9285,11 +10031,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
+                    selected_fan_mode: >
                       {% if 'Auto' in available_fans %}
                         Auto
                         {% elif 'auto' in available_fans %}
@@ -9303,6 +10045,20 @@ action:
                         {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode | trim }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -9340,6 +10096,14 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9472,7 +10236,22 @@ action:
                 Fan: Maximum (emergency)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  cool
+                {% elif current_temp < comfort_min_temp %}
+                  heat
+                {% else %}
+                  heat_cool
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_hvac_mode
             target:
               entity_id: !input climate_entities
@@ -9485,7 +10264,15 @@ action:
                 {% else %}
                   heat_cool
                 {% endif %}
-          
+
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ heating_target_temp }}"
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -9511,11 +10298,7 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
                     desired_max_fan: !input fan_speed_max
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: >
+                    selected_fan_mode: >
                       {% if desired_max_fan in available_fans %}
                         {{ desired_max_fan }}
                         {% elif '5' in available_fans %}
@@ -9545,6 +10328,20 @@ action:
                         {% else %}
                         {{ available_fans[-1] if available_fans else 'Auto' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode | trim }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -9594,6 +10391,14 @@ action:
                         {% else %}
                         {{ available_swings[0] if available_swings else 'off' }}
                       {% endif %}
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode | trim }}"
+                  continue_on_error: true
+
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9664,11 +10469,7 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: >
+                    selected_hvac_mode: >
                       {% if current_temp > comfort_max_temp and 'cool' in available_modes %}
                         cool
                         {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
@@ -9680,7 +10481,36 @@ action:
                         {% else %}
                         {{ available_modes[0] if available_modes else 'off' }}
                       {% endif %}
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
+          # Capture expected values for enhanced manual override detection (v3.3.0)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: >
+                {% if current_temp > comfort_max_temp %}
+                  {{ cooling_target_temp }}
+                {% elif current_temp < comfort_min_temp %}
+                  {{ heating_target_temp }}
+                {% else %}
+                  {{ target_temp }}
+                {% endif %}
+            continue_on_error: true
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -9801,7 +10631,15 @@ action:
                         {% else %}
                         Auto
                       {% endif %}
-                
+
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
