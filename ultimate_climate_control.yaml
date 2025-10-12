@@ -3441,12 +3441,12 @@ action:
 
             {# Detect ANY manual change: AC state doesn't match what automation expects #}
             {# Must wait 2 minutes after automation's last action to avoid false detections #}
+            {# Case 1: AC turned OFF when automation expects it running #}
+            {# Case 2: AC turned ON when automation expects it off #}
             {% set is_manual_change = (
               time_since_change >= 2 and
               (
-                {# Case 1: AC turned OFF when automation expects it running #}
                 (last_mode_state in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
-                {# Case 2: AC turned ON when automation expects it off #}
                 (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
               )
             ) %}
