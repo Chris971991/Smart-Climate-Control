@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.7.1
+  name: Ultimate Smart Climate Control - v3.7.2
 
   description: |
-    **Ultimate Smart Climate Control v3.7.1**
+    **Ultimate Smart Climate Control v3.7.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.7.1
+    ## 🆕 Latest Update - v3.7.2
 
-    **🐛 CRITICAL FIX: Manual Override Detection**
-    - ✅ FIXED: Manual override now detects changes on ANY trigger (not just periodic checks)
-    - ✅ FIXED: Fan/temp/swing changes via HA UI now detected instantly (not 2 min delay)
-    - ✅ FIXED: Time buffer prevents false positives from automation's own actions
-    - 🎯 BENEFIT: Manual changes detected within seconds instead of waiting 2 minutes!
+    **🐛 CRITICAL FIX: Manual Override Re-Activation Bug**
+    - ✅ FIXED: Override no longer re-activates immediately after clicking "Clear"
+    - ✅ FIXED: Expected helpers now sync with AC state when clearing override
+    - 🎯 ROOT CAUSE: Helpers showed old expected values, detection saw mismatch, re-triggered
+    - 🎯 SOLUTION: New override_cleared trigger updates all helpers (temp/fan/swing/hvac) to match AC
 
     **📝 Previous Updates:**
-    - v3.7.0: 🎯 NEW - Enhanced Presence Detection Modes (BLE_MOTION, BLE_BED, BLE_SMART, etc.)
-    - v3.3.3: 🐛 FIXED - Manual override false detection on mode changes (5-min buffer added)
+    - v3.7.1: 🐛 Manual override detects changes instantly (not 2 min delay)
+    - v3.7.0: 🎯 Enhanced Presence Detection Modes (BLE_MOTION, BLE_BED, BLE_SMART)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2714,6 +2714,12 @@ trigger:
     entity_id: !input helper_control_mode
     id: mode_change
 
+  # Fire immediately when manual override is cleared
+  - platform: state
+    entity_id: !input helper_override_flag
+    to: "off"
+    id: override_cleared
+
 condition: []
 
 action:
@@ -2733,6 +2739,56 @@ action:
       - service: input_datetime.set_datetime
         target:
           entity_id: !input helper_mode_start_time
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
+  # Override cleared - update expected helpers to match current AC state
+  # This prevents immediate re-detection of the same "manual" settings
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'override_cleared' }}"
+    then:
+      - variables:
+          climate_entities_list: !input climate_entities
+          first_climate: "{{ (climate_entities_list | list)[0] }}"
+
+      # Capture current temperature setpoint
+      - service: input_number.set_value
+        target:
+          entity_id: !input helper_expected_temp
+        data:
+          value: "{{ state_attr(first_climate, 'temperature') | float(22) }}"
+        continue_on_error: true
+
+      # Capture current fan mode
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_expected_fan
+        data:
+          value: "{{ state_attr(first_climate, 'fan_mode') | default('auto') }}"
+        continue_on_error: true
+
+      # Capture current swing mode
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_expected_swing
+        data:
+          value: "{{ state_attr(first_climate, 'swing_mode') | default('off') }}"
+        continue_on_error: true
+
+      # Capture current HVAC mode
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_expected_hvac
+        data:
+          value: "{{ states(first_climate) | default('off') }}"
+        continue_on_error: true
+
+      # Update last_change timestamp to reset detection timer
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
         data:
           datetime: "{{ now() }}"
         continue_on_error: true
