@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.1
+  name: Ultimate Smart Climate Control - v3.8.2
 
   description: |
-    **Ultimate Smart Climate Control v3.8.1**
+    **Ultimate Smart Climate Control v3.8.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.1
+    ## 🆕 Latest Update - v3.8.2
 
-    **🚀 NEW FEATURE: Stall Detection**
-    - ✨ NEW: "Wrong Direction Escalation" now detects STALLING (cooling/heating too slowly)
-    - ✅ ENHANCED: Escalation kicks in when temp moves wrong way OR progresses too slowly
-    - 🎯 SMART: Uses your "Minimum Progress Rate" setting to detect slow progress
-    - 🔥 POWERFUL: Catches AC stalling at -0.02°C/min when it should be cooling faster
-    - 🧠 INTELLIGENT: Automatically escalates fan speed until progress improves
+    **🐛 CRITICAL FIXES: Presence Timer System**
+    - 🛡️ FIXED: Random AC activation from sensor flickering (mmWave blips accumulating false time)
+    - 🔥 FIXED: AC staying on when house empty (grace period logic improved)
+    - ⚡ REMOVED: Problematic timer reset mechanism (no more 7-day-ago timestamp resets)
+    - 🎯 ENHANCED: Grace period now validates prior confirmed presence before applying
+    - 💡 RESULT: Master Bedroom won't turn on randomly, saves power when everyone gone
 
     **📝 Previous Updates:**
+    - v3.8.1: 🚀 Stall detection (escalates when cooling/heating too slowly)
     - v3.7.6: 🛡️ Removed 15-second buffer (flag system handles override)
-    - v3.7.4: ⚡ Instant manual override detection [Removed in v3.7.6]
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3564,10 +3564,21 @@ action:
           {# Smart mode with grace period for short absences (bathroom trips, etc.) #}
           {% if room_presence_detected and minutes_with_presence >= presence_confirmation_delay %}
             true
-          {% elif minutes_since_presence < presence_timeout and presence_confirmation_delay == 0 %}
-            {# Grace period ONLY applies when instant activation is enabled (no confirmation delay) #}
-            {# With confirmation delay enabled, grace period requires prior CONFIRMED presence #}
-            true
+          {% elif minutes_since_presence < presence_timeout %}
+            {# Grace period applies when: #}
+            {# 1. Instant activation (no confirmation delay) - always applies #}
+            {# 2. Had prior confirmed presence - left after AC was already running #}
+            {# v3.8.2 FIX: Check if last presence timer shows we HAD accumulated enough time #}
+            {# This prevents grace period from keeping AC on if someone just walked in briefly #}
+            {% set last_timer_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
+            {% if last_timer_val not in ['unknown', 'unavailable', '', None] %}
+              {% set time_when_left = as_timestamp(last_timer_val) %}
+              {% set time_at_timeout = as_timestamp(now()) - (presence_timeout * 60) %}
+              {# If timer was set more than (timeout + confirmation_delay) ago, we had confirmed presence #}
+              {{ (presence_confirmation_delay == 0) or (time_when_left < time_at_timeout) }}
+            {% else %}
+              false
+            {% endif %}
           {% elif approaching_home %}
             true
           {% else %}
@@ -3749,20 +3760,17 @@ action:
         data:
           datetime: "{{ now() }}"
 
-  # CRITICAL FIX v3.0.93: Reset presence timer when presence is LOST
-  # Set to 1 week ago so had_recent_presence becomes FALSE, allowing fresh timer on return
-  # This ensures minutes_with_presence resets properly when re-entering room
-  - if:
-      - condition: template
-        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
-      - condition: template
-        value_template: "{{ had_recent_presence }}"
-    then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ presence_detected_helper }}"
-        data:
-          datetime: "{{ (now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S') }}"
+  # REMOVED v3.8.2: Timer reset block removed to fix random activation bug
+  # Previous logic (v3.0.93-v3.8.1) reset timer to 7 days ago when presence lost
+  # This caused sensor flickering (mmWave blips) to repeatedly reset and re-set timer
+  # Result: Random accumulated time triggering AC when room actually empty
+  #
+  # NEW BEHAVIOR: Timer only set when presence FIRST detected (not had_recent_presence)
+  # Timer naturally expires via had_recent_presence calculation after (timeout + 5min)
+  # This prevents flickering sensors from accumulating false presence time
+  #
+  # Example: mmWave blip → timer set → mmWave clears → (OLD: reset to 7 days ago, NEW: leave alone)
+  #          → another mmWave blip → (OLD: re-set timer, accumulate time, NEW: skip, had_recent_presence still true)
 
   # Manual Override Flag Management - SET flag when manual change detected
   # v3.1.9: Proper flag-based override system with separate tracking
