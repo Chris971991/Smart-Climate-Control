@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.7.3
+  name: Ultimate Smart Climate Control - v3.7.4
 
   description: |
-    **Ultimate Smart Climate Control v3.7.3**
+    **Ultimate Smart Climate Control v3.7.4**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,16 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.7.3
+    ## 🆕 Latest Update - v3.7.4
 
-    **🐛 HOTFIX: Blueprint Import Error**
-    - ✅ FIXED: Corrected input reference (helper_override_flag → helper_override_active)
-    - ✅ FIXED: "Missing input definition" error when importing blueprint
-    - 🎯 v3.7.2 features now working correctly (override clear functionality)
+    **⚡ CRITICAL FIX: Instant Manual Override Detection**
+    - ✅ FIXED: Manual changes now detected within 15 SECONDS (not 2 minutes!)
+    - ✅ FIXED: Reduced detection buffer from 2min to 15sec for instant response
+    - 🎯 BENEFIT: Change fan speed via HA UI → Override activates in ~15 seconds!
+    - 🛡️ PROTECTION: 15-second buffer still prevents false positives from automation's own changes
 
     **📝 Previous Updates:**
-    - v3.7.2: 🐛 Manual override re-activation fix (override_cleared trigger added)
-    - v3.7.1: 🐛 Manual override detects changes instantly (not 2 min delay)
+    - v3.7.3: 🐛 Blueprint import hotfix (input reference corrected)
+    - v3.7.2: 🐛 Manual override re-activation fix (override_cleared trigger)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3588,7 +3589,7 @@ action:
       # Check if user manually changed AC settings (from HA or remote)
       # v3.3.0 SUPER ROBUST: Enhanced detection for temp, fan, swing, HVAC mode changes
       # v3.7.1 FIX: Removed periodic_check restriction - now detects on ANY trigger with time buffer
-      # Uses check_interval time buffer to prevent false positives from automation's own actions
+      # v3.7.4 FIX: Reduced buffer to 15 seconds for instant detection while avoiding false positives
       manual_change_detected: >
         {% set result = false %}
 
@@ -3597,9 +3598,10 @@ action:
           {% if change_timestamp %}
             {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
 
-            {% set check_interval_minutes = check_interval | int(5) %}
+            {# Use 15-second buffer (0.25 min) to detect manual changes immediately while avoiding automation's own changes #}
+            {% set detection_buffer_minutes = 0.25 %}
 
-            {% if time_since_change >= check_interval_minutes %}
+            {% if time_since_change >= detection_buffer_minutes %}
                 {% set last_mode_state = states(helper_mode) | default('off') %}
                 {% set actual_state = actual_ac_state %}
 
