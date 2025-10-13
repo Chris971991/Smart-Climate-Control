@@ -1743,26 +1743,28 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         # Generate card with conditional cards if manual override is enabled
         if has_manual_override:
-            card_yaml = f"""- type: conditional
-  conditions:
-    - entity: {override_active_entity}
-      state: "on"
-  card:
-    type: custom:mushroom-template-card
-    primary: Climate Control
-    secondary: Manual Override - Tap to Clear
-    icon: mdi:alert-circle-outline
-    icon_color: orange
-    layout: horizontal
-    fill_container: false
-    tap_action:
-      action: call-service
-      service: input_boolean.turn_off
-      service_data:
-        entity_id: {override_active_entity}
-    card_mod:
-      style: |
-        ha-card {{
+            card_yaml = f"""type: vertical-stack
+cards:
+  - type: conditional
+    conditions:
+      - entity: {override_active_entity}
+        state: "on"
+    card:
+      type: custom:mushroom-template-card
+      primary: Climate Control
+      secondary: Manual Override - Tap to Clear
+      icon: mdi:alert-circle-outline
+      icon_color: orange
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: input_boolean.turn_off
+        service_data:
+          entity_id: {override_active_entity}
+      card_mod:
+        style: |
+          ha-card {{
           background-color: rgba(0,0,0,0.35) !important;
           border-radius: 20px !important;
           height: 56px !important;
@@ -1792,20 +1794,20 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
           }}
         }}
 
-- type: conditional
-  conditions:
-    - entity: {override_active_entity}
-      state: "off"
-  card:
-    type: custom:mushroom-select-card
-    entity: {control_mode_entity}
-    name: Climate Control
-    icon: mdi:air-conditioner
-    fill_container: false
-    layout: horizontal
-    card_mod:
-      style: |
-        ha-card {{
+  - type: conditional
+    conditions:
+      - entity: {override_active_entity}
+        state: "off"
+    card:
+      type: custom:mushroom-select-card
+      entity: {control_mode_entity}
+      name: Climate Control
+      icon: mdi:air-conditioner
+      fill_container: false
+      layout: horizontal
+      card_mod:
+        style: |
+          ha-card {{
           background-color: rgba(0,0,0,0.35) !important;
           border-radius: 20px !important;
           height: 56px !important;
@@ -2127,26 +2129,28 @@ Copy this YAML and add it to your dashboard:
 
         # Generate card with conditional cards if manual override is enabled
         if has_manual_override:
-            card_yaml = f"""- type: conditional
-  conditions:
-    - entity: {override_active_entity}
-      state: "on"
-  card:
-    type: custom:mushroom-template-card
-    primary: Climate Control
-    secondary: Manual Override - Tap to Clear
-    icon: mdi:alert-circle-outline
-    icon_color: orange
-    layout: horizontal
-    fill_container: false
-    tap_action:
-      action: call-service
-      service: input_boolean.turn_off
-      service_data:
-        entity_id: {override_active_entity}
-    card_mod:
-      style: |
-        ha-card {{
+            card_yaml = f"""type: vertical-stack
+cards:
+  - type: conditional
+    conditions:
+      - entity: {override_active_entity}
+        state: "on"
+    card:
+      type: custom:mushroom-template-card
+      primary: Climate Control
+      secondary: Manual Override - Tap to Clear
+      icon: mdi:alert-circle-outline
+      icon_color: orange
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: input_boolean.turn_off
+        service_data:
+          entity_id: {override_active_entity}
+      card_mod:
+        style: |
+          ha-card {{
           background-color: rgba(0,0,0,0.35) !important;
           border-radius: 20px !important;
           height: 56px !important;
@@ -2176,20 +2180,20 @@ Copy this YAML and add it to your dashboard:
           }}
         }}
 
-- type: conditional
-  conditions:
-    - entity: {override_active_entity}
-      state: "off"
-  card:
-    type: custom:mushroom-select-card
-    entity: {control_mode_entity}
-    name: Climate Control
-    icon: mdi:air-conditioner
-    fill_container: false
-    layout: horizontal
-    card_mod:
-      style: |
-        ha-card {{
+  - type: conditional
+    conditions:
+      - entity: {override_active_entity}
+        state: "off"
+    card:
+      type: custom:mushroom-select-card
+      entity: {control_mode_entity}
+      name: Climate Control
+      icon: mdi:air-conditioner
+      fill_container: false
+      layout: horizontal
+      card_mod:
+        style: |
+          ha-card {{
           background-color: rgba(0,0,0,0.35) !important;
           border-radius: 20px !important;
           height: 56px !important;
