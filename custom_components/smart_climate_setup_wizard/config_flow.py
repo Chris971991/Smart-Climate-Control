@@ -1723,7 +1723,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         return turnoff_automation["id"]
 
     def _generate_dashboard_card(self, config: dict[str, Any]) -> str:
-        """Generate Mushroom card YAML for dashboard."""
+        """Generate Mushroom card YAML for dashboard with manual override button."""
         room_name = config["room_name"]
         sanitized_name = sanitize_room_name(room_name)
 
@@ -1736,8 +1736,136 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             return ""
 
         control_mode_entity = f"input_select.climate_control_mode_{sanitized_name}"
+        override_active_entity = f"input_boolean.climate_override_active_{sanitized_name}"
 
-        card_yaml = f"""type: custom:mushroom-select-card
+        # Check if manual override is enabled
+        has_manual_override = config.get("enable_manual_override", True)
+
+        # Generate card with conditional cards if manual override is enabled
+        if has_manual_override:
+            card_yaml = f"""- type: conditional
+  conditions:
+    - entity: {override_active_entity}
+      state: "on"
+  card:
+    type: custom:mushroom-template-card
+    primary: Climate Control
+    secondary: Manual Override - Tap to Clear
+    icon: mdi:alert-circle-outline
+    icon_color: orange
+    layout: horizontal
+    fill_container: false
+    tap_action:
+      action: call-service
+      service: input_boolean.turn_off
+      service_data:
+        entity_id: {override_active_entity}
+    card_mod:
+      style: |
+        ha-card {{
+          background-color: rgba(0,0,0,0.35) !important;
+          border-radius: 20px !important;
+          height: 56px !important;
+          min-height: 56px !important;
+        }}
+        .primary {{
+          color: white !important;
+        }}
+        .secondary {{
+          color: rgb(255, 152, 0) !important;
+          font-weight: 500 !important;
+        }}
+        mushroom-shape-icon {{
+          --icon-color: rgb(255, 152, 0) !important;
+          --shape-color: rgba(255, 152, 0, 0.2) !important;
+          animation: alert-pulse 2s ease-in-out infinite;
+          display: flex;
+        }}
+        @keyframes alert-pulse {{
+          0%, 100% {{
+            transform: scale(1);
+            opacity: 1;
+          }}
+          50% {{
+            transform: scale(1.15);
+            opacity: 0.7;
+          }}
+        }}
+
+- type: conditional
+  conditions:
+    - entity: {override_active_entity}
+      state: "off"
+  card:
+    type: custom:mushroom-select-card
+    entity: {control_mode_entity}
+    name: Climate Control
+    icon: mdi:air-conditioner
+    fill_container: false
+    layout: horizontal
+    card_mod:
+      style: |
+        ha-card {{
+          background-color: rgba(0,0,0,0.35) !important;
+          border-radius: 20px !important;
+          height: 56px !important;
+          min-height: 56px !important;
+        }}
+        .primary {{
+          color: white !important;
+        }}
+        mushroom-select {{
+          --select-height: 40px !important;
+        }}
+        mushroom-shape-icon {{
+          {{% set mode = states('{control_mode_entity}') %}}
+          {{% set ac_state = states('{climate_entity}') %}}
+          {{% if mode == 'Auto' %}}
+            --card-mod-icon: mdi:robot;
+          {{% elif mode == 'Manual' %}}
+            --card-mod-icon: mdi:hand-back-right;
+          {{% elif mode == 'Smart' %}}
+            --card-mod-icon: mdi:brain;
+          {{% else %}}
+            --card-mod-icon: mdi:air-conditioner;
+          {{% endif %}}
+
+          {{% if ac_state == 'off' %}}
+            --icon-color: rgb(158, 158, 158) !important;
+            --shape-color: rgba(158, 158, 158, 0.2) !important;
+          {{% else %}}
+            {{% if mode == 'Auto' %}}
+              animation: spin 3s ease-in-out infinite alternate;
+            {{% elif mode == 'Manual' %}}
+              animation: wave 1s ease-in-out infinite;
+            {{% elif mode == 'Smart' %}}
+              animation: pulse 2s ease-in-out infinite;
+            {{% endif %}}
+          {{% endif %}}
+          display: flex;
+        }}
+        @keyframes spin {{
+          0%, 100% {{ transform: rotate(0deg); }}
+          50% {{ transform: rotate(360deg); }}
+        }}
+        @keyframes wave {{
+          0%, 100% {{ transform: rotate(0deg); }}
+          25% {{ transform: rotate(-15deg); }}
+          75% {{ transform: rotate(15deg); }}
+        }}
+        @keyframes pulse {{
+          0%, 100% {{
+            transform: scale(1);
+            opacity: 1;
+          }}
+          50% {{
+            transform: scale(1.1);
+            opacity: 0.8;
+          }}
+        }}"""
+        else:
+            # Generate simple card without manual override button
+            card_yaml = f"""type: custom:mushroom-select-card
 entity: {control_mode_entity}
 name: {room_name} Climate
 icon: mdi:air-conditioner
