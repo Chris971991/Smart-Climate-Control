@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.7.0
+  name: Ultimate Smart Climate Control - v3.7.1
 
   description: |
-    **Ultimate Smart Climate Control v3.7.0**
+    **Ultimate Smart Climate Control v3.7.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,21 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.7.0
+    ## 🆕 Latest Update - v3.7.1
 
-    **🎯 MAJOR: Enhanced Presence Detection Modes - Prevent False Triggers!**
-    - ⭐ NEW: **BLE_MOTION** - Requires BOTH BLE + motion (prevents motion blips)
-    - ⭐ NEW: **BLE_BED** - Requires BOTH ble + bed sensor (perfect for sleep detection)
-    - ⭐ NEW: **BLE_SMART** - Requires ble + (motion OR bed) - intelligent awake/sleep detection
-    - ⚠️ NEW: **MOTION_ONLY** - Motion only with clear warnings about false triggers
-    - ⚠️ NEW: **BLE_ONLY** - BLE only with warnings about adjacent room activation
-    - ✅ NEW: **BED_ONLY** - Bed sensor only (reliable for weight-based sensors)
-    - 🛡️ REMOVED: Old "BEDROOM" mode that had problematic fallback logic
-    - 🎯 BENEFIT: No more AC turning on from random motion sensor blips!
+    **🐛 CRITICAL FIX: Manual Override Detection**
+    - ✅ FIXED: Manual override now detects changes on ANY trigger (not just periodic checks)
+    - ✅ FIXED: Fan/temp/swing changes via HA UI now detected instantly (not 2 min delay)
+    - ✅ FIXED: Time buffer prevents false positives from automation's own actions
+    - 🎯 BENEFIT: Manual changes detected within seconds instead of waiting 2 minutes!
 
     **📝 Previous Updates:**
+    - v3.7.0: 🎯 NEW - Enhanced Presence Detection Modes (BLE_MOTION, BLE_BED, BLE_SMART, etc.)
     - v3.3.3: 🐛 FIXED - Manual override false detection on mode changes (5-min buffer added)
-    - v3.3.0: 🎯 NEW - Enhanced Manual Override Detection (temp, fan, swing, HVAC mode changes)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3536,19 +3532,19 @@ action:
       
       # Check if user manually changed AC settings (from HA or remote)
       # v3.3.0 SUPER ROBUST: Enhanced detection for temp, fan, swing, HVAC mode changes
-      # Uses check_interval instead of hardcoded 2 minutes, only checks on periodic_check trigger
+      # v3.7.1 FIX: Removed periodic_check restriction - now detects on ANY trigger with time buffer
+      # Uses check_interval time buffer to prevent false positives from automation's own actions
       manual_change_detected: >
         {% set result = false %}
 
-        {% if trigger.id == 'periodic_check' %}
-          {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-            {% set change_timestamp = as_timestamp(states(helper_change)) %}
-            {% if change_timestamp %}
-              {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
+        {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+          {% set change_timestamp = as_timestamp(states(helper_change)) %}
+          {% if change_timestamp %}
+            {% set time_since_change = (as_timestamp(now()) - change_timestamp) / 60 %}
 
-              {% set check_interval_minutes = check_interval | int(5) %}
+            {% set check_interval_minutes = check_interval | int(5) %}
 
-              {% if time_since_change >= check_interval_minutes %}
+            {% if time_since_change >= check_interval_minutes %}
                 {% set last_mode_state = states(helper_mode) | default('off') %}
                 {% set actual_state = actual_ac_state %}
 
@@ -3608,8 +3604,7 @@ action:
                   expected_hvac_normalized != actual_hvac_normalized
                 ) %}
 
-                {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
-              {% endif %}
+              {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
             {% endif %}
           {% endif %}
         {% endif %}
