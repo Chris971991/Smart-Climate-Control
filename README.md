@@ -813,7 +813,30 @@ Additional:
 
 ## Version History
 
-### **v3.3.3** (Current) - Manual Override False Detection Fix
+### **v3.7.5** (Current) - Manual Override False Detection Fix (Timestamp Edition)
+
+**🐛 CRITICAL FIX: AUTOMATION'S OWN ACTIONS TRIGGERING OVERRIDE**
+- **✅ FIXED**: Automation's own actions no longer trigger manual override detection
+- **✅ FIXED**: Restored `helper_change` timestamp updates in all 6 action sequences (heating/cooling high/medium/low)
+- **✅ FIXED**: 15-second detection buffer now works as designed (was broken without timestamp updates)
+- **🛡️ RELIABLE**: Prevents automation from blocking itself after legitimate mode changes
+- **🎯 BENEFIT**: User manual changes still detected within ~15 seconds, no false positives from automation
+
+**What Was Broken:**
+- **v3.7.4**: Removed `helper_change` timestamp updates with comment "automation actions should NOT trigger manual override"
+- **Problem**: Without timestamp updates, 15-second buffer couldn't distinguish automation actions from manual changes
+- **Result**: Automation's own actions flagged as "manual" → Override activated → Automation blocked
+
+**What Changed:**
+- **Lines 5161-5166, 5513-5518, 5866-5871, 6238-6243, 6604-6609, 6919-6924**: Re-added timestamp updates after mode changes
+- **Logic**: Every automation action updates `helper_change` → 15-second buffer sees fresh timestamp → No false detection
+- **Protection**: Buffer still prevents false positives from automation's own changes (15-second grace period)
+
+**Real-World Impact:**
+- **Before**: AC activates at 16:25:54 → Detection at 16:26:09 sees old timestamp (54 min) → Manual override triggered ❌
+- **After**: AC activates at 16:25:54 → Updates timestamp → Detection at 16:26:09 sees 0.25 min < 15 sec → No false detection ✅
+
+### **v3.3.3** - Manual Override False Detection Fix (Mode Change Edition)
 
 **🐛 CRITICAL FIX: MODE CHANGE FALSE OVERRIDE ACTIVATION**
 - **✅ FIXED**: Manual override no longer activates when switching modes (Smart→Manual→Smart)
