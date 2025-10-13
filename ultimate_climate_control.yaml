@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.7.2
+  name: Ultimate Smart Climate Control - v3.7.3
 
   description: |
-    **Ultimate Smart Climate Control v3.7.2**
+    **Ultimate Smart Climate Control v3.7.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.7.2
+    ## 🆕 Latest Update - v3.7.3
 
-    **🐛 CRITICAL FIX: Manual Override Re-Activation Bug**
-    - ✅ FIXED: Override no longer re-activates immediately after clicking "Clear"
-    - ✅ FIXED: Expected helpers now sync with AC state when clearing override
-    - 🎯 ROOT CAUSE: Helpers showed old expected values, detection saw mismatch, re-triggered
-    - 🎯 SOLUTION: New override_cleared trigger updates all helpers (temp/fan/swing/hvac) to match AC
+    **🐛 HOTFIX: Blueprint Import Error**
+    - ✅ FIXED: Corrected input reference (helper_override_flag → helper_override_active)
+    - ✅ FIXED: "Missing input definition" error when importing blueprint
+    - 🎯 v3.7.2 features now working correctly (override clear functionality)
 
     **📝 Previous Updates:**
+    - v3.7.2: 🐛 Manual override re-activation fix (override_cleared trigger added)
     - v3.7.1: 🐛 Manual override detects changes instantly (not 2 min delay)
-    - v3.7.0: 🎯 Enhanced Presence Detection Modes (BLE_MOTION, BLE_BED, BLE_SMART)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
