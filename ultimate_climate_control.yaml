@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.7
+  name: Ultimate Smart Climate Control - v3.8.8
 
   description: |
-    **Ultimate Smart Climate Control v3.8.7**
+    **Ultimate Smart Climate Control v3.8.8**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.7
+    ## 🆕 Latest Update - v3.8.8
 
-    **🐛 CRITICAL HOTFIX: Presence Timer Resetting Every 5 Minutes**
-    - 🔥 FIXED: Timer reset condition `minutes_since_timer_set > presence_timeout` was BACKWARDS!
-    - 🚨 IMPACT: Timer would reset every time it exceeded timeout (5 min) during continuous presence
-    - ✅ RESOLVED: Now only resets if timer in "expired" state (> timeout + 1) OR ancient (> 2 hours)
-    - 📊 RESULT: Timer counts continuously during presence (5min, 10min, 60min...) without resetting
+    **🐛 CRITICAL FIX: False Manual Override on HA Restart**
+    - 🔥 FIXED: Expected helper values reset to defaults on HA restart, causing false override detection
+    - 🚨 IMPACT: Every HA restart would trigger manual override flag, blocking automation for 1 hour
+    - ✅ RESOLVED: Skip manual override detection if expected_temp is outside normal range (16-30°C)
+    - 📊 RESULT: No more false override flags after HA restarts
 
     **📝 Previous Updates:**
+    - v3.8.7: 🔥 Presence timer resetting every 5 minutes (backwards condition fixed)
     - v3.8.6: 🔥 UndefinedError fix (minimum_progress_rate → min_progress_rate)
-    - v3.8.5: 🔥 Presence timer simplified (2-phase: set when entering, reset when leaving)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3625,7 +3625,12 @@ action:
           (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
         ) %}
 
+        {# v3.8.8: Skip detection if expected values look like defaults (HA restart scenario) #}
         {% set expected_temp = states(helper_expected_temp) | float(0) %}
+        {% set helpers_look_stale = (expected_temp < 16 or expected_temp > 30) %}
+        {% if helpers_look_stale %}
+          {% set result = false %}
+        {% else %}
         {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
         {% set temp_tolerance = 0.5 %}
         {% set is_temp_manual = (
@@ -3677,6 +3682,7 @@ action:
         ) %}
 
         {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+        {% endif %}
 
         {{ result }}
 
