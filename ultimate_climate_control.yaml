@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.8
+  name: Ultimate Smart Climate Control - v3.8.9
 
   description: |
-    **Ultimate Smart Climate Control v3.8.8**
+    **Ultimate Smart Climate Control v3.8.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.8
+    ## 🆕 Latest Update - v3.8.9
 
-    **🐛 CRITICAL FIX: False Manual Override on HA Restart**
-    - 🔥 FIXED: Expected helper values reset to defaults on HA restart, causing false override detection
-    - 🚨 IMPACT: Every HA restart would trigger manual override flag, blocking automation for 1 hour
-    - ✅ RESOLVED: Skip manual override detection if expected_temp is outside normal range (16-30°C)
-    - 📊 RESULT: No more false override flags after HA restarts
+    **🐛 CRITICAL FIX: Automation Actions Triggering Manual Override**
+    - 🔥 FIXED: Automation changing AC settings (temp, fan, etc.) would trigger false manual override
+    - 🚨 IMPACT: Smart escalation boost changing temp 23°C→15°C triggered "manual change detected"
+    - ✅ RESOLVED: Manual override detection ONLY runs on periodic_check (not on climate entity state changes)
+    - 📊 RESULT: Only ACTUAL manual changes trigger override, not automation actions
 
     **📝 Previous Updates:**
+    - v3.8.8: 🔥 False manual override on HA restart (helper defaults detection)
     - v3.8.7: 🔥 Presence timer resetting every 5 minutes (backwards condition fixed)
-    - v3.8.6: 🔥 UndefinedError fix (minimum_progress_rate → min_progress_rate)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3614,8 +3614,17 @@ action:
       # Check if user manually changed AC settings (from HA or remote)
       # v3.3.0 SUPER ROBUST: Enhanced detection for temp, fan, swing, HVAC mode changes
       # v3.7.6 FIX: Removed unnecessary 15-second buffer - flag system handles persistence
+      # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
         {% set result = false %}
+
+        {# v3.8.9 FIX: ONLY check on periodic_check trigger - prevents race conditions #}
+        {# When automation changes AC, climate entity state change triggers BEFORE helpers update #}
+        {# This causes false detection: Expected=23°C, Actual=15°C (automation just set) #}
+        {% set is_periodic_check = (trigger.id == 'periodic_check') %}
+        {% if not is_periodic_check %}
+          {% set result = false %}
+        {% else %}
 
         {% set last_mode_state = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
@@ -3682,6 +3691,7 @@ action:
         ) %}
 
         {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+        {% endif %}
         {% endif %}
 
         {{ result }}
