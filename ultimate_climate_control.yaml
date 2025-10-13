@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.7.6
+  name: Ultimate Smart Climate Control - v3.8.1
 
   description: |
-    **Ultimate Smart Climate Control v3.7.6**
+    **Ultimate Smart Climate Control v3.8.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.7.6
+    ## 🆕 Latest Update - v3.8.1
 
-    **🛡️ CRITICAL FIX: Manual Override False Detection**
-    - ✅ FIXED: Removed unnecessary 15-second buffer causing false override triggers
-    - ✅ FIXED: Simplified detection logic - flag system handles override persistence
-    - 🎯 RELIABLE: Manual changes detected accurately without timing issues
-    - 🧹 CLEAN: Removed complex buffer logic that conflicted with dedicated flag system
+    **🚀 NEW FEATURE: Stall Detection**
+    - ✨ NEW: "Wrong Direction Escalation" now detects STALLING (cooling/heating too slowly)
+    - ✅ ENHANCED: Escalation kicks in when temp moves wrong way OR progresses too slowly
+    - 🎯 SMART: Uses your "Minimum Progress Rate" setting to detect slow progress
+    - 🔥 POWERFUL: Catches AC stalling at -0.02°C/min when it should be cooling faster
+    - 🧠 INTELLIGENT: Automatically escalates fan speed until progress improves
 
     **📝 Previous Updates:**
-    - v3.7.4: ⚡ Instant manual override detection (15-second buffer) [REMOVED in v3.7.6]
-    - v3.7.3: 🐛 Blueprint import hotfix (input reference corrected)
+    - v3.7.6: 🛡️ Removed 15-second buffer (flag system handles override)
+    - v3.7.4: ⚡ Instant manual override detection [Removed in v3.7.6]
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2157,28 +2158,34 @@ blueprint:
               mode: slider
 
         enable_wrong_direction_escalation:
-          name: Enable Wrong-Direction Escalation
+          name: Enable Stall & Wrong Direction Escalation
           description: |
-            **Incrementally escalate power when temperature moves the wrong way.**
+            **Incrementally escalate power when temperature stalls or moves the wrong way.**
 
             **How it works:**
             • Checks temperature trend at every effectiveness check (e.g., every 2 minutes)
-            • **Cooling mode:** If temperature RISING → add escalation levels
-            • **Heating mode:** If temperature FALLING → add escalation levels
+            • **Cooling mode:** If temperature RISING (wrong direction) OR cooling TOO SLOWLY (stalling) → add escalation levels
+            • **Heating mode:** If temperature FALLING (wrong direction) OR heating TOO SLOWLY (stalling) → add escalation levels
             • Adds levels incrementally until temperature stabilizes or reaches maximum
 
             **Example (with +1 per check, checking every 2 minutes):**
             ```
+            Wrong Direction (temp rising during cooling):
             Time 0: 25.6°C → Fan 1 (Base Level 0)
             Time 2: 25.7°C rising → Fan 2 (Level 0+1)
             Time 4: 25.8°C rising → Fan 3 (Level 0+2)
             Time 6: 25.9°C rising → Fan 4 (Level 0+3)
-            Time 8: 25.9°C stable → Stay Fan 4 (stops escalating)
+
+            Stalling (temp falling but TOO slowly):
+            Time 0: 23.6°C → Fan 2 (cooling at -0.02°C/min - too slow!)
+            Time 2: 23.5°C → Fan 3 (still -0.02°C/min - add +1 level)
+            Time 4: 23.3°C → Fan 4 (now -0.1°C/min - fast enough, stops escalating)
             ```
 
             **When useful:**
             • Gaming rooms with variable heat load (PCs, consoles)
             • Rooms with external heat sources (sun, appliances, cooking)
+            • Rooms that stall near target temperature (cooling too slowly)
             • Fast response to unexpected temperature changes
             • High-occupancy rooms with variable people count
 
@@ -2199,17 +2206,17 @@ blueprint:
             boolean:
 
         wrong_direction_escalation_per_check:
-          name: Wrong-Direction Escalation Per Check
+          name: Stall & Wrong Direction Escalation Per Check
           description: |
-            **How many escalation levels to add per effectiveness check when temperature moves wrong direction.**
+            **How many escalation levels to add per effectiveness check when temperature stalls or moves wrong direction.**
 
-            • **0:** Disabled (ignore wrong direction, even if feature enabled)
+            • **0:** Disabled (ignore stall/wrong direction, even if feature enabled)
             • **+1:** Gentle incremental response (⭐ recommended for most rooms)
-            • **+2:** Aggressive incremental response (for extreme heat loads)
+            • **+2:** Aggressive incremental response (for extreme heat loads or persistent stalling)
 
             **How it works:**
-            At each effectiveness check (e.g., every 2 minutes), if temperature is moving
-            the wrong direction, this many levels are added to escalation.
+            At each effectiveness check (e.g., every 2 minutes), if temperature is stalling (moving too slowly)
+            or moving the wrong direction, this many levels are added to escalation.
 
             **Example with +1 per check:**
             ```
@@ -2239,22 +2246,24 @@ blueprint:
               step: 1
 
         wrong_direction_min_rate:
-          name: Wrong-Direction Minimum Rate
+          name: Wrong Direction Minimum Rate
           description: |
-            Minimum temperature change rate to trigger wrong-direction escalation (°C/min).
+            Minimum temperature change rate to trigger WRONG DIRECTION escalation (°C/min).
 
-            This filters out sensor noise and minor fluctuations, only triggering escalation
-            when temperature is meaningfully moving in the wrong direction.
+            This detects when temperature moves the OPPOSITE direction (rising during cooling, falling during heating).
+            Filters out sensor noise, only triggering when temperature is meaningfully moving the wrong way.
+
+            **Note:** Slow progress (stalling) is detected separately using your "Minimum Progress Rate" setting.
 
             **Examples:**
-            • **0.03°C/min:** Very sensitive (1.8°C/hour) - triggers on small trends
-            • **0.05°C/min:** Balanced (3°C/hour) - filters noise, catches real issues
-            • **0.10°C/min:** Conservative (6°C/hour) - only triggers on strong trends
+            • **0.02°C/min:** Very sensitive (1.2°C/hour) - catches slight wrong direction trends
+            • **0.03°C/min:** Balanced (1.8°C/hour) - filters noise, catches real wrong direction issues
+            • **0.05°C/min:** Conservative (3°C/hour) - only triggers on clear wrong direction
 
             **Recommendation:**
-            • **Most rooms:** 0.05°C/min (balanced sensitivity)
-            • **Noisy sensors:** 0.08-0.10°C/min (reduce false triggers)
-            • **High precision:** 0.03°C/min (maximum sensitivity)
+            • **Most rooms:** 0.02°C/min (detect wrong direction early)
+            • **Noisy sensors:** 0.03-0.05°C/min (reduce false triggers)
+            • **Very stable sensors:** 0.01°C/min (maximum sensitivity)
           default: 0.05
           selector:
             number:
@@ -3210,21 +3219,27 @@ action:
           {% endif %}
         {% endif %}
 
-      # Wrong-direction incremental escalation (optional feature)
+      # Stall & Wrong-direction incremental escalation (optional feature)
+      # v3.8.0: Enhanced to detect BOTH wrong direction AND slow progress (stalling)
       wrong_direction_enabled: !input enable_wrong_direction_escalation
       wrong_direction_per_check: !input wrong_direction_escalation_per_check
       wrong_direction_min_rate: !input wrong_direction_min_rate
 
-      # Count how many effectiveness checks have detected wrong direction
-      # This is cumulative - resets when mode changes or temp goes right direction
+      # Detect stall or wrong direction
+      # Wrong direction: temp moving opposite way (rising during cooling, falling during heating)
+      # Stalling: temp moving right way but TOO slowly (slower than minimum_progress_rate)
       wrong_direction_detected: >
         {{
           (wrong_direction_enabled and wrong_direction_per_check > 0) and
-          ((last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and temp_change_rate > wrong_direction_min_rate) or
-           (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and temp_change_rate < -wrong_direction_min_rate))
+          (
+            (last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and
+             (temp_change_rate > wrong_direction_min_rate or (temp_change_rate < 0 and temp_change_rate > -minimum_progress_rate))) or
+            (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and
+             (temp_change_rate < -wrong_direction_min_rate or (temp_change_rate > 0 and temp_change_rate < minimum_progress_rate)))
+          )
         }}
 
-      # Helper to track consecutive wrong-direction checks
+      # Helper to track consecutive stall/wrong-direction checks
       # NOTE: This needs a helper entity to persist between runs
       # For now, we'll use a simpler approach: add escalation based on current check only
       wrong_direction_escalation_add: >
@@ -4269,10 +4284,10 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} WRONG-DIRECTION ESCALATION DEBUG
+            🔍 {{ room_name | upper }} STALL & WRONG-DIRECTION ESCALATION DEBUG
 
             📊 Feature Status:
-                • Wrong-Direction Escalation Enabled: {{ wrong_direction_enabled }}
+                • Stall & Wrong-Direction Escalation Enabled: {{ wrong_direction_enabled }}
                 • Escalation Per Check: +{{ wrong_direction_per_check }} levels
 
             🌡️ Temperature Trend Analysis:
@@ -4281,30 +4296,32 @@ action:
                 • Time in Current Mode: {{ time_in_current_mode | round(1) }} min
                 • Effectiveness Check Interval: {{ effectiveness_check_mins }} min
 
-            🚨 Wrong Direction Detection:
+            🚨 Stall & Wrong Direction Detection:
                 {% if last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] %}
                 • Mode: Cooling
-                • Expected: Temperature FALLING or STABLE
-                • Actual: Temperature {{ calculated_trend | upper }}
-                • Wrong Direction: {{ calculated_trend == 'rising' }}
+                • Expected: Temperature FALLING at rate > {{ minimum_progress_rate }}°C/min
+                • Actual Rate: {{ temp_change_rate | round(3) }}°C/min
+                • Wrong Direction (rising): {{ temp_change_rate > wrong_direction_min_rate }} (rate > +{{ wrong_direction_min_rate }}°C/min)
+                • Stalling (cooling too slowly): {{ temp_change_rate < 0 and temp_change_rate > -minimum_progress_rate }} (rate between 0 and -{{ minimum_progress_rate }}°C/min)
                 {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] %}
                 • Mode: Heating
-                • Expected: Temperature RISING or STABLE
-                • Actual: Temperature {{ calculated_trend | upper }}
-                • Wrong Direction: {{ calculated_trend == 'falling' }}
+                • Expected: Temperature RISING at rate > {{ minimum_progress_rate }}°C/min
+                • Actual Rate: {{ temp_change_rate | round(3) }}°C/min
+                • Wrong Direction (falling): {{ temp_change_rate < -wrong_direction_min_rate }} (rate < -{{ wrong_direction_min_rate }}°C/min)
+                • Stalling (heating too slowly): {{ temp_change_rate > 0 and temp_change_rate < minimum_progress_rate }} (rate between 0 and +{{ minimum_progress_rate }}°C/min)
                 {% else %}
                 • Mode: {{ last_mode }} (not cooling/heating)
-                • Wrong Direction: Not Applicable
+                • Stall/Wrong Direction: Not Applicable
                 {% endif %}
 
             ⚡ Incremental Escalation Calculation:
-                • Wrong Direction Detected: {{ wrong_direction_detected }}
-                • Minimum Rate Threshold: {{ wrong_direction_min_rate }}°C/min
+                • Stall or Wrong Direction Detected: {{ wrong_direction_detected }}
+                • Wrong Direction Threshold: {{ wrong_direction_min_rate }}°C/min
+                • Minimum Progress Rate: {{ minimum_progress_rate }}°C/min
                 • Current Rate: {{ temp_change_rate | round(3) }}°C/min
-                • Exceeds Threshold: {{ (temp_change_rate | abs) > wrong_direction_min_rate }}
                 • Escalation Add (This Check): +{{ wrong_direction_escalation_add }} levels
                 • Base Escalation: Level {{ escalation_level }}
-                • Final Escalation: Level {{ final_escalation_level }} (base + wrong_dir_add, capped at 4)
+                • Final Escalation: Level {{ final_escalation_level }} (base + stall_add, capped at 4)
 
             💡 How Incremental Escalation Works:
                 {% if not wrong_direction_enabled %}
@@ -4312,12 +4329,12 @@ action:
                 {% elif wrong_direction_per_check == 0 %}
                 • Feature enabled but set to +0 - no escalation added
                 {% elif not wrong_direction_detected %}
-                • Temperature trending correctly - no additional escalation needed
+                • Temperature progressing well - no additional escalation needed
                 {% else %}
-                • Wrong direction detected! Adding +{{ wrong_direction_per_check }} level(s) this check
-                • At next effectiveness check (in ~{{ effectiveness_check_mins }} min), if still wrong direction: +{{ wrong_direction_per_check }} more
+                • Stall or wrong direction detected! Adding +{{ wrong_direction_per_check }} level(s) this check
+                • At next effectiveness check (in ~{{ effectiveness_check_mins }} min), if still stalling/wrong: +{{ wrong_direction_per_check }} more
                 • Escalation builds up: Check 1: +{{ wrong_direction_per_check }}, Check 2: +{{ wrong_direction_per_check * 2 }}, Check 3: +{{ wrong_direction_per_check * 3 }}, etc.
-                • Stops escalating when temp stabilizes or reaches Level 4 (Fan 5 maximum)
+                • Stops escalating when temp progresses faster or reaches Level 4 (Fan 5 maximum)
                 {% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.wrong_direction"
