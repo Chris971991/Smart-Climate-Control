@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.9
+  name: Ultimate Smart Climate Control - v3.8.10
 
   description: |
-    **Ultimate Smart Climate Control v3.8.9**
+    **Ultimate Smart Climate Control v3.8.10**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.9
+    ## 🆕 Latest Update - v3.8.10
 
-    **🐛 CRITICAL FIX: Automation Actions Triggering Manual Override**
-    - 🔥 FIXED: Automation changing AC settings (temp, fan, etc.) would trigger false manual override
-    - 🚨 IMPACT: Smart escalation boost changing temp 23°C→15°C triggered "manual change detected"
-    - ✅ RESOLVED: Manual override detection ONLY runs on periodic_check (not on climate entity state changes)
-    - 📊 RESULT: Only ACTUAL manual changes trigger override, not automation actions
+    **🔧 UX FIX: Clearer Debug Logging for Smart Mode Presence**
+    - 🔥 FIXED: Confusing "NO PRESENCE DETECTED" message when sensors active but confirmation delay not met
+    - 🚨 IMPACT: Logs showed "NO PRESENCE" even though all 3 sensors showed presence
+    - ✅ RESOLVED: Message now clarifies "PRESENCE NOT CONFIRMED" with detailed status
+    - 📊 RESULT: Clear distinction between "sensors not detecting" vs "confirmation delay not met"
 
     **📝 Previous Updates:**
+    - v3.8.9: 🔥 Automation actions triggering manual override (periodic_check only fix)
     - v3.8.8: 🔥 False manual override on HA restart (helper defaults detection)
-    - v3.8.7: 🔥 Presence timer resetting every 5 minutes (backwards condition fixed)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -10845,14 +10845,26 @@ action:
           - service: system_log.write
             data:
               message: >
-                🚪 {{ room_name | upper }} SMART MODE - NO PRESENCE DETECTED
+                🚪 {{ room_name | upper }} SMART MODE - PRESENCE NOT CONFIRMED
 
+                {% if room_presence_detected %}
+                ⏳ Presence detected but confirmation delay not met:
+                    • Control Mode: Smart
+                    • Sensors detecting presence: YES
+                    • Time with presence: {{ minutes_with_presence | round(1) }} min
+                    • Required confirmation delay: {{ presence_confirmation_delay }} min
+                    • Grace period since last confirmed: {{ presence_timeout }} min
+                    • Current Mode: {{ last_mode }}
+                    • Action: Turning AC OFF (presence not confirmed for {{ presence_confirmation_delay }} min)
+                {% else %}
                 ✅ Turning Off After Grace Period:
                     • Control Mode: Smart
-                    • Last Presence: {{ minutes_since_presence | round(0) }} minutes ago
+                    • Sensors detecting presence: NO
+                    • Minutes since last confirmed: {{ minutes_since_presence | round(1) }} min
                     • Grace Period: {{ presence_timeout }} minutes
                     • Current Mode: {{ last_mode }}
-                    • Action: Turning AC OFF (no presence)
+                    • Action: Turning AC OFF (no presence after grace period)
+                {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
