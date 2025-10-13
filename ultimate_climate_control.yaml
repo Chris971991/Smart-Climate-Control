@@ -2716,7 +2716,7 @@ trigger:
 
   # Fire immediately when manual override is cleared
   - platform: state
-    entity_id: !input helper_override_flag
+    entity_id: !input helper_override_active
     to: "off"
     id: override_cleared
 
