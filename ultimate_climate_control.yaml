@@ -3739,12 +3739,9 @@ action:
   # NEW LOGIC: Timer only resets when truly away for extended period (timeout * 2 + 5) minutes
   # This provides buffer for continuous multi-person presence scenarios
 
-  # Only update timestamp if:
-  # 1. Room presence is currently detected AND
-  # 2. Timer is extremely old (several hours) indicating TRUE absence, not continuous presence
-  # v3.8.5 FIX: Changed threshold from (timeout * 2 + 5) to (timeout + 120) minutes
-  # Office example: Old = (5*2+5)=15min (BROKEN!), New = (5+120)=125min (2+ hours)
-  # This prevents timer reset during normal work/activity sessions
+  # Set timer when ENTERING room (starting new presence session)
+  # v3.8.5 FIX: Simple logic - if timer is older than timeout, we're starting fresh
+  # Presence detected + timer old = you just entered after grace period expired
   - if:
       - condition: template
         value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
@@ -3754,10 +3751,8 @@ action:
             {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
             {% set current_timestamp = as_timestamp(now()) %}
             {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
-            {# Only set timer if it's EXTREMELY old (timeout + 2 hours) #}
-            {# This indicates true extended absence (overnight, away for hours), not just multi-person scenarios #}
-            {# Ensures minutes_with_presence keeps counting during normal sessions without resetting #}
-            {{ minutes_since_timer_set > (presence_timeout + 120) }}
+            {# Timer older than timeout = grace period expired = NEW session starting #}
+            {{ minutes_since_timer_set > presence_timeout }}
           {% else %}
             true
           {% endif %}
@@ -3768,17 +3763,30 @@ action:
         data:
           datetime: "{{ now() }}"
 
-  # REMOVED v3.8.2: Timer reset block removed to fix random activation bug
-  # Previous logic (v3.0.93-v3.8.1) reset timer to 7 days ago when presence lost
-  # This caused sensor flickering (mmWave blips) to repeatedly reset and re-set timer
-  # Result: Random accumulated time triggering AC when room actually empty
-  #
-  # NEW BEHAVIOR: Timer only set when presence FIRST detected (not had_recent_presence)
-  # Timer naturally expires via had_recent_presence calculation after (timeout + 5min)
-  # This prevents flickering sensors from accumulating false presence time
-  #
-  # Example: mmWave blip → timer set → mmWave clears → (OLD: reset to 7 days ago, NEW: leave alone)
-  #          → another mmWave blip → (OLD: re-set timer, accumulate time, NEW: skip, had_recent_presence still true)
+  # Reset timer when presence LOST (so next entry starts fresh)
+  # v3.8.5 FIX: Reset to (NOW - timeout - 1 min) = "expired" timer
+  # This makes timer appear "old" so next detection triggers new session
+  # Only reset if we recently had presence (prevents resetting already-expired timer repeatedly)
+  - if:
+      - condition: template
+        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: >
+          {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+            {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
+            {% set current_timestamp = as_timestamp(now()) %}
+            {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
+            {# Only reset if timer is recent (we just lost presence) - prevents unnecessary resets #}
+            {{ minutes_since_timer_set <= (presence_timeout * 2) }}
+          {% else %}
+            false
+          {% endif %}
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
+          datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
 
   # Manual Override Flag Management - SET flag when manual change detected
   # v3.1.9: Proper flag-based override system with separate tracking
