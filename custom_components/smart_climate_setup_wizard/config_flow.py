@@ -2013,9 +2013,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_show_card(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Show the dashboard card YAML."""
-        dashboard_card = self.config_entry.data.get("dashboard_card_yaml", "")
+        """Show the dashboard card YAML (regenerated on-the-fly with latest code)."""
         room_name = self.config_entry.data.get("room_name", "Unknown Room")
+
+        # Regenerate card YAML using current config data (ensures latest v3.13.0 features)
+        dashboard_card = self._generate_dashboard_card(self.config_entry.data)
 
         if not dashboard_card:
             return self.async_abort(reason="no_card_available")
