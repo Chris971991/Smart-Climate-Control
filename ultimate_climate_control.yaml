@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.3.3
+  name: Ultimate Smart Climate Control - v3.4.0
 
   description: |
-    **Ultimate Smart Climate Control v3.3.3**
+    **Ultimate Smart Climate Control v3.4.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,20 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.3.3
+    ## 🆕 Latest Update - v3.4.0
 
-    **🐛 CRITICAL FIX: Manual Override False Detection on Mode Changes**
-    - ✅ FIXED: Manual override no longer activates when switching modes (Smart→Manual→Smart)
-    - ✅ FIXED: Added 5-minute buffer after mode changes to prevent false detections
-    - 🛡️ PROTECTION: Mode transitions won't block automation for 1 hour anymore
-    - 🎯 RESULT: Clean mode switching without triggering override protection
+    **🎯 MAJOR: Enhanced Presence Detection Modes - Prevent False Triggers!**
+    - ⭐ NEW: **BLE_MOTION** - Requires BOTH BLE + motion (prevents motion blips)
+    - ⭐ NEW: **BLE_BED** - Requires BOTH ble + bed sensor (perfect for sleep detection)
+    - ⭐ NEW: **BLE_SMART** - Requires ble + (motion OR bed) - intelligent awake/sleep detection
+    - ⚠️ NEW: **MOTION_ONLY** - Motion only with clear warnings about false triggers
+    - ⚠️ NEW: **BLE_ONLY** - BLE only with warnings about adjacent room activation
+    - ✅ NEW: **BED_ONLY** - Bed sensor only (reliable for weight-based sensors)
+    - 🛡️ REMOVED: Old "BEDROOM" mode that had problematic fallback logic
+    - 🎯 BENEFIT: No more AC turning on from random motion sensor blips!
 
     **📝 Previous Updates:**
-    - v3.3.2: 🐛 FIXED - 12-minute off-time protection bypass on mode changes
-    - v3.3.1: 🐛 FIXED - Setup Wizard translation labels (UI clarity)
+    - v3.3.3: 🐛 FIXED - Manual override false detection on mode changes (5-min buffer added)
     - v3.3.0: 🎯 NEW - Enhanced Manual Override Detection (temp, fan, swing, HVAC mode changes)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
@@ -886,55 +889,94 @@ blueprint:
         presence_validation_mode:
           name: Presence Validation Mode
           description: |
-            **How multiple presence sensors work together** to detect room occupancy:
+            **How presence sensors work together** to detect room occupancy:
 
-            • **ANY (Default):** Trigger if ANY sensor detects presence (most responsive)
-            • **ALL:** Require ALL sensors to detect presence (most accurate, may miss presence)
-            • **SMART:** Require BLE + Motion when both exist, otherwise ANY (balanced)
-            • **BEDROOM:** Adaptive mode for bedrooms - intelligently handles sleep detection (⭐ NEW!)
-            • **MAJORITY:** Require majority of sensors to agree (3+ sensors recommended)
-            • **BLE_PLUS:** Require BLE + at least one other sensor (prevents false BLE triggers)
+            **🎯 RECOMMENDED MODES:**
+            • **BLE_MOTION** - BLE + Motion (BOTH required) - Best for bedrooms, prevents motion blips ⭐
+            • **BLE_BED** - BLE + Bed sensor (BOTH required) - Best for sleep-only detection
+            • **BLE_SMART** - BLE + (Motion OR Bed) - Intelligent: awake=motion, sleeping=bed sensor
 
-            **🛏️ BEDROOM Mode Details:**
-            Intelligently adapts to whatever sensors you have - perfect for bedrooms with bed sensors!
+            **⚠️ SINGLE SENSOR MODES (Use with caution):**
+            • **MOTION_ONLY** - Motion sensor only ⚠️ WARNING: Random motion blips will turn on AC!
+            • **BLE_ONLY** - BLE sensor only ⚠️ WARNING: Phone in adjacent room will turn on AC!
+            • **BED_ONLY** - Bed/occupancy sensor only - Reliable for beds with weight sensors
 
-            **With BLE + Motion + Bed Sensor:**
-            • Awake & moving: BLE + Motion = ✅
-            • Sleeping in bed: BLE + Bed Sensor = ✅
-            • Phone left behind: BLE only = ❌ (prevents false positives)
+            **🔧 FLEXIBLE MODES:**
+            • **ANY** - Any sensor triggers (most responsive, may have false positives)
+            • **ALL** - All sensors must agree (most accurate, may miss presence)
+            • **MAJORITY** - Most sensors must agree (3+ sensors recommended)
+            • **BLE_PLUS** - BLE + at least one other sensor
 
-            **With Motion + Bed Sensor (no BLE):**
-            • Either Motion OR Bed = ✅ (detects awake OR sleeping)
+            **📋 Mode Details:**
 
-            **With BLE + Bed Sensor (no motion):**
-            • Requires BLE + Bed = ✅ (ensures you're actually in bed)
+            **BLE_MOTION** (Recommended for bedrooms with motion sensors):
+            ✅ Requires: BLE detected AND Motion detected
+            ✅ Prevents: Motion blips from turning on AC without you in room
+            ✅ Prevents: BLE in adjacent room from turning on AC
+            ❌ Won't detect: If phone is charging elsewhere while you're in bed
 
-            **With only BLE or Motion:**
-            • Falls back to single sensor (works without bed sensor)
+            **BLE_BED** (Recommended for bedrooms with bed sensors):
+            ✅ Requires: BLE detected AND Bed sensor active
+            ✅ Best for: Sleep detection with bed occupancy sensors
+            ✅ Prevents: False triggers from motion or BLE alone
+            ❌ Won't detect: If you're awake in room but not in bed
 
-            **Recommendations:**
-            • **Bedrooms with bed sensor:** Use BEDROOM mode (best sleep detection)
-            • **Single sensor:** Use ANY mode
-            • **BLE + PIR (living areas):** Use SMART or BLE_PLUS mode
-            • **Multiple PIR:** Use MAJORITY mode for best accuracy
-            • **High accuracy needed:** Use ALL mode but may miss brief presence
+            **BLE_SMART** (Best for bedrooms with motion AND bed sensors):
+            ✅ Requires: BLE detected AND (Motion OR Bed sensor)
+            ✅ Detects: Awake (BLE+motion) or Sleeping (BLE+bed)
+            ✅ Flexible: Works whether you're moving around or in bed
+            ❌ Won't detect: If phone is charging elsewhere
 
-            **Note:** SMART mode requires both BLE AND motion when both exist. BEDROOM mode is more flexible.
+            **MOTION_ONLY** ⚠️ WARNING:
+            ❌ Random motion blips trigger AC even when room is empty
+            ❌ Shadows, pets, fans can cause false activation
+            ⚠️ Use presence_confirmation_delay (5+ min) to reduce false positives
+            ✅ Only use if: No other sensors available and you understand the risk
+
+            **BLE_ONLY** ⚠️ WARNING:
+            ❌ Phone in adjacent room will turn on AC
+            ❌ Phone left in room will keep AC running when you leave
+            ✅ Only use if: Room has thick walls/good BLE isolation
+
+            **BED_ONLY** (Reliable if you have a good bed sensor):
+            ✅ Requires: Bed occupancy sensor active
+            ✅ Reliable: Weight-based bed sensors rarely have false positives
+            ❌ Won't detect: Presence when not in bed (awake in room)
+            ✅ Use for: Bedrooms where AC should ONLY run while sleeping
+
+            **💡 Recommendations:**
+            • **Master Bedroom**: BLE_MOTION or BLE_SMART (prevents motion blips) ⭐
+            • **Guest Bedroom**: BED_ONLY (only cool while sleeping)
+            • **Living Room**: BLE_MOTION or BLE_PLUS (prevent false triggers)
+            • **Office**: BLE_MOTION (ensures you're actually there)
+            • **Single Sensor Setup**: Use MOTION_ONLY/BLE_ONLY with 5+ min confirmation delay ⚠️
+
+            **🛡️ False Trigger Protection:**
+            All modes work with `presence_confirmation_delay` to prevent brief sensor blips from activating AC.
+            Recommended: 2-5 minutes for motion-based modes, 0-1 minute for BLE+combination modes.
           default: "any"
           selector:
             select:
               options:
-                - label: "ANY - Any sensor triggers presence"
+                - label: "🎯 BLE_MOTION - BLE + Motion (BOTH required) ⭐ Recommended"
+                  value: "ble_motion"
+                - label: "🎯 BLE_BED - BLE + Bed sensor (BOTH required)"
+                  value: "ble_bed"
+                - label: "🎯 BLE_SMART - BLE + (Motion OR Bed) - Intelligent"
+                  value: "ble_smart"
+                - label: "⚠️ MOTION_ONLY - Motion only (WARNING: Random blips trigger AC!)"
+                  value: "motion_only"
+                - label: "⚠️ BLE_ONLY - BLE only (WARNING: Adjacent room triggers!)"
+                  value: "ble_only"
+                - label: "BED_ONLY - Bed/occupancy sensor only (Reliable)"
+                  value: "bed_only"
+                - label: "ANY - Any sensor triggers (Default, responsive but may have false positives)"
                   value: "any"
                 - label: "ALL - All sensors must agree"
                   value: "all"
-                - label: "SMART - BLE + Motion validation"
-                  value: "smart"
-                - label: "BEDROOM - Adaptive bedroom mode (sleep detection) ⭐"
-                  value: "bedroom"
                 - label: "MAJORITY - Most sensors must agree"
                   value: "majority"
-                - label: "BLE_PLUS - BLE + one other sensor"
+                - label: "BLE_PLUS - BLE + at least one other"
                   value: "ble_plus"
         
         # Room name is now configured at the top as a required field
@@ -3344,60 +3386,39 @@ action:
               {{ other_detected.value }}
             {% endif %}
 
-          {% elif validation_mode == 'bedroom' %}
-            {# BEDROOM mode - adaptive validation perfect for bedrooms with bed sensors #}
-            {# Intelligently handles any combination of BLE, motion, and bed/occupancy sensors #}
-            {# Gracefully handles BLE unavailability (phone off/dead) by falling back to other sensors #}
+          {% elif validation_mode == 'ble_motion' %}
+            {# BLE_MOTION mode - BOTH BLE and motion required (strict, no fallback) #}
+            {# Prevents motion blips from triggering without you in room #}
+            {# Prevents BLE in adjacent room from triggering without motion #}
+            {{ ble_detected.value and motion_detected.value }}
 
-            {% if ble_sensor_count.count > 0 and motion_sensor_count.count > 0 and other_detected.value %}
-              {# Case 1: All 3 types (BLE + motion + bed/other) #}
-              {% if ble_detected.value %}
-                {# BLE is active - require BLE + (motion OR bed) for accuracy #}
-                {# When awake: BLE + motion. When sleeping: BLE + bed sensor #}
-                {{ ble_detected.value and (motion_detected.value or other_detected.value) }}
-              {% else %}
-                {# BLE unavailable (phone off/dead) - fallback to motion OR bed #}
-                {# Still detects presence via physical sensors #}
-                {{ motion_detected.value or other_detected.value }}
-              {% endif %}
+          {% elif validation_mode == 'ble_bed' %}
+            {# BLE_BED mode - BOTH BLE and bed sensor required (strict, no fallback) #}
+            {# Perfect for bedrooms - only activates when you're in bed with phone #}
+            {# Prevents motion blips and BLE-only false triggers #}
+            {{ ble_detected.value and other_detected.value }}
 
-            {% elif ble_sensor_count.count > 0 and other_detected.value and motion_sensor_count.count == 0 %}
-              {# Case 2: BLE + bed only (no motion sensor) #}
-              {% if ble_detected.value %}
-                {# BLE active - require both to ensure person is actually in room/bed with their phone #}
-                {{ ble_detected.value and other_detected.value }}
-              {% else %}
-                {# BLE unavailable - use bed sensor only #}
-                {{ other_detected.value }}
-              {% endif %}
+          {% elif validation_mode == 'ble_smart' %}
+            {# BLE_SMART mode - BLE required + (motion OR bed sensor) #}
+            {# Intelligent: detects awake (BLE+motion) OR sleeping (BLE+bed) #}
+            {# Still requires BLE to prevent false motion/bed triggers #}
+            {{ ble_detected.value and (motion_detected.value or other_detected.value) }}
 
-            {% elif motion_sensor_count.count > 0 and other_detected.value and ble_sensor_count.count == 0 %}
-              {# Case 3: Motion + bed only (no BLE) #}
-              {# Either motion OR bed - detects presence whether awake OR sleeping #}
-              {{ motion_detected.value or other_detected.value }}
+          {% elif validation_mode == 'motion_only' %}
+            {# MOTION_ONLY mode - motion sensor only (WARNING: prone to false triggers) #}
+            {# Use presence_confirmation_delay to reduce false positives #}
+            {{ motion_detected.value }}
 
-            {% elif ble_sensor_count.count > 0 and motion_sensor_count.count > 0 %}
-              {# Case 4: BLE + motion only (no bed sensor) #}
-              {% if ble_detected.value %}
-                {# BLE active - require both for accuracy #}
-                {{ ble_detected.value and motion_detected.value }}
-              {% else %}
-                {# BLE unavailable - use motion only #}
-                {{ motion_detected.value }}
-              {% endif %}
+          {% elif validation_mode == 'ble_only' %}
+            {# BLE_ONLY mode - BLE sensor only (WARNING: adjacent room detection) #}
+            {# Will trigger if phone detected anywhere BLE reaches #}
+            {{ ble_detected.value }}
 
-            {% elif ble_sensor_count.count > 0 %}
-              {# Case 5: Only BLE - use BLE detection #}
-              {{ ble_detected.value }}
-
-            {% elif motion_sensor_count.count > 0 %}
-              {# Case 6: Only motion - use motion detection #}
-              {{ motion_detected.value }}
-
-            {% else %}
-              {# Case 7: Only bed/other sensors - use other detection #}
-              {{ other_detected.value }}
-            {% endif %}
+          {% elif validation_mode == 'bed_only' %}
+            {# BED_ONLY mode - bed/occupancy sensor only #}
+            {# Reliable for weight-based bed sensors #}
+            {# Only activates AC when actually in bed #}
+            {{ other_detected.value }}
 
           {% elif validation_mode == 'ble_plus' %}
             {# BLE_PLUS mode - require BLE + at least one other sensor #}

@@ -1400,11 +1400,23 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if config.get("presence_devices"):
             automation_config["use_blueprint"]["input"]["presence_devices"] = config["presence_devices"]
 
-        # Set presence validation mode based on bedroom configuration
-        if config.get("is_bedroom_with_bed_sensor", False):
-            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "bedroom"
+        # Set presence validation mode based on sensor configuration (v3.4.0 enhanced modes)
+        # Intelligently choose best mode based on available sensors
+        has_bed_sensor = config.get("is_bedroom_with_bed_sensor", False)
+        has_room_sensors = bool(config.get("room_presence_sensors"))
+
+        if has_bed_sensor and has_room_sensors:
+            # Has both BLE/motion and bed sensor -> use BLE_SMART for intelligent detection
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "ble_smart"
+        elif has_bed_sensor:
+            # Only has bed sensor -> use BED_ONLY mode
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "bed_only"
+        elif has_room_sensors:
+            # Only has BLE/motion -> use BLE_MOTION for best accuracy
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "ble_motion"
         else:
-            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "smart"
+            # No sensors configured -> fallback to ANY mode
+            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "any"
 
         # Read existing automations
         automations_file = hass.config.path("automations.yaml")
