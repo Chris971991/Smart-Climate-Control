@@ -14,3 +14,8 @@ proximity_test_helpers.yaml
 proximity_spoof_automation.yaml
 PROXIMITY_TEST_GUIDE.md
 SYSTEM_REFERENCE.md
+Manual_Override_Upgrade_Plan.md
+auto_add_captures.py
+add_remaining_captures.py
+capture_summary.txt
+final_capture_batch.py

@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.4.0
+  name: Ultimate Smart Climate Control - v3.5.0
 
   description: |
-    **Ultimate Smart Climate Control v3.4.0**
+    **Ultimate Smart Climate Control v3.5.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,7 +57,7 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.4.0
+    ## 🆕 Latest Update - v3.5.0
 
     **🎯 MAJOR: Enhanced Presence Detection Modes - Prevent False Triggers!**
     - ⭐ NEW: **BLE_MOTION** - Requires BOTH BLE + motion (prevents motion blips)
