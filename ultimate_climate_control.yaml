@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.4
+  name: Ultimate Smart Climate Control - v3.9.5
 
   description: |
-    **Ultimate Smart Climate Control v3.9.4**
+    **Ultimate Smart Climate Control v3.9.5**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.4
+    ## 🆕 Latest Update - v3.9.5
 
-    **🐛 CRITICAL BUG FIX: Continue Mode Bypassing Enable Checks**
-    - 🔧 FIXED: Heating/cooling modes activating even when explicitly disabled via `enable_heating_mode: false` or `enable_cooling_mode: false`
-    - 🚨 ROOT CAUSE: Continue mode logic (6 conditions) missing `enable_heating`/`enable_cooling` checks → disabled modes could run until target reached
-    - 💥 IMPACT: AC heating to 27.5°C when heating disabled and target was only 23°C (dynamic escalation added 4.5°C offset)
-    - 🛡️ SOLUTION: Added enable checks to all 6 continue mode conditions (heating_low/medium/high, cooling_low/medium/high)
-    - ✅ RESULT: Disabled modes now properly blocked in both start AND continue logic
+    **🐛 CRITICAL BUG FIX: Additional Continue Mode Enable Check Bypasses**
+    - 🔧 FIXED: 5 additional continue mode conditions missing enable checks (alternate code paths/pre-conditioning)
+    - 🚨 ROOT CAUSE: Lines 6345, 7662, 9363, 9859, 10358 in alternate implementations missing `enable_heating`/`enable_cooling`
+    - 💥 SCOPE: Affected pre-conditioning mode, alternate heating/cooling implementations, Smart mode edge cases
+    - 🛡️ SOLUTION: Added enable checks to all 5 remaining continue conditions across all code paths
+    - ✅ RESULT: Complete coverage - ALL 11 continue mode conditions now properly respect enable flags
 
     **📝 Previous Updates:**
+    - v3.9.4: 🐛 Fixed 6 primary continue mode conditions missing enable checks
     - v3.9.3: 🐛 Critical HA restart false override fix (stale helper detection)
-    - v3.9.2: 🌡️ Multi-sensor temperature support with smart min/max/avg selection
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -6342,7 +6342,7 @@ action:
                 {% elif current_temp < cooling_medium_temp and (current_temp - target_temp) > 1.0 %}
                   False  {# EXIT: Temp dropped below MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
-                  {{ should_activate and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -7659,11 +7659,11 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp > target_temp and current_temp < cooling_medium_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if low threshold exceeded and below medium #}
-                {{ should_activate and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
               {% endif %}
           - condition: template
             value_template: >
@@ -9360,15 +9360,15 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if high threshold exceeded #}
                 {% set last_transition_val = states(helper_last_transition) if helper_last_transition else 'none' %}
                 {% if last_transition_val == 'heating' %}
-                  {{ current_temp >= (cooling_high_temp + hysteresis_tolerance) }}
+                  {{ enable_cooling and current_temp >= (cooling_high_temp + hysteresis_tolerance) }}
                 {% else %}
-                  {{ current_temp >= cooling_high_temp }}
+                  {{ enable_cooling and current_temp >= cooling_high_temp }}
                 {% endif %}
               {% endif %}
           - condition: template
@@ -9856,7 +9856,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp < target_temp and current_temp > heating_medium_temp }}
+                  {{ should_activate and enable_heating and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating - start if low threshold exceeded and above medium #}
@@ -10355,7 +10355,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
