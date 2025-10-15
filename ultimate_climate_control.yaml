@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.2
+  name: Ultimate Smart Climate Control - v3.9.3
 
   description: |
-    **Ultimate Smart Climate Control v3.9.2**
+    **Ultimate Smart Climate Control v3.9.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,22 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.2
+    ## 🆕 Latest Update - v3.9.3
 
-    **✨ NEW FEATURE: Multi-Sensor Temperature Support**
-    - 🔧 UPDATED v3.9.2: Added default: [] to fix UI selector display
-    - 🌡️ NEW: Support for multiple temperature sensors per room!
-    - 🏠 USE CASE: Perfect for AC units that cool/heat multiple rooms (e.g., Living Room AC also cools Media Room)
-    - 🧠 SMART STRATEGY: Auto-selects best temperature based on HVAC mode
-      - **Cooling**: Uses WARMEST room (ensures all rooms cool down)
-      - **Heating**: Uses COLDEST room (ensures all rooms warm up)
-      - **Both/Neither**: Uses AVERAGE temperature
-    - ✅ NO SETUP NEEDED: Just add sensors - automation handles the rest
-    - 🔄 BACKWARD COMPATIBLE: Single sensor setups work exactly as before
+    **🐛 CRITICAL BUG FIX: Home Assistant Restart False Overrides**
+    - 🔧 FIXED: Manual override falsely triggered after HA restarts
+    - 🚨 ROOT CAUSE: Helpers reset to initial values on restart, but AC units stay in physical state → mismatch triggers false override
+    - 🛡️ SOLUTION: Added stale helper detection - skips override check if helpers haven't updated in 2-3 hours
+    - ✅ RESULT: No more stuck "Manual Override" blocking automation after HA restarts
 
     **📝 Previous Updates:**
+    - v3.9.2: 🌡️ Multi-sensor temperature support with smart min/max/avg selection
     - v3.8.11: 🐛 Critical false manual override detection fix
-    - v3.8.10: 🔧 Clearer debug logging for Smart mode presence confirmation
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3681,10 +3676,22 @@ action:
           (last_mode_state == 'off' and actual_state == 'on')
         ) %}
 
-        {# v3.8.8: Skip detection if expected values look like defaults (HA restart scenario) #}
+        {# v3.9.3 FIX: Skip detection if helpers look stale - prevents false positives after HA restart #}
+        {# When HA restarts: helpers reset to initial values, but AC units stay in their physical state #}
+        {# This mismatch causes false manual override detection #}
+
         {% set expected_temp = states(helper_expected_temp) | float(0) %}
-        {% set helpers_look_stale = (expected_temp < 16 or expected_temp > 30) %}
-        {% if helpers_look_stale %}
+        {% set helpers_temp_invalid = (expected_temp < 16 or expected_temp > 30) %}
+
+        {# Check if helper hasn't been updated in a long time - suggests HA restart or stuck helper #}
+        {% set helper_last_changed = state_attr(helper_mode, 'last_changed') %}
+        {% set minutes_since_helper_update = ((as_timestamp(now()) - as_timestamp(helper_last_changed, 0)) / 60) if helper_last_changed else 9999 %}
+        {% set helper_seems_stale = minutes_since_helper_update > 180 %}  {# 3+ hours = likely HA restart #}
+
+        {# Also check: if last_mode is 'off' but hasn't changed in 2+ hours while AC is on = stale #}
+        {% set mode_stuck_at_off = (last_mode_state == 'off' and minutes_since_helper_update > 120 and actual_state == 'on') %}
+
+        {% if helpers_temp_invalid or helper_seems_stale or mode_stuck_at_off %}
           {% set result = false %}
         {% else %}
         {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
