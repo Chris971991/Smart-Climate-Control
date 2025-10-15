@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.10
+  name: Ultimate Smart Climate Control - v3.8.11
 
   description: |
-    **Ultimate Smart Climate Control v3.8.10**
+    **Ultimate Smart Climate Control v3.8.11**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.10
+    ## 🆕 Latest Update - v3.8.11
 
-    **🔧 UX FIX: Clearer Debug Logging for Smart Mode Presence**
-    - 🔥 FIXED: Confusing "NO PRESENCE DETECTED" message when sensors active but confirmation delay not met
-    - 🚨 IMPACT: Logs showed "NO PRESENCE" even though all 3 sensors showed presence
-    - ✅ RESOLVED: Message now clarifies "PRESENCE NOT CONFIRMED" with detailed status
-    - 📊 RESULT: Clear distinction between "sensors not detecting" vs "confirmation delay not met"
+    **🐛 CRITICAL FIX: False Manual Override Detection**
+    - 🔥 FIXED: Automation falsely detecting manual overrides when AC turned off normally
+    - 🚨 ROOT CAUSE: `actual_ac_state` comparison bug - checking for HVAC modes instead of on/off
+    - ✅ RESOLVED: Corrected logic to compare 'on'/'off' states properly
+    - 📊 IMPACT: Eliminates false override blocks preventing automation from working
 
     **📝 Previous Updates:**
+    - v3.8.10: 🔧 Clearer debug logging for Smart mode presence confirmation
     - v3.8.9: 🔥 Automation actions triggering manual override (periodic_check only fix)
-    - v3.8.8: 🔥 False manual override on HA restart (helper defaults detection)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3629,9 +3629,12 @@ action:
         {% set last_mode_state = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
 
+        {# v3.8.11 CRITICAL FIX: actual_ac_state returns 'on'/'off', not HVAC modes #}
+        {# BUG: Was checking actual_state in ['cooling', 'heat', ...] but actual_state only ever = 'on' or 'off' #}
+        {# This caused false positives: helper='off', actual='on' → always triggered override #}
         {% set is_onoff_manual = (
           (last_mode_state in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
-          (last_mode_state == 'off' and actual_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'])
+          (last_mode_state == 'off' and actual_state == 'on')
         ) %}
 
         {# v3.8.8: Skip detection if expected values look like defaults (HA restart scenario) #}
@@ -4514,7 +4517,7 @@ action:
             🔛 ON/OFF Detection:
                 • Helper mode: {{ states(helper_mode) | default('off') }}
                 • Actual AC state: {{ actual_ac_state }}
-                • ✅ Manual ON/OFF detected: {% if (states(helper_mode) in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') or (states(helper_mode) == 'off' and actual_ac_state in ['cooling', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only']) %}YES{% else %}No{% endif %}
+                • ✅ Manual ON/OFF detected: {% if (states(helper_mode) in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') or (states(helper_mode) == 'off' and actual_ac_state == 'on') %}YES{% else %}No{% endif %}
 
             🌡️ Temperature Detection (±0.5°C tolerance):
                 • Expected: {{ states(helper_expected_temp) }}°C
