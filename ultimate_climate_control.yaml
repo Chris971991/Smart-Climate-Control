@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.1
+  name: Ultimate Smart Climate Control - v3.9.2
 
   description: |
-    **Ultimate Smart Climate Control v3.9.1**
+    **Ultimate Smart Climate Control v3.9.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,10 +57,10 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.1
+    ## 🆕 Latest Update - v3.9.2
 
     **✨ NEW FEATURE: Multi-Sensor Temperature Support**
-    - 🔧 UPDATED v3.9.1: Version bump to force blueprint UI refresh
+    - 🔧 UPDATED v3.9.2: Added default: [] to fix UI selector display
     - 🌡️ NEW: Support for multiple temperature sensors per room!
     - 🏠 USE CASE: Perfect for AC units that cool/heat multiple rooms (e.g., Living Room AC also cools Media Room)
     - 🧠 SMART STRATEGY: Auto-selects best temperature based on HVAC mode
@@ -311,6 +311,7 @@ blueprint:
             • Avoid drafty areas or corners
 
             **Benefit:** External sensors provide significantly better temperature control accuracy.
+          default: []
           selector:
             entity:
               domain: sensor
