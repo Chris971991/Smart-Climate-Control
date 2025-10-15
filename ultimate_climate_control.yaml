@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.3
+  name: Ultimate Smart Climate Control - v3.9.4
 
   description: |
-    **Ultimate Smart Climate Control v3.9.3**
+    **Ultimate Smart Climate Control v3.9.4**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.3
+    ## 🆕 Latest Update - v3.9.4
 
-    **🐛 CRITICAL BUG FIX: Home Assistant Restart False Overrides**
-    - 🔧 FIXED: Manual override falsely triggered after HA restarts
-    - 🚨 ROOT CAUSE: Helpers reset to initial values on restart, but AC units stay in physical state → mismatch triggers false override
-    - 🛡️ SOLUTION: Added stale helper detection - skips override check if helpers haven't updated in 2-3 hours
-    - ✅ RESULT: No more stuck "Manual Override" blocking automation after HA restarts
+    **🐛 CRITICAL BUG FIX: Continue Mode Bypassing Enable Checks**
+    - 🔧 FIXED: Heating/cooling modes activating even when explicitly disabled via `enable_heating_mode: false` or `enable_cooling_mode: false`
+    - 🚨 ROOT CAUSE: Continue mode logic (6 conditions) missing `enable_heating`/`enable_cooling` checks → disabled modes could run until target reached
+    - 💥 IMPACT: AC heating to 27.5°C when heating disabled and target was only 23°C (dynamic escalation added 4.5°C offset)
+    - 🛡️ SOLUTION: Added enable checks to all 6 continue mode conditions (heating_low/medium/high, cooling_low/medium/high)
+    - ✅ RESULT: Disabled modes now properly blocked in both start AND continue logic
 
     **📝 Previous Updates:**
+    - v3.9.3: 🐛 Critical HA restart false override fix (stale helper detection)
     - v3.9.2: 🌡️ Multi-sensor temperature support with smart min/max/avg selection
-    - v3.8.11: 🐛 Critical false manual override detection fix
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -4921,7 +4922,7 @@ action:
                 {% elif current_temp > heating_high_temp and (target_temp - current_temp) > 1.0 %}
                   False  {# EXIT: Temp rose above HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
-                  {{ should_activate and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -5279,7 +5280,7 @@ action:
                 {% elif current_temp > heating_medium_temp and (target_temp - current_temp) > 1.0 %}
                   False  {# EXIT: Temp rose above MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
-                  {{ should_activate and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -5624,7 +5625,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < target_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
@@ -5974,7 +5975,7 @@ action:
                 {% elif current_temp < cooling_high_temp and (current_temp - target_temp) > 1.0 %}
                   False  {# EXIT: Temp dropped below HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
-                  {{ should_activate and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -6700,7 +6701,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
@@ -7887,7 +7888,7 @@ action:
                 {% if (current_temp - target_temp) | abs <= 0.1 %}
                   False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
                 {% else %}
-                  {{ current_temp > target_temp and current_temp < cooling_high_temp }}
+                  {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if medium threshold exceeded and below high #}
