@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.8.11
+  name: Ultimate Smart Climate Control - v3.9.0
 
   description: |
-    **Ultimate Smart Climate Control v3.8.11**
+    **Ultimate Smart Climate Control v3.9.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,17 +57,21 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.8.11
+    ## 🆕 Latest Update - v3.9.0
 
-    **🐛 CRITICAL FIX: False Manual Override Detection**
-    - 🔥 FIXED: Automation falsely detecting manual overrides when AC turned off normally
-    - 🚨 ROOT CAUSE: `actual_ac_state` comparison bug - checking for HVAC modes instead of on/off
-    - ✅ RESOLVED: Corrected logic to compare 'on'/'off' states properly
-    - 📊 IMPACT: Eliminates false override blocks preventing automation from working
+    **✨ NEW FEATURE: Multi-Sensor Temperature Support**
+    - 🌡️ NEW: Support for multiple temperature sensors per room!
+    - 🏠 USE CASE: Perfect for AC units that cool/heat multiple rooms (e.g., Living Room AC also cools Media Room)
+    - 🧠 SMART STRATEGY: Auto-selects best temperature based on HVAC mode
+      - **Cooling**: Uses WARMEST room (ensures all rooms cool down)
+      - **Heating**: Uses COLDEST room (ensures all rooms warm up)
+      - **Both/Neither**: Uses AVERAGE temperature
+    - ✅ NO SETUP NEEDED: Just add sensors - automation handles the rest
+    - 🔄 BACKWARD COMPATIBLE: Single sensor setups work exactly as before
 
     **📝 Previous Updates:**
+    - v3.8.11: 🐛 Critical false manual override detection fix
     - v3.8.10: 🔧 Clearer debug logging for Smart mode presence confirmation
-    - v3.8.9: 🔥 Automation actions triggering manual override (periodic_check only fix)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -282,11 +286,21 @@ blueprint:
       collapsed: false
       input:
         temperature_sensor:
-          name: Temperature Sensor (Optional)
+          name: Temperature Sensor(s) (Optional)
           description: |
-            External temperature sensor for **more accurate room temperature readings**.
+            External temperature sensor(s) for **more accurate room temperature readings**.
+
+            **NEW v3.9.0:** Supports **multiple sensors** for rooms cooled/heated by one AC unit!
 
             If not configured, the system will use your A/C unit's built-in sensor.
+
+            **Multi-Sensor Strategy (automatic):**
+            • **Cooling Mode:** Uses WARMEST room (ensures all rooms cool down)
+            • **Heating Mode:** Uses COLDEST room (ensures all rooms warm up)
+            • **Both/Neither:** Uses AVERAGE temperature
+
+            **Example:** Living Room AC also cools Media Room
+            → Add both room sensors → System ensures both reach target temperature
 
             **Best practices for external sensors:**
 
@@ -296,11 +310,11 @@ blueprint:
             • Avoid drafty areas or corners
 
             **Benefit:** External sensors provide significantly better temperature control accuracy.
-          default: []
           selector:
             entity:
               domain: sensor
               device_class: temperature
+              multiple: true
         
         use_average_temperature:
           name: Use Average Temperature
@@ -2912,7 +2926,35 @@ action:
   - variables:
       current_temp: >
         {% if temp_sensor %}
-          {{ states(temp_sensor) | float(25) }}
+          {# v3.9.0: Multi-sensor support for rooms cooled/heated by one AC unit #}
+          {% if temp_sensor is string %}
+            {# Single sensor (backward compatibility) #}
+            {{ states(temp_sensor) | float(25) }}
+          {% else %}
+            {# Multiple sensors - use min/max/avg strategy based on HVAC mode #}
+            {% set temps = namespace(values=[]) %}
+            {% for sensor in temp_sensor %}
+              {% set temp_value = states(sensor) | float(0) %}
+              {% if temp_value > 0 %}
+                {% set temps.values = temps.values + [temp_value] %}
+              {% endif %}
+            {% endfor %}
+
+            {% if temps.values | length > 0 %}
+              {% if enable_cooling and not enable_heating %}
+                {# Cooling: Use MAX temp (warmest room drives cooling) #}
+                {{ temps.values | max | round(1) }}
+              {% elif enable_heating and not enable_cooling %}
+                {# Heating: Use MIN temp (coldest room drives heating) #}
+                {{ temps.values | min | round(1) }}
+              {% else %}
+                {# Both or neither: Use AVERAGE #}
+                {{ (temps.values | sum / temps.values | length) | round(1) }}
+              {% endif %}
+            {% else %}
+              25
+            {% endif %}
+          {% endif %}
         {% elif use_avg %}
           {% set temps = namespace(values=[]) %}
           {% for entity in climate_list %}
