@@ -37,6 +37,14 @@
           "climate_entities": "A/C Units (select one or more)"
         }
       },
+      "ac_configuration": {
+        "title": "AC Temperature Limits (Step 3.5 of 6) - Optional",
+        "description": "**Configure AC temperature limits for {room_name}** (optional - only if your AC reports incorrect values).\n\n**Your AC reports:**\n• Minimum: {reported_min}°C\n• Maximum: {reported_max}°C\n\n**⚠️ Only configure if these are INCORRECT!**\n\n**Example problems:**\n• AC reports 7°C minimum but physically can't go below 18°C\n• AC reports 35°C maximum but physically can't go above 30°C\n\n**Leave at 0 (default):**\nUse the values reported by your AC integration (recommended for most users)\n\n**Set to actual values:**\nOverride with your AC's real physical limits to prevent impossible temperature settings during aggressive cooling/heating.\n\n**Why this matters:**\nDynamic targeting may try to set your AC to impossible temperatures (e.g., 12°C when minimum is 18°C), which wastes energy and prevents proper operation.",
+        "data": {
+          "ac_minimum_temp": "AC Minimum Temperature Override (0 = use reported {reported_min}°C)",
+          "ac_maximum_temp": "AC Maximum Temperature Override (0 = use reported {reported_max}°C)"
+        }
+      },
       "sensors": {
         "title": "Select Sensors (Step 4 of 6)",
         "description": "Configure optional sensors for **{room_name}**.\n\n**All sensors are optional but recommended for best accuracy!**\n\n**Temperature Sensor:** External thermometer for more accurate readings\n\n**Room Presence Sensors:** Add your BLE sensors (e.g., sensor.phone_ble_area), motion sensors (PIR), mmWave sensors, or any occupancy detection sensors.\n\n**🛏️ For Bedrooms:** Include bed occupancy sensors (e.g., binary_sensor.bed_occupancy) for sleep detection! You can select multiple sensors for better accuracy.",

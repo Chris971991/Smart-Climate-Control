@@ -1,11 +1,13 @@
 {
   "domain": "smart_climate_setup_wizard",
   "name": "Smart Climate Control Setup Wizard",
-  "codeowners": ["@Chris971991"],
+  "codeowners": [
+    "@Chris971991"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Chris971991/Smart-Climate-Control",
   "issue_tracker": "https://github.com/Chris971991/Smart-Climate-Control/issues",
   "iot_class": "local_push",
   "requirements": [],
-  "version": "3.13.2"
+  "version": "3.13.3"
 }

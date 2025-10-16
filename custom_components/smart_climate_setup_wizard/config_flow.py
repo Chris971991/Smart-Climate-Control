@@ -368,7 +368,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     errors["conflicting_rooms"] = ", ".join(conflicts)
                 else:
                     self._room_data.update(user_input)
-                    return await self.async_step_sensors()
+                    return await self.async_step_ac_configuration()
 
         # Get all climate entities
         climate_entities = self.hass.states.async_entity_ids("climate")
@@ -395,6 +395,60 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "3 of 5",
+            },
+        )
+
+    async def async_step_ac_configuration(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 3.5: Optional AC Temperature Limit Configuration."""
+        errors = {}
+        
+        if user_input is not None:
+            self._room_data.update(user_input)
+            return await self.async_step_sensors()
+        
+        # Get selected climate entity to show its reported limits
+        climate_entities = self._room_data.get("climate_entities", [])
+        climate_entity = climate_entities[0] if climate_entities else None
+        reported_min = 7  # Default
+        reported_max = 35  # Default
+        
+        if climate_entity:
+            entity_state = self.hass.states.get(climate_entity)
+            if entity_state and entity_state.attributes:
+                reported_min = entity_state.attributes.get("min_temp", 7)
+                reported_max = entity_state.attributes.get("max_temp", 35)
+        
+        data_schema = vol.Schema({
+            vol.Optional("ac_minimum_temp", default=0): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=25,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="°C",
+                )
+            ),
+            vol.Optional("ac_maximum_temp", default=0): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=40,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="°C",
+                )
+            ),
+        })
+        
+        return self.async_show_form(
+            step_id="ac_configuration",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data.get("room_name", "Room"),
+                "reported_min": str(reported_min),
+                "reported_max": str(reported_max),
             },
         )
 
@@ -1382,6 +1436,9 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     "outside_compensation_factor": 0.2,  # Mild compensation (recommended)
                     "max_outside_compensation": 2,  # Conservative 2°C max
                     "outside_compensation_base_temp": 25,  # Neutral baseline for most climates
+                    # AC Temperature Limits (new in v3.9.7) - User overrides for incorrect integrations
+                    "ac_minimum_temp": config.get("ac_minimum_temp", 0),
+                    "ac_maximum_temp": config.get("ac_maximum_temp", 0),
                 },
             },
         }
