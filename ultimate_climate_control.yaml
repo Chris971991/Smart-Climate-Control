@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.11
+  name: Ultimate Smart Climate Control - v3.9.12
 
   description: |
-    **Ultimate Smart Climate Control v3.9.11**
+    **Ultimate Smart Climate Control v3.9.12**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -2631,16 +2631,18 @@ variables:
   helper_mode_time: !input helper_mode_start_time
   helper_effectiveness: !input helper_effectiveness_score
   last_mode: "{{ states(helper_mode) | default('off') }}"
-  # Check actual AC state, not just internal tracking
+  # Check actual AC state using hvac_action (compressor activity), not just HVAC mode
+  # CRITICAL: An AC in "cool" mode at 18°C target with 28°C current = IDLE (not running)
+  # We need to check if compressor is actually running, not just if mode is set
   actual_ac_state: >
-    {% set ac_states = namespace(all_off=true) %}
+    {% set ac_states = namespace(any_running=false) %}
     {% for entity in climate_list %}
-      {% set hvac_mode = states(entity) %}
-      {% if hvac_mode not in ['off', 'Off', 'unavailable', 'unknown'] %}
-        {% set ac_states.all_off = false %}
+      {% set hvac_action = state_attr(entity, 'hvac_action') | default('off') %}
+      {% if hvac_action in ['cooling', 'heating', 'drying', 'fan'] %}
+        {% set ac_states.any_running = true %}
       {% endif %}
     {% endfor %}
-    {{ 'off' if ac_states.all_off else 'on' }}
+    {{ 'on' if ac_states.any_running else 'off' }}
   last_change: "{{ states(helper_change) | default(now()) }}"
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
