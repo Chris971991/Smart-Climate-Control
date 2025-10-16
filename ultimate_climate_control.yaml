@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.12
+  name: Ultimate Smart Climate Control - v3.9.14
 
   description: |
-    **Ultimate Smart Climate Control v3.9.12**
+    **Ultimate Smart Climate Control v3.9.14**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3727,9 +3727,20 @@ action:
         {# v3.8.11 CRITICAL FIX: actual_ac_state returns 'on'/'off', not HVAC modes #}
         {# BUG: Was checking actual_state in ['cooling', 'heat', ...] but actual_state only ever = 'on' or 'off' #}
         {# This caused false positives: helper='off', actual='on' → always triggered override #}
+
+        {# v3.9.14 FIX: Don't flag as manual if helper was JUST updated (state sync ran recently) #}
+        {# When automation turns ON AC, helper takes a moment to update. State sync fixes this. #}
+        {# If state sync JUST ran (helper updated in last 3min), it's NOT a manual change! #}
+        {% set helper_change_time = states(helper_change) %}
+        {% set helper_recently_updated = false %}
+        {% if helper_change_time and helper_change_time not in ['unknown', 'unavailable', ''] %}
+          {% set minutes_since_helper_change = (as_timestamp(now()) - as_timestamp(helper_change_time)) / 60 %}
+          {% set helper_recently_updated = minutes_since_helper_change < 3 %}
+        {% endif %}
+
         {% set is_onoff_manual = (
           (last_mode_state in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
-          (last_mode_state == 'off' and actual_state == 'on')
+          (last_mode_state == 'off' and actual_state == 'on' and not helper_recently_updated)
         ) %}
 
         {# v3.9.3 FIX: Skip detection if helpers look stale - prevents false positives after HA restart #}
@@ -5071,12 +5082,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan mode BEFORE turning on AC to prevent full-blast startup
           # HIGH heating always uses maximum fan speed (no escalation beyond this tier)
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5304,6 +5310,18 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.13: Wait for fan commands to complete (fan controllers can be slow)
+          - delay:
+              milliseconds: 2000
+
+          # v3.9.13: NOW turn on AC with correct fan mode already set
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -5430,12 +5448,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan BEFORE temperature
           # Progressive fan speed for MEDIUM heating based on escalation level
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5663,6 +5676,15 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
+          # v3.9.13: Wait + set temperature
+          - delay:
+              milliseconds: 2000
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -5775,12 +5797,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan BEFORE temperature
           # Progressive fan speed for LOW heating based on escalation level
           - repeat:
               for_each: "{{ climate_list }}"
@@ -6011,6 +6028,15 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
+          # v3.9.13: Wait + set temperature
+          - delay:
+              milliseconds: 2000
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -6125,12 +6151,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan BEFORE temperature
           # HIGH cooling always uses maximum fan speed (no escalation beyond this tier)
           - repeat:
               for_each: "{{ climate_list }}"
@@ -6378,6 +6399,15 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
+          # v3.9.13: Wait + set temperature
+          - delay:
+              milliseconds: 2000
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -6498,12 +6528,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan BEFORE temperature
           # Progressive fan speed for MEDIUM cooling based on escalation level
           - repeat:
               for_each: "{{ climate_list }}"
@@ -6727,6 +6752,16 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.13: Wait + set temperature
+          - delay:
+              milliseconds: 2000
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -6839,12 +6874,7 @@ action:
               value: "{{ adjusted_target }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
-
+          # v3.9.13 FIX: Set fan mode BEFORE turning on AC
           # Progressive fan speed for LOW cooling based on escalation level
           - repeat:
               for_each: "{{ climate_list }}"
@@ -7037,6 +7067,18 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.13: Wait for fan commands
+          - delay:
+              milliseconds: 2000
+
+          # v3.9.13: Set temperature with correct fan
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -7147,13 +7189,7 @@ action:
               value: "{{ cooling_target_temp }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ cooling_target_temp }}"
-            continue_on_error: true
-          
+          # v3.9.13 FIX: Set fan BEFORE temperature
           - repeat:
               for_each: "{{ climate_list }}"
               sequence:
@@ -7231,7 +7267,17 @@ action:
                       • Reason: {{ 'Exact match' if desired_max_fan in available_fans else 'Best equivalent for maximum cooling' }}
                     level: debug
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+
+          # v3.9.13: Wait + set temperature
+          - delay:
+              milliseconds: 2000
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ cooling_target_temp }}"
+            continue_on_error: true
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -7377,12 +7423,7 @@ action:
                       value: "{{ cooling_target_temp }}"
                     continue_on_error: true
 
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entities
-                    data:
-                      temperature: "{{ cooling_target_temp }}"
-
+                  # v3.9.13 FIX: Set fan BEFORE temperature
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
@@ -10185,12 +10226,23 @@ action:
                   data:
                     swing_mode: "{{ selected_swing_mode | trim }}"
           
+          # v3.9.13: Wait for fan/swing commands
+          - delay:
+              milliseconds: 2000
+
+          # v3.9.13: Set temperature with correct fan/swing
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ heating_target_temp }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
             data:
               value: "heating"
-          
+
           # Update hysteresis tracking - we're now heating
           - condition: template
             value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
@@ -10392,12 +10444,23 @@ action:
                   data:
                     swing_mode: "{{ selected_swing_mode | trim }}"
           
+          # v3.9.13: Wait for fan/swing commands
+          - delay:
+              milliseconds: 2000
+
+          # v3.9.13: Set temperature with correct fan/swing
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ heating_target_temp }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
             data:
               value: "heating"
-          
+
           # Update hysteresis tracking - we're now heating
           - condition: template
             value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
@@ -10555,23 +10618,7 @@ action:
               value: "{{ heating_target_temp }}"
             continue_on_error: true
 
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ heating_target_temp }}"
-
-          - service: system_log.write
-            data:
-              message: >
-                🌡️ {{ room_name | upper }} TEMP SET: High Heating
-                Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
-                Actual value: {{ heating_target_temp | round(1) }}°C
-                Reason: Direct target temperature (emergency heating mode)
-                Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+          # v3.9.13 FIX: Set fan mode BEFORE setting temperature to prevent full-blast during transitions
           # Set max fan mode for emergency heating
           - repeat:
               for_each: "{{ climate_list }}"
@@ -10687,12 +10734,23 @@ action:
                   data:
                     swing_mode: "{{ selected_swing_mode | trim }}"
           
+          # v3.9.13: Wait for fan/swing commands
+          - delay:
+              milliseconds: 2000
+
+          # v3.9.13: Set temperature with correct fan/swing
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_entities
+            data:
+              temperature: "{{ heating_target_temp }}"
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
             data:
               value: "heating"
-          
+
           # Update hysteresis tracking - we're now heating
           - condition: template
             value_template: "{{ helper_last_transition is defined and helper_last_transition != none }}"
