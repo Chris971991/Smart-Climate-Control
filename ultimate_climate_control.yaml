@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.6
+  name: Ultimate Smart Climate Control - v3.9.7
 
   description: |
-    **Ultimate Smart Climate Control v3.9.6**
+    **Ultimate Smart Climate Control v3.9.7**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.6
+    ## 🆕 Latest Update - v3.9.7
 
-    **🐛 CRITICAL BUG FIX: Manual Override Debug Logging Dependency**
-    - 🔧 FIXED: Manual override stop command not executing when debug logging disabled
-    - 🚨 ROOT CAUSE: Bare `condition` step (line 4888-4889) instead of `if` block - failed condition stopped entire sequence
-    - 💥 IMPACT: When manual override active + debug OFF, automation continued instead of stopping (disrespecting user changes)
-    - 🛡️ SOLUTION: Wrapped debug condition in `if` block - stop command now always executes regardless of debug setting
-    - ✅ RESULT: Manual override protection now works correctly with debug logging disabled
+    **✨ NEW FEATURE: AC Temperature Limit Overrides**
+    - 🎯 ADDED: Optional user-configurable AC minimum/maximum temperature overrides
+    - 🔧 FIXED: Hardcoded 10-35°C limits now replaced with dynamic limits from AC or user override
+    - 🚨 PROBLEM: Some AC integrations report incorrect min/max (e.g., reports 7°C but actual min is 18°C)
+    - 💥 IMPACT: Dynamic targeting was setting impossible temperatures (e.g., 12°C when AC minimum is 18°C)
+    - 🛡️ SOLUTION: New inputs allow manual override of AC limits, with smart fallbacks to reported values
+    - ✅ RESULT: Respects each AC's actual capabilities, prevents impossible temperature settings
 
     **📝 Previous Updates:**
+    - v3.9.6: 🐛 Manual override debug logging dependency fix
     - v3.9.5: 🐛 Fixed 5 additional continue mode enable check bypasses
-    - v3.9.4: 🐛 Fixed 6 primary continue mode conditions missing enable checks
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2133,6 +2134,46 @@ blueprint:
               max: 1.0
               step: 0.01
               unit_of_measurement: "°C"
+
+        ac_minimum_temp:
+          name: AC Minimum Temperature Override
+          description: |
+            **Your AC's actual minimum temperature** (leave at 0 to use AC's reported minimum).
+
+            • **Use this if your AC integration reports incorrect limits**
+            • **Example:** AC reports 7°C minimum but physically can't go below 18°C
+            • **Leave at 0:** Use the temperature reported by your AC integration (default)
+            • **Set to actual:** Prevent automation from setting impossible temperatures
+
+            **Why needed:** Some AC integrations report incorrect min/max values. This ensures dynamic targeting respects your AC's physical limits.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 25
+              step: 1
+              unit_of_measurement: "°C"
+              mode: box
+
+        ac_maximum_temp:
+          name: AC Maximum Temperature Override
+          description: |
+            **Your AC's actual maximum temperature** (leave at 0 to use AC's reported maximum).
+
+            • **Use this if your AC integration reports incorrect limits**
+            • **Example:** AC reports 35°C maximum but physically can't go above 30°C
+            • **Leave at 0:** Use the temperature reported by your AC integration (default)
+            • **Set to actual:** Prevent automation from setting impossible temperatures
+
+            **Why needed:** Some AC integrations report incorrect min/max values. This ensures dynamic targeting respects your AC's physical limits.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 40
+              step: 1
+              unit_of_measurement: "°C"
+              mode: box
         
         enable_debug_logging:
           name: Enable Debug Logging
@@ -2661,6 +2702,8 @@ variables:
   helper_temp_stable_since: !input helper_temp_stable_since
   helper_last_transition: !input helper_last_transition
   hysteresis_tolerance: !input hysteresis_tolerance
+  ac_minimum_temp: !input ac_minimum_temp
+  ac_maximum_temp: !input ac_maximum_temp
   # Adaptive Control Mode variables
   adaptive_enabled: !input enable_adaptive_control
   adaptive_occupied_delay: !input adaptive_occupied_delay
@@ -3363,11 +3406,21 @@ action:
           {% endif %}
         {% endif %}
 
-        {# Safety limits: 10-35°C, and don't overshoot user's intent #}
+        {# Get AC's actual temperature limits with smart fallbacks #}
+        {% set user_min = ac_minimum_temp | float(0) %}
+        {% set user_max = ac_maximum_temp | float(0) %}
+        {% set reported_min = state_attr(climate_list[0], 'min_temp') | float(16) %}
+        {% set reported_max = state_attr(climate_list[0], 'max_temp') | float(30) %}
+
+        {# Priority: User override (if non-zero) → Reported values → Safe defaults #}
+        {% set ac_min_temp = user_min if user_min > 0 else reported_min %}
+        {% set ac_max_temp = user_max if user_max > 0 else reported_max %}
+
+        {# Safety limits: Use actual AC limits, and don't overshoot user's target intent #}
         {% if is_cooling %}
-          {{ [[10, base] | max, target_temp] | min | round(1) }}
+          {{ [[ac_min_temp, base] | max, target_temp] | min | round(1) }}
         {% elif is_heating %}
-          {{ [[target_temp, base] | max, 35] | min | round(1) }}
+          {{ [[target_temp, base] | max, ac_max_temp] | min | round(1) }}
         {% else %}
           {{ target_temp }}
         {% endif %}
