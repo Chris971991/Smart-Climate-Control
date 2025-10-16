@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.7
+  name: Ultimate Smart Climate Control - v3.9.8
 
   description: |
-    **Ultimate Smart Climate Control v3.9.7**
+    **Ultimate Smart Climate Control v3.9.8**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,15 +57,15 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.7
+    ## 🆕 Latest Update - v3.9.8
 
-    **✨ NEW FEATURE: AC Temperature Limit Overrides**
-    - 🎯 ADDED: Optional user-configurable AC minimum/maximum temperature overrides
-    - 🔧 FIXED: Hardcoded 10-35°C limits now replaced with dynamic limits from AC or user override
-    - 🚨 PROBLEM: Some AC integrations report incorrect min/max (e.g., reports 7°C but actual min is 18°C)
-    - 💥 IMPACT: Dynamic targeting was setting impossible temperatures (e.g., 12°C when AC minimum is 18°C)
-    - 🛡️ SOLUTION: New inputs allow manual override of AC limits, with smart fallbacks to reported values
-    - ✅ RESULT: Respects each AC's actual capabilities, prevents impossible temperature settings
+    **🐛 CRITICAL BUG FIX: Runtime Protection**
+    - 🔴 FIXED: Compressor protection failing when AC just turned on
+    - 🚨 PROBLEM: `time_in_current_mode` used old timestamp when dynamic adaptation disabled or helper not updated yet
+    - 💥 IMPACT: AC could turn off immediately after turning on (< 1 minute), damaging compressor
+    - 🛡️ SOLUTION: All turn-off scenarios now use `time_since_change` which tracks ALL state changes consistently
+    - ✅ RESULT: AC will ALWAYS run for minimum configured runtime (15min default) before allowing shutdown
+    - 📋 SCOPE: Fixed 7 turn-off scenarios - Smart mode, Target achieved, Stability, Away, Room empty, Adaptive (2 cases)
 
     **📝 Previous Updates:**
     - v3.9.6: 🐛 Manual override debug logging dependency fix
@@ -8422,7 +8422,7 @@ action:
           - condition: template
             value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] }}"
           - condition: template
-            value_template: "{{ time_in_current_mode > offtime_min }}"
+            value_template: "{{ time_since_change >= runtime_min }}"
           # CRITICAL: Allow stability auto-off within reasonable range (comfort zone + aggressiveness buffer)
           - condition: template
             value_template: >
@@ -8807,6 +8807,10 @@ action:
                     level: info
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
+                # CRITICAL: Runtime protection - ensure AC has run for minimum time before turning off
+                - condition: template
+                  value_template: "{{ time_since_change >= runtime_min }}"
+
                 # DISABLED: No longer switching to Manual mode when room becomes vacant
                 # Just turn off all climate entities
                 - repeat:
@@ -8880,7 +8884,11 @@ action:
                       • Action: Turning off {{ climate_list | length }} climate entities
                     level: info
                     logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-                
+
+                # CRITICAL: Runtime protection - ensure AC has run for minimum time before turning off
+                - condition: template
+                  value_template: "{{ time_since_change >= runtime_min }}"
+
                 # Turn off all climate entities
                 - repeat:
                     for_each: "{{ climate_list }}"
@@ -9042,7 +9050,7 @@ action:
           - condition: template
             value_template: "{{ proximity_zone == 'home' or anyone_home }}"
           - condition: template
-            value_template: "{{ time_in_current_mode > offtime_min }}"
+            value_template: "{{ time_since_change >= runtime_min }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -9252,7 +9260,7 @@ action:
           - condition: template
             value_template: "{{ not should_activate }}"
           - condition: template
-            value_template: "{{ time_in_current_mode > offtime_min }}"
+            value_template: "{{ time_since_change >= runtime_min }}"
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -10944,7 +10952,7 @@ action:
               control_mode == 'Smart' and
               not smart_presence_active and
               last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
-              time_in_current_mode >= runtime_min
+              time_since_change >= runtime_min
             }}
     then:
       # Log the turn-off action
@@ -11019,7 +11027,7 @@ action:
           {{
             actual_ac_state == 'on' and
             last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
-            time_in_current_mode >= runtime_min and
+            time_since_change >= runtime_min and
             (
               (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
               (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
@@ -11040,7 +11048,7 @@ action:
                     • Current: {{ current_temp }}°C
                     • Target: {{ cooling_target_temp if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] else heating_target_temp }}°C
                     • Mode: {{ last_mode }}
-                    • Runtime: {{ time_in_current_mode | round(1) }}min (min: {{ runtime_min }}min)
+                    • Runtime: {{ time_since_change | round(1) }}min (min: {{ runtime_min }}min)
                     • Action: Turning AC OFF (target achieved)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
