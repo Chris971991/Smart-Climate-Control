@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.15
+  name: Ultimate Smart Climate Control - v3.9.16
 
   description: |
-    **Ultimate Smart Climate Control v3.9.15**
+    **Ultimate Smart Climate Control v3.9.16**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -11287,7 +11287,7 @@ action:
                     • Should AC Be Running: {{ should_be_running }}
 
                 🛠️ Action: {{ 'Updating helper to match AC operation' if should_be_running else 'Turning OFF AC (temp in comfort zone)' }}
-                💡 Reason: Helper state likely lost (e.g., HA restart) - {{ 'restoring tracking' if should_be_running else 'resetting to known state' }}
+                💡 Reason: {{ 'Helper out of sync - AC running but helper says "off" (possible causes: HA restart, manual control, or helper update lag)' if should_be_running else 'AC is ON but temp is comfortable - no heating/cooling needed (possible causes: manual turn-on, another automation, or lingering AC state)' }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -11330,7 +11330,8 @@ action:
                 data:
                   message: >
                     ✅ {{ room_name | upper }} STATE SYNC: Helper updated to {{ probable_mode }}
-                    📋 AC will continue running - next check will use correct mode for tier transitions
+                    📋 AC running correctly for current temp ({{ current_temp }}°C) - helper synced, will continue operation
+                    💡 Helper was "off" but AC should be running - restored tracking
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -11355,7 +11356,8 @@ action:
                 data:
                   message: >
                     ✅ {{ room_name | upper }} STATE SYNC: AC turned OFF
-                    📋 Temperature {{ current_temp }}°C is in comfort zone - no cooling/heating needed
+                    📋 Temperature {{ current_temp }}°C is in comfort zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C) - no cooling/heating needed
+                    💡 Helper was "off" but AC was running - turned off to save energy
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
