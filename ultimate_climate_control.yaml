@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.10
+  name: Ultimate Smart Climate Control - v3.9.11
 
   description: |
-    **Ultimate Smart Climate Control v3.9.10**
+    **Ultimate Smart Climate Control v3.9.11**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.10
+    ## 🆕 Latest Update - v3.9.11
 
-    **🐛 CRITICAL BUG FIX: Multiple Bare Conditions Blocking Core Functionality**
-    - 🔴 FIXED: 4 bare conditions blocking critical logic (debug logs + helper updates)
-    - 🚨 PROBLEM: Bare `condition:` blocks stopped entire action sequence when failed
-    - 💥 IMPACT: Users with `debug_enabled=false` OR `dynamic_enabled=false` had broken automation
-    - 🛡️ SOLUTION: Wrapped ALL bare conditions in `if` blocks - optional features don't block core logic
-    - ✅ RESULT: Automation works correctly regardless of debug/dynamic settings
-    - 📋 SCOPE: Fixed 2 debug conditions (lines 11089, 11119) + 2 dynamic helper conditions (lines 4289, 4297)
+    **🐛 CRITICAL BUG FIX: 6 Bare Debug Conditions Blocking Climate Operations**
+    - 🔴 FIXED: 6 bare debug conditions blocking temperature stability, adaptive, Smart, Manual, and away modes
+    - 🚨 PROBLEM: When `debug_enabled=false`, bare conditions stopped sequences before climate operations
+    - 💥 IMPACT: AC ran continuously - stability auto-off, smart room empty, adaptive turn-off all broken
+    - 🛡️ SOLUTION: Wrapped all 6 bare debug conditions in `if` blocks - logging optional, operations mandatory
+    - ✅ RESULT: All energy-saving features work correctly regardless of debug setting
+    - 📋 SCOPE: Lines 8437, 8825, 8904, 9009, 9067, 9279 - covers all major turn-off scenarios
 
     **📝 Previous Updates:**
-    - v3.9.9: 🐛 CRITICAL debug dependency fix (state sync blocking)
-    - v3.9.8: 🐛 CRITICAL runtime protection fix (compressor safety)
+    - v3.9.10: 🐛 Fixed bare conditions blocking main logic (debug + dynamic)
+    - v3.9.9: 🐛 Fixed debug dependency blocking state sync
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -8433,19 +8433,21 @@ action:
               {% set buffer = aggressiveness | float %}
               {{ current_temp >= (comfort_min_temp - buffer) and current_temp <= (comfort_max_temp + buffer) }}
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🎯 Smart Feature: Temperature Stable & Comfortable
-                🌡️ Temperature steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
-                ✅ Within acceptable range ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C + {{ aggressiveness }}°C buffer) - switching to {{ stability_behavior|upper }} mode to save energy
-                
-                📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🎯 Smart Feature: Temperature Stable & Comfortable
+                    🌡️ Temperature steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
+                    ✅ Within acceptable range ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C + {{ aggressiveness }}°C buffer) - switching to {{ stability_behavior|upper }} mode to save energy
+
+                    📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
           - choose:
               - conditions:
                   - condition: template
@@ -8820,14 +8822,16 @@ action:
                 - repeat:
                     for_each: "{{ climate_list }}"
                     sequence:
-                      - condition: template
-                        value_template: "{{ debug_enabled }}"
-                      - service: system_log.write
-                        data:
-                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
-                          level: debug
-                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-                      
+                      - if:
+                          - condition: template
+                            value_template: "{{ debug_enabled }}"
+                        then:
+                          - service: system_log.write
+                            data:
+                              message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
+                              level: debug
+                              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
@@ -8897,14 +8901,16 @@ action:
                 - repeat:
                     for_each: "{{ climate_list }}"
                     sequence:
-                      - condition: template
-                        value_template: "{{ debug_enabled }}"
-                      - service: system_log.write
-                        data:
-                          message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
-                          level: debug
-                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-                      
+                      - if:
+                          - condition: template
+                            value_template: "{{ debug_enabled }}"
+                        then:
+                          - service: system_log.write
+                            data:
+                              message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
+                              level: debug
+                              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
@@ -9000,18 +9006,20 @@ action:
           - condition: template
             value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'smart_off', 'smart_eco', 'smart_maintain', 'adaptive_off', 'eco', 'cooling', 'heating'] }}"
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🎮 Manual Mode: IMMEDIATE Control Restored
-                🔄 Clearing "{{ last_mode }}" state instantly
-                💡 You now have full manual control - no automation interference
-                
-                📋 Technical: Manual mode = instant automation disable
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🎮 Manual Mode: IMMEDIATE Control Restored
+                    🔄 Clearing "{{ last_mode }}" state instantly
+                    💡 You now have full manual control - no automation interference
+
+                    📋 Technical: Manual mode = instant automation disable
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - service: input_text.set_value
             target:
@@ -9056,19 +9064,21 @@ action:
           - condition: template
             value_template: "{{ time_since_change >= runtime_min }}"
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🚪 Smart Mode: Room Empty
-                💡 Nobody detected in room for {{ minutes_since_presence | round(0) }} minutes
-                🏠 You're still home, so switching to {{ smart_behavior|upper }} mode to save energy
-                
-                📋 Technical: {{ time_since_change | round(1) }}min since last change
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🚪 Smart Mode: Room Empty
+                    💡 Nobody detected in room for {{ minutes_since_presence | round(0) }} minutes
+                    🏠 You're still home, so switching to {{ smart_behavior|upper }} mode to save energy
+
+                    📋 Technical: {{ time_since_change | round(1) }}min since last change
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
           - choose:
               - conditions:
                   - condition: template
@@ -9266,18 +9276,20 @@ action:
           - condition: template
             value_template: "{{ time_since_change >= runtime_min }}"
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                🔍 {{ room_name | upper }} CLIMATE DEBUG: Away mode activated
-                Action: {{ away_action }}
-                Nobody home detected
-                Time since last change: {{ time_since_change | round(1) }} min
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-          
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🔍 {{ room_name | upper }} CLIMATE DEBUG: Away mode activated
+                    Action: {{ away_action }}
+                    Nobody home detected
+                    Time since last change: {{ time_since_change | round(1) }} min
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
           - choose:
               - conditions:
                   - condition: template
