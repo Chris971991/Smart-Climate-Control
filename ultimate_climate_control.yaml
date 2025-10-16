@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.5
+  name: Ultimate Smart Climate Control - v3.9.6
 
   description: |
-    **Ultimate Smart Climate Control v3.9.5**
+    **Ultimate Smart Climate Control v3.9.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.5
+    ## 🆕 Latest Update - v3.9.6
 
-    **🐛 CRITICAL BUG FIX: Additional Continue Mode Enable Check Bypasses**
-    - 🔧 FIXED: 5 additional continue mode conditions missing enable checks (alternate code paths/pre-conditioning)
-    - 🚨 ROOT CAUSE: Lines 6345, 7662, 9363, 9859, 10358 in alternate implementations missing `enable_heating`/`enable_cooling`
-    - 💥 SCOPE: Affected pre-conditioning mode, alternate heating/cooling implementations, Smart mode edge cases
-    - 🛡️ SOLUTION: Added enable checks to all 5 remaining continue conditions across all code paths
-    - ✅ RESULT: Complete coverage - ALL 11 continue mode conditions now properly respect enable flags
+    **🐛 CRITICAL BUG FIX: Manual Override Debug Logging Dependency**
+    - 🔧 FIXED: Manual override stop command not executing when debug logging disabled
+    - 🚨 ROOT CAUSE: Bare `condition` step (line 4888-4889) instead of `if` block - failed condition stopped entire sequence
+    - 💥 IMPACT: When manual override active + debug OFF, automation continued instead of stopping (disrespecting user changes)
+    - 🛡️ SOLUTION: Wrapped debug condition in `if` block - stop command now always executes regardless of debug setting
+    - ✅ RESULT: Manual override protection now works correctly with debug logging disabled
 
     **📝 Previous Updates:**
+    - v3.9.5: 🐛 Fixed 5 additional continue mode enable check bypasses
     - v3.9.4: 🐛 Fixed 6 primary continue mode conditions missing enable checks
-    - v3.9.3: 🐛 Critical HA restart false override fix (stale helper detection)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -4885,21 +4885,23 @@ action:
           - condition: template
             value_template: "{{ manual_override_active and manual_change_detected }}"
         sequence:
-          - condition: template
-            value_template: "{{ debug_enabled }}"
-          - service: system_log.write
-            data:
-              message: >
-                {% set change_timestamp = as_timestamp(states(helper_change)) %}
-                🔒 {{ room_name | upper }} MANUAL OVERRIDE: Respecting user changes
-                • Manual change detected: {{ manual_change_detected }}
-                • Last mode state: "{{ states(helper_mode) | default('off') }}"
-                • Actual AC state: "{{ actual_ac_state }}"
-                • Override timeout: {{ adaptive_override_timeout }} hours
-                • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A' }} hours
-                • AC will maintain user settings until timeout expires
-              level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    {% set change_timestamp = as_timestamp(states(helper_change)) %}
+                    🔒 {{ room_name | upper }} MANUAL OVERRIDE: Respecting user changes
+                    • Manual change detected: {{ manual_change_detected }}
+                    • Last mode state: "{{ states(helper_mode) | default('off') }}"
+                    • Actual AC state: "{{ actual_ac_state }}"
+                    • Override timeout: {{ adaptive_override_timeout }} hours
+                    • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A' }} hours
+                    • AC will maintain user settings until timeout expires
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # STOP HERE - Respect user's manual changes
           - stop: "Manual override active - respecting user changes"
