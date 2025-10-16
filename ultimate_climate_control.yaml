@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.14
+  name: Ultimate Smart Climate Control - v3.9.15
 
   description: |
-    **Ultimate Smart Climate Control v3.9.14**
+    **Ultimate Smart Climate Control v3.9.15**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -8676,10 +8676,10 @@ action:
           - condition: template
             value_template: >
               {% if adaptive_override_timeout > 0 %}
-                {% set last_change = states(helper_change) %}
-                {% if last_change not in ['unknown', 'unavailable', ''] %}
-                  {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change)) / 3600 %}
-                  {{ time_since_change >= adaptive_override_timeout }}
+                {% set override_time = states(helper_override_timestamp) if helper_override_timestamp else none %}
+                {% if override_time and override_time not in ['unknown', 'unavailable', ''] %}
+                  {% set time_since_override = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}
+                  {{ time_since_override >= adaptive_override_timeout }}
                 {% else %}
                   true
                 {% endif %}
@@ -11223,13 +11223,13 @@ action:
             {% endif %}
                 • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={% set change_timestamp = as_timestamp(states(helper_change)) if states(helper_change) not in ['unknown', 'unavailable', ''] else none %}{{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) if change_timestamp else 'N/A' }}min
             {% if adaptive_override_timeout > 0 %}
-            {% set last_change = states(helper_change) %}
-            {% if last_change not in ['unknown', 'unavailable', ''] %}
-            {% set last_change_timestamp = as_timestamp(last_change) %}
-            {% if last_change_timestamp %}
-            {% set time_since_change = (as_timestamp(now()) - last_change_timestamp) / 3600 %}
-                • Time Since Manual Override: {{ time_since_change | round(1) }}h ({{ 'normal automatic operation' if time_since_change >= 24 else 'recent manual change' }})
-                • Override Active: {{ time_since_change < adaptive_override_timeout }}
+            {% set override_time = states(helper_override_timestamp) if helper_override_timestamp else none %}
+            {% if override_time and override_time not in ['unknown', 'unavailable', ''] %}
+            {% set override_timestamp = as_timestamp(override_time) %}
+            {% if override_timestamp %}
+            {% set time_since_override = (as_timestamp(now()) - override_timestamp) / 3600 %}
+                • Time Since Manual Override: {{ time_since_override | round(1) }}h ({{ 'normal automatic operation' if time_since_override >= 24 else 'recent manual change' }})
+                • Override Active: {{ time_since_override < adaptive_override_timeout }}
             {% endif %}
             {% endif %}
             {% endif %}
