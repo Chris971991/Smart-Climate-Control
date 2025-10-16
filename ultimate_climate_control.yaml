@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.9
+  name: Ultimate Smart Climate Control - v3.9.10
 
   description: |
-    **Ultimate Smart Climate Control v3.9.9**
+    **Ultimate Smart Climate Control v3.9.10**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.9
+    ## 🆕 Latest Update - v3.9.10
 
-    **🐛 CRITICAL BUG FIX: Debug Dependency Blocks Critical Logic**
-    - 🔴 FIXED: State synchronization and adaptive control debug logs using BARE conditions
-    - 🚨 PROBLEM: When `debug_enabled=false`, bare condition blocks failed and stopped entire sequence
-    - 💥 IMPACT: Helper/AC state sync never ran when debug disabled (HA restart recovery broken)
-    - 🛡️ SOLUTION: Wrapped debug logging in `if` blocks - logging optional, core logic mandatory
-    - ✅ RESULT: State sync and all critical logic now works correctly regardless of debug setting
-    - 📋 SCOPE: Fixed 2 bare conditions blocking state synchronization after HA restarts
+    **🐛 CRITICAL BUG FIX: Multiple Bare Conditions Blocking Core Functionality**
+    - 🔴 FIXED: 4 bare conditions blocking critical logic (debug logs + helper updates)
+    - 🚨 PROBLEM: Bare `condition:` blocks stopped entire action sequence when failed
+    - 💥 IMPACT: Users with `debug_enabled=false` OR `dynamic_enabled=false` had broken automation
+    - 🛡️ SOLUTION: Wrapped ALL bare conditions in `if` blocks - optional features don't block core logic
+    - ✅ RESULT: Automation works correctly regardless of debug/dynamic settings
+    - 📋 SCOPE: Fixed 2 debug conditions (lines 11089, 11119) + 2 dynamic helper conditions (lines 4289, 4297)
 
     **📝 Previous Updates:**
+    - v3.9.9: 🐛 CRITICAL debug dependency fix (state sync blocking)
     - v3.9.8: 🐛 CRITICAL runtime protection fix (compressor safety)
-    - v3.9.7: 🆕 AC temperature limit overrides (blueprint only)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -4286,21 +4286,25 @@ action:
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
   
   # Update effectiveness score helper
-  - condition: template
-    value_template: "{{ dynamic_enabled and helper_effectiveness not in [none, '', 'unavailable', 'unknown'] }}"
-  - service: input_number.set_value
-    target:
-      entity_id: "{{ helper_effectiveness }}"
-    data:
-      value: "{{ current_effectiveness }}"
+  - if:
+      - condition: template
+        value_template: "{{ dynamic_enabled and helper_effectiveness not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_number.set_value
+        target:
+          entity_id: "{{ helper_effectiveness }}"
+        data:
+          value: "{{ current_effectiveness }}"
 
-  - condition: template
-    value_template: "{{ dynamic_enabled and helper_trend not in [none, '', 'unavailable', 'unknown'] }}"  
-  - service: input_text.set_value
-    target:
-      entity_id: "{{ helper_trend }}"
-    data:
-      value: "{{ calculated_trend }}"
+  - if:
+      - condition: template
+        value_template: "{{ dynamic_enabled and helper_trend not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_text.set_value
+        target:
+          entity_id: "{{ helper_trend }}"
+        data:
+          value: "{{ calculated_trend }}"
 
   # Debug: Log the actual last_mode value to see what's happening
   - if:
