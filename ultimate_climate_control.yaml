@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.8
+  name: Ultimate Smart Climate Control - v3.9.9
 
   description: |
-    **Ultimate Smart Climate Control v3.9.8**
+    **Ultimate Smart Climate Control v3.9.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.8
+    ## 🆕 Latest Update - v3.9.9
 
-    **🐛 CRITICAL BUG FIX: Runtime Protection**
-    - 🔴 FIXED: Compressor protection failing when AC just turned on
-    - 🚨 PROBLEM: `time_in_current_mode` used old timestamp when dynamic adaptation disabled or helper not updated yet
-    - 💥 IMPACT: AC could turn off immediately after turning on (< 1 minute), damaging compressor
-    - 🛡️ SOLUTION: All turn-off scenarios now use `time_since_change` which tracks ALL state changes consistently
-    - ✅ RESULT: AC will ALWAYS run for minimum configured runtime (15min default) before allowing shutdown
-    - 📋 SCOPE: Fixed 7 turn-off scenarios - Smart mode, Target achieved, Stability, Away, Room empty, Adaptive (2 cases)
+    **🐛 CRITICAL BUG FIX: Debug Dependency Blocks Critical Logic**
+    - 🔴 FIXED: State synchronization and adaptive control debug logs using BARE conditions
+    - 🚨 PROBLEM: When `debug_enabled=false`, bare condition blocks failed and stopped entire sequence
+    - 💥 IMPACT: Helper/AC state sync never ran when debug disabled (HA restart recovery broken)
+    - 🛡️ SOLUTION: Wrapped debug logging in `if` blocks - logging optional, core logic mandatory
+    - ✅ RESULT: State sync and all critical logic now works correctly regardless of debug setting
+    - 📋 SCOPE: Fixed 2 bare conditions blocking state synchronization after HA restarts
 
     **📝 Previous Updates:**
-    - v3.9.6: 🐛 Manual override debug logging dependency fix
-    - v3.9.5: 🐛 Fixed 5 additional continue mode enable check bypasses
+    - v3.9.8: 🐛 CRITICAL runtime protection fix (compressor safety)
+    - v3.9.7: 🆕 AC temperature limit overrides (blueprint only)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -11086,75 +11086,79 @@ action:
             continue_on_error: true
 
   # Debug: Show which conditions were evaluated but not met
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} DEBUG: Choose block completed - no conditions matched
-        
-        📊 Final Summary:
-            • should_activate: {{ should_activate }}
-            • smart_presence_active: {{ smart_presence_active }}
-            • current_temp: {{ current_temp }}°C
-            • Control mode: {{ control_mode }}
-            • AC state: {{ actual_ac_state }}
-            • Time since change: {{ time_since_change | round(1) }}min
-            • Room presence: {{ room_presence_detected }}
-            • smart_behavior: {{ smart_behavior }}
-            • extreme_temp_detected: {{ extreme_temp_detected }}
-        
-        🌡️ Thresholds that were checked:
-            • Cooling LOW: {{ current_temp }} >= {{ cooling_low_temp }} AND < {{ cooling_medium_temp }} = {{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
-            • Cooling MEDIUM: {{ current_temp }} >= {{ cooling_medium_temp }} AND < {{ cooling_high_temp }} = {{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
-            • Cooling HIGH: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
-            • Heating LOW: {{ current_temp }} <= {{ heating_low_temp }} AND > {{ heating_medium_temp }} = {{ current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
-            • Heating MEDIUM: {{ current_temp }} <= {{ heating_medium_temp }} AND > {{ heating_high_temp }} = {{ current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
-            • Heating HIGH: {{ current_temp }} <= {{ heating_high_temp }} = {{ current_temp <= heating_high_temp }}
-            • Escalation: {{ should_escalate }}
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} DEBUG: Choose block completed - no conditions matched
+
+            📊 Final Summary:
+                • should_activate: {{ should_activate }}
+                • smart_presence_active: {{ smart_presence_active }}
+                • current_temp: {{ current_temp }}°C
+                • Control mode: {{ control_mode }}
+                • AC state: {{ actual_ac_state }}
+                • Time since change: {{ time_since_change | round(1) }}min
+                • Room presence: {{ room_presence_detected }}
+                • smart_behavior: {{ smart_behavior }}
+                • extreme_temp_detected: {{ extreme_temp_detected }}
+
+            🌡️ Thresholds that were checked:
+                • Cooling LOW: {{ current_temp }} >= {{ cooling_low_temp }} AND < {{ cooling_medium_temp }} = {{ current_temp >= cooling_low_temp and current_temp < cooling_medium_temp }}
+                • Cooling MEDIUM: {{ current_temp }} >= {{ cooling_medium_temp }} AND < {{ cooling_high_temp }} = {{ current_temp >= cooling_medium_temp and current_temp < cooling_high_temp }}
+                • Cooling HIGH: {{ current_temp }} >= {{ cooling_high_temp }} = {{ current_temp >= cooling_high_temp }}
+                • Heating LOW: {{ current_temp }} <= {{ heating_low_temp }} AND > {{ heating_medium_temp }} = {{ current_temp <= heating_low_temp and current_temp > heating_medium_temp }}
+                • Heating MEDIUM: {{ current_temp }} <= {{ heating_medium_temp }} AND > {{ heating_high_temp }} = {{ current_temp <= heating_medium_temp and current_temp > heating_high_temp }}
+                • Heating HIGH: {{ current_temp }} <= {{ heating_high_temp }} = {{ current_temp <= heating_high_temp }}
+                • Escalation: {{ should_escalate }}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Adaptive Control Status Debug Log
-  - condition: template
-    value_template: "{{ debug_enabled }}"
-  - service: system_log.write
-    data:
-      message: >
-        🔍 {{ room_name | upper }} ADAPTIVE CONTROL: Status Check
-        
-        📊 Current Status:
-            • Adaptive Enabled: {{ adaptive_enabled }}
-            • Control Mode: {{ control_mode }}
-            • Room Presence: {{ room_presence_detected }}
-            • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
-            • Required Delay: {{ adaptive_occupied_delay }} min
-        {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-        {% set presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
-        {% if presence_timestamp %}
-        {% set presence_time = (as_timestamp(now()) - presence_timestamp) / 60 %}
-            • Time Present: {{ presence_time | round(1) }} min
-            • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
-        {% endif %}
-        {% endif %}
-            • Override Timeout: {{ adaptive_override_timeout }}h
-        {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-            • Override Helper: {{ states(adaptive_override_helper) }}
-        {% endif %}
-            • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={% set change_timestamp = as_timestamp(states(helper_change)) if states(helper_change) not in ['unknown', 'unavailable', ''] else none %}{{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) if change_timestamp else 'N/A' }}min
-        {% if adaptive_override_timeout > 0 %}
-        {% set last_change = states(helper_change) %}
-        {% if last_change not in ['unknown', 'unavailable', ''] %}
-        {% set last_change_timestamp = as_timestamp(last_change) %}
-        {% if last_change_timestamp %}
-        {% set time_since_change = (as_timestamp(now()) - last_change_timestamp) / 3600 %}
-            • Time Since Manual Override: {{ time_since_change | round(1) }}h ({{ 'normal automatic operation' if time_since_change >= 24 else 'recent manual change' }})
-            • Override Active: {{ time_since_change < adaptive_override_timeout }}
-        {% endif %}
-        {% endif %}
-        {% endif %}
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+  - if:
+      - condition: template
+        value_template: "{{ debug_enabled }}"
+    then:
+      - service: system_log.write
+        data:
+          message: >
+            🔍 {{ room_name | upper }} ADAPTIVE CONTROL: Status Check
+
+            📊 Current Status:
+                • Adaptive Enabled: {{ adaptive_enabled }}
+                • Control Mode: {{ control_mode }}
+                • Room Presence: {{ room_presence_detected }}
+                • Last Presence: {{ states(presence_detected_helper) if presence_detected_helper else 'N/A' }}
+                • Required Delay: {{ adaptive_occupied_delay }} min
+            {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+            {% set presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
+            {% if presence_timestamp %}
+            {% set presence_time = (as_timestamp(now()) - presence_timestamp) / 60 %}
+                • Time Present: {{ presence_time | round(1) }} min
+                • Ready to Switch: {{ presence_time >= adaptive_occupied_delay }}
+            {% endif %}
+            {% endif %}
+                • Override Timeout: {{ adaptive_override_timeout }}h
+            {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
+                • Override Helper: {{ states(adaptive_override_helper) }}
+            {% endif %}
+                • DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac={{ actual_ac_state }}, time_since_change={% set change_timestamp = as_timestamp(states(helper_change)) if states(helper_change) not in ['unknown', 'unavailable', ''] else none %}{{ ((as_timestamp(now()) - change_timestamp) / 60) | round(1) if change_timestamp else 'N/A' }}min
+            {% if adaptive_override_timeout > 0 %}
+            {% set last_change = states(helper_change) %}
+            {% if last_change not in ['unknown', 'unavailable', ''] %}
+            {% set last_change_timestamp = as_timestamp(last_change) %}
+            {% if last_change_timestamp %}
+            {% set time_since_change = (as_timestamp(now()) - last_change_timestamp) / 3600 %}
+                • Time Since Manual Override: {{ time_since_change | round(1) }}h ({{ 'normal automatic operation' if time_since_change >= 24 else 'recent manual change' }})
+                • Override Active: {{ time_since_change < adaptive_override_timeout }}
+            {% endif %}
+            {% endif %}
+            {% endif %}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # STATE SYNCHRONIZATION: Handle helper/AC mismatch (e.g., after HA restart)
   # If helper says "off" but AC is actually running, intelligently decide what to do
