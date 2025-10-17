@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.16
+  name: Ultimate Smart Climate Control - v3.9.23
 
   description: |
-    **Ultimate Smart Climate Control v3.9.16**
+    **Ultimate Smart Climate Control v3.9.23**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.11
+    ## 🆕 Latest Update - v3.9.23
 
-    **🐛 CRITICAL BUG FIX: 6 Bare Debug Conditions Blocking Climate Operations**
-    - 🔴 FIXED: 6 bare debug conditions blocking temperature stability, adaptive, Smart, Manual, and away modes
-    - 🚨 PROBLEM: When `debug_enabled=false`, bare conditions stopped sequences before climate operations
-    - 💥 IMPACT: AC ran continuously - stability auto-off, smart room empty, adaptive turn-off all broken
-    - 🛡️ SOLUTION: Wrapped all 6 bare debug conditions in `if` blocks - logging optional, operations mandatory
-    - ✅ RESULT: All energy-saving features work correctly regardless of debug setting
-    - 📋 SCOPE: Lines 8437, 8825, 8904, 9009, 9067, 9279 - covers all major turn-off scenarios
+    **🐛 CRITICAL BUG FIX: Smart Mode AC Cycling During Presence Confirmation Delay**
+    - 🔴 FIXED: AC turned off during presence_confirmation_delay even with person in room
+    - 🚨 PROBLEM: `should_activate` returned `smart_presence_active` during confirmation period (False for 3min)
+    - 💥 IMPACT: AC cycled on/off repeatedly while waiting for presence confirmation
+    - 🛡️ SOLUTION: If presence detected NOW + AC already running = keep running during delay
+    - ✅ RESULT: AC stays on when you're in the room, confirmation delay only blocks initial startup
+    - 🔧 BONUS: Fixed `comfort_zone_width` undefined error (wrong variable name)
 
     **📝 Previous Updates:**
-    - v3.9.10: 🐛 Fixed bare conditions blocking main logic (debug + dynamic)
-    - v3.9.9: 🐛 Fixed debug dependency blocking state sync
+    - v3.9.22: 🚀 Added configurable target overshoot strategy (prevents rapid cycling near target)
+    - v3.9.21: 🐛 Fixed temperature stability auto-off using wrong zone
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2135,6 +2135,36 @@ blueprint:
               step: 0.01
               unit_of_measurement: "°C"
 
+        target_overshoot_strategy:
+          name: Target Overshoot Strategy
+          description: |
+            **How far past target temperature** should AC run before turning off?
+
+            Overshooting creates a buffer zone that prevents rapid on/off cycling while maintaining comfort.
+
+            • **Minimal:** 0.5°C past target - Precise control, may cycle more often in extreme conditions
+            • **Moderate:** Halfway to comfort zone edge - Balanced comfort and efficiency ⭐ **RECOMMENDED**
+            • **Maximum:** Full comfort zone edge - Maximum cycling prevention, larger temperature swings
+
+            **Example with target 22.5°C, comfort zone 21.1-23.9°C:**
+            • Cooling stops at: **22.0°C** (minimal) / **21.8°C** (moderate) / **21.1°C** (maximum)
+            • Heating stops at: **23.0°C** (minimal) / **23.2°C** (moderate) / **23.9°C** (maximum)
+
+            **When to use:**
+            • **Minimal:** Bedrooms, offices where precise temp control is critical
+            • **Moderate:** Most rooms - best balance (default)
+            • **Maximum:** High thermal load rooms, extreme outdoor temps, or frequent cycling issues
+          default: moderate
+          selector:
+            select:
+              options:
+                - label: "Minimal (0.5°C overshoot)"
+                  value: "minimal"
+                - label: "Moderate (Halfway to comfort edge) - RECOMMENDED"
+                  value: "moderate"
+                - label: "Maximum (Full comfort zone)"
+                  value: "maximum"
+
         ac_minimum_temp:
           name: AC Minimum Temperature Override
           description: |
@@ -2704,6 +2734,23 @@ variables:
   helper_temp_stable_since: !input helper_temp_stable_since
   helper_last_transition: !input helper_last_transition
   hysteresis_tolerance: !input hysteresis_tolerance
+  overshoot_strategy: !input target_overshoot_strategy
+
+  # v3.9.22: Calculate target overshoot based on strategy
+  target_overshoot: >
+    {% set strategy = overshoot_strategy | default('moderate') %}
+    {% set zone_width = comfort_width | float(1.5) %}
+
+    {% if strategy == 'minimal' %}
+      0.5
+    {% elif strategy == 'moderate' %}
+      {{ (zone_width / 2) | round(2) }}
+    {% elif strategy == 'maximum' %}
+      {{ zone_width | round(2) }}
+    {% else %}
+      0.75
+    {% endif %}
+
   ac_minimum_temp: !input ac_minimum_temp
   ac_maximum_temp: !input ac_maximum_temp
   # Adaptive Control Mode variables
@@ -3381,8 +3428,14 @@ action:
       # This gives AC the best starting point AND adjusts based on actual performance
       adjusted_target: >
         {% set base = target_temp %}
-        {% set is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-        {% set is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+        {# v3.9.19 FIX: Detect cooling/heating from current temp + last_mode, not just last_mode #}
+        {# When OFF, use current temp to predict which mode will activate #}
+        {% set mode_is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+        {% set mode_is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+        {% set temp_needs_cooling = current_temp > comfort_max_temp %}
+        {% set temp_needs_heating = current_temp < comfort_min_temp %}
+        {% set is_cooling = mode_is_cooling or (not mode_is_heating and temp_needs_cooling) %}
+        {% set is_heating = mode_is_heating or (not mode_is_cooling and temp_needs_heating) %}
 
         {# Step 1: Apply outside temperature compensation if enabled #}
         {% if enable_outside_temp_compensation and (is_cooling or is_heating) %}
@@ -3418,11 +3471,13 @@ action:
         {% set ac_min_temp = user_min if user_min > 0 else reported_min %}
         {% set ac_max_temp = user_max if user_max > 0 else reported_max %}
 
-        {# Safety limits: Use actual AC limits, and don't overshoot user's target intent #}
+        {# Safety limits: Respect AC hardware limits while allowing escalation adjustments #}
         {% if is_cooling %}
-          {{ [[ac_min_temp, base] | max, target_temp] | min | round(1) }}
+          {# Allow cooling below target_temp when escalated, but respect AC minimum temp #}
+          {{ [ac_min_temp, base] | max | round(1) }}
         {% elif is_heating %}
-          {{ [[target_temp, base] | max, ac_max_temp] | min | round(1) }}
+          {# Allow heating above target_temp when escalated, but respect AC maximum temp #}
+          {{ [base, ac_max_temp] | min | round(1) }}
         {% else %}
           {{ target_temp }}
         {% endif %}
@@ -3840,7 +3895,14 @@ action:
 
 
       should_activate: >
-        {% if control_mode == 'Manual' %}
+        {# v3.9.20 FIX: Runtime protection overrides ALL activation logic #}
+        {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode < runtime_min %}
+          {# ABSOLUTE RUNTIME PROTECTION: AC must stay on for minimum runtime regardless of presence, temperature, or mode #}
+          true
+        {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime and time_in_current_mode <= offtime_min %}
+          {# ABSOLUTE OFF-TIME PROTECTION: AC must stay off for minimum off-time regardless of presence or temperature #}
+          false
+        {% elif control_mode == 'Manual' %}
           {# In manual mode, only activate for extreme temperatures with presence #}
           {% if extreme_temp_detected not in [false, 'false'] and (room_presence_detected or approaching_home) %}
             true
@@ -3852,8 +3914,14 @@ action:
           false
         {% elif control_mode == 'Smart' %}
           {% if not room_presence_detected and smart_behavior == 'off' and not extreme_temp_detected %}
+            {# No presence detected and smart behavior is OFF = turn off/stay off #}
             false
+          {% elif room_presence_detected and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
+            {# v3.9.23 FIX: Presence detected NOW + AC already running = keep running during confirmation delay #}
+            {# This prevents AC from turning off during the presence_confirmation_delay period #}
+            true
           {% else %}
+            {# Either no presence or AC not running = require smart_presence_active confirmation #}
             {{ smart_presence_active }}
           {% endif %}
         {% else %}
@@ -4985,8 +5053,8 @@ action:
                 {# Continue HIGH only if AC running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -5019,6 +5087,7 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
+                {% set temp_gap_adjusted = (adjusted_target - current_temp) | round(1) %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5026,34 +5095,35 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: +' ~ (adjusted_target - target_temp) | round(1) ~ '°C)' if adjusted_target > target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} HIGH HEATING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 90 %}| 🔥 MAXIMUM INTENSITY{% elif effectiveness >= 70 %}| ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - CRUISING TO TARGET
-                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - EMERGENCY MODE
-                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C deficit!)
+                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C deficit!)
                     ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
                     🚨 {{ room_name | upper }} HIGH HEATING - EMERGENCY START
-                    🚀 START MODE: EXTREME cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C ({{ temp_gap }}°C deficit!)
-                    🔥 Maximum heating power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: EXTREME cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C ({{ temp_gap_adjusted }}°C deficit!)
+                    🔥 Maximum heating power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - RAPID WARM-UP
                     🚀 START MODE: Cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C threshold
-                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚡ High-power heating → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_high_temp }}°C
-                    🎯 Gentle approach to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Gentle approach to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -5339,7 +5409,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_high"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'heating_high' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # MEDIUM HEATING: Smart hysteresis with direct helper reads
       - conditions:
@@ -5350,8 +5430,8 @@ action:
                 {# Already heating medium - continue only if AC running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -5385,6 +5465,7 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
+                {% set temp_gap_adjusted = (adjusted_target - current_temp) | round(1) %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5392,34 +5473,35 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: +' ~ (adjusted_target - target_temp) | round(1) ~ '°C)' if adjusted_target > target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'heating_medium' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} MEDIUM HEATING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 85 %}| 🔥 OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}| ⚡ GOOD EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STEADY PROGRESS
-                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - SUSTAINED MODE
-                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
+                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
                     ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 4.0 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - INTENSIVE START
-                    🚀 START MODE: Significant cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C ({{ temp_gap }}°C deficit)
-                    ⚡ Steady heating power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: Significant cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
+                    ⚡ Steady heating power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 1.5 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STANDARD WARM-UP
                     🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C threshold
-                    ⚙️ Balanced heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚙️ Balanced heating → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - GENTLE MODE
                     🚀 START MODE: Minor adjustment {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C
-                    🎯 Comfort warming to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Comfort warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -5690,7 +5772,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_medium"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'heating_medium' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # LOW HEATING: Smart hysteresis with direct helper reads
       - conditions:
@@ -5701,8 +5793,8 @@ action:
                 {# Already heating low - continue only if AC running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -5734,6 +5826,7 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
+                {% set temp_gap_adjusted = (adjusted_target - current_temp) | round(1) %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -5741,34 +5834,35 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: +' ~ (adjusted_target - target_temp) | round(1) ~ '°C)' if adjusted_target > target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
                     🎯 {{ room_name | upper }} LOW HEATING - PRECISION FINISH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ target_temp }}°C ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 80 %}| 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}| ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}| 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
-                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
-                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
+                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
                     🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - CAUTIOUS START
-                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap }}°C deficit)
-                    🌡️ Gentle heating approach | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
+                    🌡️ Gentle heating approach | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚙️ Gentle warming → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
-                    🎯 Minimal warming to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Minimal warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -6042,7 +6136,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_low"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'heating_low' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # HIGH COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -6053,8 +6157,8 @@ action:
                 {# Continue HIGH only if AC is actually running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -6087,36 +6191,43 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set distance_adjusted = (current_temp - adjusted_target) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: -' ~ (target_temp - adjusted_target) | round(1) ~ '°C)' if adjusted_target < target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C remaining)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C remaining){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
                   {% elif current_effectiveness < 40 and final_escalation_level > 0 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATING L{{ final_escalation_level }} - only {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ minutes{% endif %}
                   {% elif final_escalation_level == 4 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE 🆘
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
                 ⚠️ System at maximum capacity - consider manual intervention
                   {% elif current_effectiveness >= 80 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING ✅
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (STABLE - {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
                   {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
@@ -6124,7 +6235,8 @@ action:
                 ❄️ {{ room_name | upper }} HIGH COOLING - INITIATED 🚀
                 📊 {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (FULL POWER)
-                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
+                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
+                {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -6413,7 +6525,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_high"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'cooling_high' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # MEDIUM COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -6424,8 +6546,8 @@ action:
                 {# Already cooling medium - continue only if AC running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -6459,41 +6581,49 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set distance_adjusted = (current_temp - adjusted_target) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: -' ~ (target_temp - adjusted_target) | round(1) ~ '°C)' if adjusted_target < target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
-                📊 {{ current_temp }}°C ≈ {{ target_temp }}°C (within {{ distance }}°C)
+                📊 {{ current_temp }}°C ≈ {{ adjusted_target }}°C (within {{ distance_adjusted }}°C){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
                 ✅ Success! Temperature stabilized
                   {% elif deescalation_level == 3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
                 📈 Ultra-efficient mode - saving energy while maintaining comfort
                   {% elif current_effectiveness >= 85 and deescalation_level > 0 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
                 📈 Trend: {{ temp_change_rate }}°C/min - Perfect balance of power & efficiency
                   {% elif final_escalation_level >= 2 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - BOOSTED ⚡
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 Current: {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go)
+                {{ target_info }}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATION L{{ final_escalation_level }} - {{ current_effectiveness }}% effective)
                 ⚠️ Increased fan power for faster cooling
                   {% elif current_effectiveness < 50 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - UNDERPERFORMING ⚠️
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
                   {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS 📊
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
@@ -6501,7 +6631,8 @@ action:
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ENGAGED 🎯
                 📊 {{ current_temp }}°C in medium range ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MEDIUM INTENSITY)
-                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
+                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
+                {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -6779,7 +6910,18 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_medium"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # This prevents false manual override detection while maintaining runtime protection
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'cooling_medium' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -6790,8 +6932,8 @@ action:
                 {# Already cooling low - continue only if AC running AND temp needs adjustment #}
                 {% if time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
-                {% elif (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% elif current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% elif control_mode == 'Smart' and not smart_presence_active %}
                   False  {# EXIT: Smart mode requires presence to continue #}
                 {% elif actual_ac_state == 'off' %}
@@ -6810,36 +6952,43 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set distance = (current_temp - target_temp) | round(1) %}
+                {% set distance_adjusted = (current_temp - adjusted_target) | round(1) %}
                 {% set abs_rate = (temp_change_rate | abs) %}
                 {% set eta_minutes = (distance / abs_rate) | round(0) if abs_rate > 0.001 else 999 %}
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: -' ~ (target_temp - adjusted_target) | round(1) ~ '°C)' if adjusted_target < target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'cooling_low' %}
                   {% if distance <= 0.2 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PRECISION MODE 🎯
-                📊 {{ current_temp }}°C ≈ {{ target_temp }}°C ({{ distance }}°C away)
+                📊 {{ current_temp }}°C ≈ {{ adjusted_target }}°C ({{ distance_adjusted }}°C away){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE)
                 ✨ Maintaining perfect comfort with minimal energy
                   {% elif current_effectiveness >= 90 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PERFECT EFFICIENCY 💎
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 🌿 Ideal conditions - minimal power, maximum comfort
                   {% elif final_escalation_level > 0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - ASSISTED 📈
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATED L{{ final_escalation_level }} for minor boost)
                 📊 Temporarily increased for quicker response
                   {% elif distance < 1.0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - FINE TUNING 🎚️
-                📊 {{ current_temp }}°C → {{ target_temp }}°C (just {{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C (just {{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Nearly there{% if eta_minutes < 5 %} - ~{{ eta_minutes }} min remaining{% endif %}
                   {% else %}
                 🌬️ {{ room_name | upper }} LOW COOLING - GENTLE PROGRESS 🍃
-                📊 {{ current_temp }}°C → {{ target_temp }}°C ({{ distance }}°C to go)
+                📊 {{ current_temp }}°C → {{ adjusted_target }}°C ({{ distance_adjusted }}°C to go){% if target_info %}
+                {{ target_info }}{% endif %}
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
                 📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
@@ -6847,7 +6996,8 @@ action:
                 🌬️ {{ room_name | upper }} LOW COOLING - INITIALIZED 🌱
                 📊 {{ current_temp }}°C slightly above comfort (≥{{ cooling_low_temp }}°C)
                 ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE START)
-                🎯 Target: {{ target_temp }}°C ({{ distance }}°C to cool)
+                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
+                {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -7096,7 +7246,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_low"
-          # REMOVED: helper_change update - automation actions should NOT trigger manual override
+
+          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          - if:
+              - condition: template
+                value_template: "{{ states(helper_mode) | default('off') != 'cooling_low' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
 
       # PRIORITY: Check for high temperature first when AC is off
       - conditions:
@@ -7116,30 +7276,30 @@ action:
                 {% if current_mode == 'cooling_high' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} HIGH COOLING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 90 %}| ❄️ MAXIMUM INTENSITY{% elif effectiveness >= 70 %}| ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING TO TARGET
-                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE
-                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C excess!)
+                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C excess!)
                     ⚡ Full power until comfortable | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
                     🚨 {{ room_name | upper }} HIGH COOLING - EMERGENCY START
-                    🚀 START MODE: EXTREME heat {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C ({{ temp_gap }}°C excess!)
-                    ❄️ Maximum cooling power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: EXTREME heat {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C ({{ distance_adjusted }}°C excess!)
+                    ❄️ Maximum cooling power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - RAPID COOL-DOWN
                     🚀 START MODE: Hot {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C threshold
-                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
+                    ⚡ High-power cooling → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool)
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C
-                    🎯 Gentle approach to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Gentle approach to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
               level: warning
@@ -7758,8 +7918,8 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached or moved to higher tier #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_medium_temp }}
                 {% endif %}
@@ -7794,30 +7954,30 @@ action:
                 {% if current_mode == 'cooling_low' %}
                   {% if temp_gap <= 0.3 %}
                     🎯 {{ room_name | upper }} LOW COOLING - PRECISION FINISH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ target_temp }}°C ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 85 %}| ❄️ OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}| ⚙️ GOOD CONTROL ({{ effectiveness }}%){% else %}| 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 1.5 %}
                     ❄️ {{ room_name | upper }} LOW COOLING - GENTLE APPROACH
-                    📊 CONTINUE MODE: Gradually cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Gradually cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} LOW COOLING - PATIENT MODE
-                    📊 CONTINUE MODE: Steady cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
+                    📊 CONTINUE MODE: Steady cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool)
                     🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
                     ❄️ {{ room_name | upper }} LOW COOLING - CAUTIOUS START
-                    🚀 START MODE: Moderate heat {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C ({{ temp_gap }}°C excess)
-                    🌡️ Gentle cooling approach | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: Moderate heat {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C ({{ distance_adjusted }}°C excess)
+                    🌡️ Gentle cooling approach | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 1.0 %}
                     ❄️ {{ room_name | upper }} LOW COOLING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight warmth {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C threshold
-                    ⚙️ Gentle cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚙️ Gentle cooling → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} LOW COOLING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_low_temp }}°C
-                    🎯 Minimal cooling to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Minimal cooling to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -7987,8 +8147,8 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached or moved to higher tier #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_high_temp }}
                 {% endif %}
@@ -8023,30 +8183,30 @@ action:
                 {% if current_mode == 'cooling_medium' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} MEDIUM COOLING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 85 %}| ❄️ OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}| ⚡ GOOD EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS
-                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - SUSTAINED MODE
-                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to cool)
+                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool)
                     ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 4.0 %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - INTENSIVE START
-                    🚀 START MODE: Significant heat {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C ({{ temp_gap }}°C excess)
-                    ⚡ Steady cooling power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: Significant heat {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C ({{ distance_adjusted }}°C excess)
+                    ⚡ Steady cooling power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 1.5 %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - STANDARD COOL-DOWN
                     🚀 START MODE: Moderate heat {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C threshold
-                    ⚙️ Balanced cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚙️ Balanced cooling → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} MEDIUM COOLING - GENTLE MODE
                     🚀 START MODE: Minor adjustment {{ current_temp }}°C ≥ {{ cooling_medium_temp }}°C
-                    🎯 Comfort cooling to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Comfort cooling to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -8470,11 +8630,10 @@ action:
             value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'unavailable', 'unknown', none] }}"
           - condition: template
             value_template: "{{ time_since_change >= runtime_min }}"
-          # CRITICAL: Allow stability auto-off within reasonable range (comfort zone + aggressiveness buffer)
+          # v3.9.21 FIX: Only turn off when WITHIN comfort zone, not outside it with buffer
           - condition: template
             value_template: >
-              {% set buffer = aggressiveness | float %}
-              {{ current_temp >= (comfort_min_temp - buffer) and current_temp <= (comfort_max_temp + buffer) }}
+              {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
         sequence:
           - if:
               - condition: template
@@ -8485,7 +8644,7 @@ action:
                   message: >
                     🎯 Smart Feature: Temperature Stable & Comfortable
                     🌡️ Temperature steady at {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
-                    ✅ Within acceptable range ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C + {{ aggressiveness }}°C buffer) - switching to {{ stability_behavior|upper }} mode to save energy
+                    ✅ Within comfort zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C) - switching to {{ stability_behavior|upper }} mode to save energy
 
                     📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
                   level: warning
@@ -9479,8 +9638,8 @@ action:
             value_template: >
               {% if last_mode == 'cooling' %}
                 {# Already cooling - continue until target reached #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp <= (target_temp - target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ should_activate and enable_cooling and current_temp > target_temp }}
                 {% endif %}
@@ -9520,30 +9679,30 @@ action:
                 {% if current_mode == 'cooling_high' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} HIGH COOLING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 90 %}| ❄️ MAXIMUM INTENSITY{% elif effectiveness >= 70 %}| ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING TO TARGET
-                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE
-                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C excess!)
+                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C excess!)
                     ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
                     🚨 {{ room_name | upper }} HIGH COOLING - EMERGENCY START
-                    🚀 START MODE: EXTREME heat {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C ({{ temp_gap }}°C excess!)
-                    ❄️ Maximum cooling power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: EXTREME heat {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C ({{ distance_adjusted }}°C excess!)
+                    ❄️ Maximum cooling power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 2.0 %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - RAPID COOL-DOWN
                     🚀 START MODE: Hot {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C threshold
-                    ⚡ High-power cooling → {{ target_temp }}°C ({{ temp_gap }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚡ High-power cooling → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     ❄️ {{ room_name | upper }} HIGH COOLING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≥ {{ cooling_high_temp }}°C
-                    🎯 Gentle approach to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Gentle approach to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
               level: warning
@@ -9975,8 +10134,8 @@ action:
             value_template: >
               {% if last_mode == 'heating' %}
                 {# Already heating - continue until target reached or moved to higher tier #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ should_activate and enable_heating and current_temp < target_temp and current_temp > heating_medium_temp }}
                 {% endif %}
@@ -10003,6 +10162,7 @@ action:
               message: >
                 {% set current_mode = states(helper_mode) | default('off') %}
                 {% set temp_gap = (target_temp - current_temp) | round(1) %}
+                {% set temp_gap_adjusted = (adjusted_target - current_temp) | round(1) %}
                 {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 65 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
@@ -10010,34 +10170,35 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
+                {% set target_info = '🎯 AC Target: ' ~ adjusted_target ~ '°C (User: ' ~ target_temp ~ '°C' ~ (' | Escalation: +' ~ (adjusted_target - target_temp) | round(1) ~ '°C)' if adjusted_target > target_temp else ')') if adjusted_target != target_temp else '' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
                     🎯 {{ room_name | upper }} LOW HEATING - PRECISION FINISH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ target_temp }}°C ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 80 %}| 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}| ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}| 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
-                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
-                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to heat)
+                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
                     🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - CAUTIOUS START
-                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap }}°C deficit)
-                    🌡️ Gentle heating approach | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
+                    🌡️ Gentle heating approach | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
                     🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚙️ Gentle warming → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
-                    🎯 Minimal warming to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Minimal warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -10278,8 +10439,8 @@ action:
             value_template: >
               {% if last_mode == 'heating_medium' %}
                 {# Already heating medium - continue until target reached or moved to higher tier #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ current_temp < target_temp and current_temp > heating_high_temp }}
                 {% endif %}
@@ -10496,8 +10657,8 @@ action:
             value_template: >
               {% if last_mode == 'heating_high' %}
                 {# Already heating high - continue until target reached #}
-                {% if (current_temp - target_temp) | abs <= 0.1 %}
-                  False  {# EXIT: Target achieved within 0.1°C - turn off to prevent overshoot #}
+                {% if current_temp >= (target_temp + target_overshoot) %}
+                  False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
                   {{ should_activate and enable_heating and current_temp < target_temp }}
                 {% endif %}
@@ -10541,30 +10702,30 @@ action:
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} HIGH HEATING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ target_temp }}°C target ({{ temp_gap }}°C remaining)
+                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
                     ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 90 %}| 🔥 MAXIMUM INTENSITY{% elif effectiveness >= 70 %}| ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - CRUISING TO TARGET
-                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C to go)
+                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
                     ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - EMERGENCY MODE
-                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ target_temp }}°C ({{ temp_gap }}°C deficit!)
+                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C deficit!)
                     ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
                     🚨 {{ room_name | upper }} HIGH HEATING - EMERGENCY START
-                    🚀 START MODE: EXTREME cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C ({{ temp_gap }}°C deficit!)
-                    🔥 Maximum heating power engaged | Target: {{ target_temp }}°C | ETA: ~{{ eta_minutes }}min
+                    🚀 START MODE: EXTREME cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C ({{ temp_gap_adjusted }}°C deficit!)
+                    🔥 Maximum heating power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
                   {% elif temp_gap >= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - RAPID WARM-UP
                     🚀 START MODE: Cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C threshold
-                    ⚡ High-power heating → {{ target_temp }}°C ({{ temp_gap }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+                    ⚡ High-power heating → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - PRECISION MODE
                     🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_high_temp }}°C
-                    🎯 Gentle approach to {{ target_temp }}°C ({{ temp_gap }}°C remaining) | ETA: ~{{ eta_minutes }}min
+                    🎯 Gentle approach to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -11020,6 +11181,7 @@ action:
             continue_on_error: true
 
   # Turn off AC in Smart mode when presence is lost (after grace period)
+  # v3.9.23 FIX: Don't turn off if presence detected NOW (even during confirmation delay)
   - if:
         - condition: template
           value_template: >
@@ -11027,6 +11189,7 @@ action:
               actual_ac_state == 'on' and
               control_mode == 'Smart' and
               not smart_presence_active and
+              not room_presence_detected and
               last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
               time_since_change >= runtime_min
             }}
