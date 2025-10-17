@@ -769,6 +769,17 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                         unit_of_measurement="°C",
                     )
                 ),
+                vol.Optional("target_overshoot_strategy", default="moderate"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"label": "None (No overshoot - ⚠️ May cause rapid cycling)", "value": "none"},
+                            {"label": "Minimal (0.5°C overshoot)", "value": "minimal"},
+                            {"label": "Moderate (Halfway to comfort edge) - RECOMMENDED", "value": "moderate"},
+                            {"label": "Maximum (Full comfort zone)", "value": "maximum"},
+                        ],
+                        mode="dropdown",
+                    )
+                ),
                 vol.Optional("enable_heating", default=True): selector.BooleanSelector(),
                 vol.Optional("enable_cooling", default=True): selector.BooleanSelector(),
             }
@@ -1405,6 +1416,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # Temperature settings (user-provided)
                     "target_temperature": config.get("target_temperature", 22),
                     "comfort_zone_width": comfort_width,
+                    "target_overshoot_strategy": config.get("target_overshoot_strategy", "moderate"),
                     "enable_heating_mode": config.get("enable_heating", True),
                     "enable_cooling_mode": config.get("enable_cooling", True),
 
