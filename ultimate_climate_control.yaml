@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.29
+  name: Ultimate Smart Climate Control - v3.9.30
 
   description: |
-    **Ultimate Smart Climate Control v3.9.29**
+    **Ultimate Smart Climate Control v3.9.30**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3164,7 +3164,7 @@ action:
       
       approaching_home: >
         {% if direction_sensor and proximity_sensor %}
-          {{ is_state(direction_sensor, 'towards') and 
+          {{ (is_state(direction_sensor, 'towards') or is_state(direction_sensor, 'arrived')) and
              states(proximity_sensor) | float(10000) < home_zone_distance }}
         {% else %}
           false
