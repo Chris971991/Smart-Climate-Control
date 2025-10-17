@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.23
+  name: Ultimate Smart Climate Control - v3.9.27
 
   description: |
-    **Ultimate Smart Climate Control v3.9.23**
+    **Ultimate Smart Climate Control v3.9.27**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.23
+    ## 🆕 Latest Update - v3.9.27
 
-    **🐛 CRITICAL BUG FIX: Smart Mode AC Cycling During Presence Confirmation Delay**
-    - 🔴 FIXED: AC turned off during presence_confirmation_delay even with person in room
-    - 🚨 PROBLEM: `should_activate` returned `smart_presence_active` during confirmation period (False for 3min)
-    - 💥 IMPACT: AC cycled on/off repeatedly while waiting for presence confirmation
-    - 🛡️ SOLUTION: If presence detected NOW + AC already running = keep running during delay
-    - ✅ RESULT: AC stays on when you're in the room, confirmation delay only blocks initial startup
-    - 🔧 BONUS: Fixed `comfort_zone_width` undefined error (wrong variable name)
+    **🐛 CRITICAL BUG FIX: Old Target Achievement Check Bypassing Overshoot System**
+    - 🔴 FIXED: Legacy target check turned off AC at user target, ignoring overshoot
+    - 🚨 PROBLEM: Line 11296 checked `current_temp <= target_temp` (22.5°C) not overshoot (21.8°C)
+    - 💥 IMPACT: AC turned off at 22.5°C, never created 0.7°C buffer - rapid cycling!
+    - 🛡️ SOLUTION: Updated legacy check to use `(target_temp - target_overshoot)` for cooling
+    - ✅ RESULT: **ALL** target checks now use overshoot - buffer finally works correctly!
 
     **📝 Previous Updates:**
-    - v3.9.22: 🚀 Added configurable target overshoot strategy (prevents rapid cycling near target)
-    - v3.9.21: 🐛 Fixed temperature stability auto-off using wrong zone
+    - v3.9.26: 🐛 Fixed stability auto-off preventing overshoot target achievement
+    - v3.9.25: 🐛 Fixed de-escalation preventing overshoot target achievement
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3263,7 +3262,15 @@ action:
         {% endif %}
       
       distance_from_target: >
-        {{ (current_temp - target_temp) | abs }}
+        {# v3.9.25 FIX: Calculate distance from OVERSHOOT target, not user target #}
+        {# De-escalation must allow AC to reach overshoot target (e.g., 21.8°C) not just user target (22.5°C) #}
+        {% set effective_target = target_temp %}
+        {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+          {% set effective_target = target_temp - target_overshoot %}
+        {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+          {% set effective_target = target_temp + target_overshoot %}
+        {% endif %}
+        {{ (current_temp - effective_target) | abs }}
 
       # Calculate current effectiveness based on temperature progress
       current_effectiveness: >
@@ -3947,6 +3954,7 @@ action:
   # v3.8.5 FIX: Simple logic - if timer is older than timeout, we're starting fresh
   # SET timer when ENTERING room (starting NEW presence session)
   # v3.8.7 FIX: Only set if timer shows you LEFT the room (expired state from reset block below)
+  # v3.9.24 FIX: Don't reset timer if smart_presence_active (you've been here a while)
   # Timer is "expired" when it's set to (NOW - timeout - 1) by the reset block
   # This means: timer older than (timeout + 1) = you left and grace period expired = NEW session
   - if:
@@ -3959,8 +3967,9 @@ action:
             {% set current_timestamp = as_timestamp(now()) %}
             {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
             {# Timer in "expired" state means you previously LEFT (reset block set it to NOW - timeout - 1) #}
-            {# Only reset if timer shows expired state OR if timer is ancient (> 2 hours = stale/never set) #}
-            {{ minutes_since_timer_set > (presence_timeout + 1) or minutes_since_timer_set > 120 }}
+            {# v3.9.24 FIX: Only reset if NOT already confirmed (smart_presence_active = False) #}
+            {# If smart_presence_active = True, you've been here a while, don't reset! #}
+            {{ (minutes_since_timer_set > (presence_timeout + 1) and not smart_presence_active) or minutes_since_timer_set > 120 }}
           {% else %}
             true
           {% endif %}
@@ -8631,9 +8640,25 @@ action:
           - condition: template
             value_template: "{{ time_since_change >= runtime_min }}"
           # v3.9.21 FIX: Only turn off when WITHIN comfort zone, not outside it with buffer
+          # v3.9.26 FIX: Don't turn off if actively pursuing overshoot target in continue mode
           - condition: template
             value_template: >
-              {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}
+              {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
+              {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
+              {% set overshoot_target_reached = false %}
+
+              {% if in_continue_mode %}
+                {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                  {# Cooling: target reached when temp <= (target - overshoot) #}
+                  {% set overshoot_target_reached = current_temp <= (target_temp - target_overshoot) %}
+                {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                  {# Heating: target reached when temp >= (target + overshoot) #}
+                  {% set overshoot_target_reached = current_temp >= (target_temp + target_overshoot) %}
+                {% endif %}
+              {% endif %}
+
+              {# Allow stability auto-off ONLY if: in comfort zone AND (not in continue mode OR overshoot target already reached) #}
+              {{ in_comfort_zone and (not in_continue_mode or overshoot_target_reached) }}
         sequence:
           - if:
               - condition: template
@@ -11260,6 +11285,7 @@ action:
 
 
   # Turn off AC if it's running but temperature has reached/passed target
+  # v3.9.27 FIX: Use OVERSHOOT target, not user target!
   - if:
       - condition: template
         value_template: >
@@ -11268,8 +11294,8 @@ action:
             last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
             time_since_change >= runtime_min and
             (
-              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= target_temp and current_temp >= target_temp - 0.5) or
-              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= target_temp and current_temp <= target_temp + 0.5)
+              (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= (target_temp - target_overshoot)) or
+              (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= (target_temp + target_overshoot))
             )
           }}
     then:
