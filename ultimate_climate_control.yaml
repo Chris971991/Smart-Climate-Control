@@ -2671,7 +2671,8 @@ variables:
     {% set ac_states = namespace(any_running=false) %}
     {% for entity in climate_list %}
       {% set hvac_action = state_attr(entity, 'hvac_action') | default('off') %}
-      {% if hvac_action in ['cooling', 'heating', 'drying', 'fan'] %}
+      {% set hvac_mode = states(entity) | default('off') %}
+      {% if hvac_action in ['cooling', 'heating', 'drying', 'fan'] or hvac_mode not in ['off', 'unavailable', 'unknown'] %}
         {% set ac_states.any_running = true %}
       {% endif %}
     {% endfor %}
@@ -11477,7 +11478,9 @@ action:
             {{ enable_heating and current_temp < overshoot_target and current_temp >= comfort_min_temp }}
 
           should_be_running: >
-            {{ probable_mode != 'off' or in_continue_mode_cooling or in_continue_mode_heating }}
+            {% set actual_hvac_mode = states(climate_list[0]) | default('off') %}
+            {% set is_unsupported_mode = actual_hvac_mode in ['fan_only', 'dry'] %}
+            {{ (probable_mode != 'off' or in_continue_mode_cooling or in_continue_mode_heating) and not is_unsupported_mode }}
 
       - if:
           - condition: template
