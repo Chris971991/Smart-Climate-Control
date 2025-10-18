@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.31
+  name: Ultimate Smart Climate Control - v3.9.32
 
   description: |
-    **Ultimate Smart Climate Control v3.9.31**
+    **Ultimate Smart Climate Control v3.9.32**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.31
+    ## 🆕 Latest Update - v3.9.32
 
-    **🐛 CRITICAL BUG FIX: State Sync Turning Off AC Before Overshoot Target Reached**
-    - 🔴 FIXED: State Sync logic turned off AC at 23.7°C when overshoot target was 21.8°C
-    - 🚨 PROBLEM: Helper/AC mismatch detection only checked comfort zone, not continue mode
-    - 💥 IMPACT: AC turned off mid-cycle when in comfort zone, never reached overshoot buffer!
-    - 🛡️ SOLUTION: Added `in_continue_mode_cooling/heating` checks before turning off AC
-    - ✅ RESULT: AC now completes overshoot cycle even when helper says "off"
+    **🐛 CRITICAL BUG FIX: Continue Mode Conditions Ignoring Overshoot Target**
+    - 🔴 FIXED: AC stopped at user target (22.5°C) instead of overshoot target (21.0°C with maximum strategy)
+    - 🚨 PROBLEM: Continue mode fallback conditions used `current_temp > target_temp` instead of `current_temp > (target_temp - target_overshoot)`
+    - 💥 IMPACT: Overshoot buffer never created - AC turned off immediately at target, causing rapid cycling!
+    - 🛡️ SOLUTION: Fixed ALL 11 continue mode conditions (6 cooling + 5 heating) to use overshoot target
+    - ✅ RESULT: AC now cools/heats PAST user target to create temperature buffer as intended
 
     **📝 Previous Updates:**
-    - v3.9.30: 🐛 Fixed pre-conditioning continuing after arrival (direction "towards" OR "arrived")
-    - v3.9.27: 🐛 Fixed legacy target check bypassing overshoot system
+    - v3.9.31: 🐛 Fixed State Sync turning off AC before overshoot target reached
+    - v3.9.30: 🐛 Fixed pre-conditioning continuing after arrival
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -5078,7 +5078,7 @@ action:
                 {% elif current_temp > heating_high_temp and (target_temp - current_temp) > 1.0 %}
                   False  {# EXIT: Temp rose above HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
-                  {{ should_activate and enable_heating and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < (target_temp + target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -5455,7 +5455,7 @@ action:
                 {% elif current_temp > heating_medium_temp and (target_temp - current_temp) > 1.0 %}
                   False  {# EXIT: Temp rose above MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
-                  {{ should_activate and enable_heating and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < (target_temp + target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -5816,7 +5816,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and enable_heating and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < (target_temp + target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
@@ -6183,7 +6183,7 @@ action:
                 {% elif current_temp < cooling_high_temp and (current_temp - target_temp) > 1.0 %}
                   False  {# EXIT: Temp dropped below HIGH threshold and still >1°C from target - let MEDIUM tier take over #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not cooling high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
@@ -6573,7 +6573,7 @@ action:
                 {% elif current_temp < cooling_medium_temp and (current_temp - target_temp) > 1.0 %}
                   False  {# EXIT: Temp dropped below MEDIUM threshold and still >1°C from target - let LOW tier take over #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
@@ -6958,7 +6958,7 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
@@ -7941,7 +7941,7 @@ action:
                 {% if current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_medium_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) and current_temp < cooling_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if low threshold exceeded and below medium #}
@@ -8170,7 +8170,7 @@ action:
                 {% if current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp and current_temp < cooling_high_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) and current_temp < cooling_high_temp }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if medium threshold exceeded and below high #}
@@ -9677,7 +9677,7 @@ action:
                 {% if current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
-                  {{ should_activate and enable_cooling and current_temp > target_temp }}
+                  {{ should_activate and enable_cooling and current_temp > (target_temp - target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not cooling - start if high threshold exceeded #}
@@ -10173,7 +10173,7 @@ action:
                 {% if current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
-                  {{ should_activate and enable_heating and current_temp < target_temp and current_temp > heating_medium_temp }}
+                  {{ should_activate and enable_heating and current_temp < (target_temp + target_overshoot) and current_temp > heating_medium_temp }}
                 {% endif %}
               {% else %}
                 {# Not heating - start if low threshold exceeded and above medium #}
@@ -10697,7 +10697,7 @@ action:
                 {% if current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
                 {% else %}
-                  {{ should_activate and enable_heating and current_temp < target_temp }}
+                  {{ should_activate and enable_heating and current_temp < (target_temp + target_overshoot) }}
                 {% endif %}
               {% else %}
                 {# Not heating high - start if high threshold exceeded #}
