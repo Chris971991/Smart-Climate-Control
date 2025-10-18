@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.30
+  name: Ultimate Smart Climate Control - v3.9.31
 
   description: |
-    **Ultimate Smart Climate Control v3.9.30**
+    **Ultimate Smart Climate Control v3.9.31**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.27
+    ## 🆕 Latest Update - v3.9.31
 
-    **🐛 CRITICAL BUG FIX: Old Target Achievement Check Bypassing Overshoot System**
-    - 🔴 FIXED: Legacy target check turned off AC at user target, ignoring overshoot
-    - 🚨 PROBLEM: Line 11296 checked `current_temp <= target_temp` (22.5°C) not overshoot (21.8°C)
-    - 💥 IMPACT: AC turned off at 22.5°C, never created 0.7°C buffer - rapid cycling!
-    - 🛡️ SOLUTION: Updated legacy check to use `(target_temp - target_overshoot)` for cooling
-    - ✅ RESULT: **ALL** target checks now use overshoot - buffer finally works correctly!
+    **🐛 CRITICAL BUG FIX: State Sync Turning Off AC Before Overshoot Target Reached**
+    - 🔴 FIXED: State Sync logic turned off AC at 23.7°C when overshoot target was 21.8°C
+    - 🚨 PROBLEM: Helper/AC mismatch detection only checked comfort zone, not continue mode
+    - 💥 IMPACT: AC turned off mid-cycle when in comfort zone, never reached overshoot buffer!
+    - 🛡️ SOLUTION: Added `in_continue_mode_cooling/heating` checks before turning off AC
+    - ✅ RESULT: AC now completes overshoot cycle even when helper says "off"
 
     **📝 Previous Updates:**
-    - v3.9.26: 🐛 Fixed stability auto-off preventing overshoot target achievement
-    - v3.9.25: 🐛 Fixed de-escalation preventing overshoot target achievement
+    - v3.9.30: 🐛 Fixed pre-conditioning continuing after arrival (direction "towards" OR "arrived")
+    - v3.9.27: 🐛 Fixed legacy target check bypassing overshoot system
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -11465,7 +11465,19 @@ action:
             {% else %}
               off
             {% endif %}
-          should_be_running: "{{ probable_mode != 'off' }}"
+
+          # v3.9.31 CRITICAL FIX: Check if AC is in continue mode pursuing overshoot target
+          # Don't turn off AC if it's still trying to reach the overshoot target
+          in_continue_mode_cooling: >
+            {% set overshoot_target = target_temp - target_overshoot %}
+            {{ enable_cooling and current_temp > overshoot_target and current_temp <= comfort_max_temp }}
+
+          in_continue_mode_heating: >
+            {% set overshoot_target = target_temp + target_overshoot %}
+            {{ enable_heating and current_temp < overshoot_target and current_temp >= comfort_min_temp }}
+
+          should_be_running: >
+            {{ probable_mode != 'off' or in_continue_mode_cooling or in_continue_mode_heating }}
 
       - if:
           - condition: template
@@ -11481,14 +11493,17 @@ action:
                     • Actual AC State: {{ actual_ac_state }} (AC is ON)
                     • Current Temp: {{ current_temp }}°C
                     • Target Temp: {{ target_temp }}°C
+                    • Overshoot Target: {% if enable_cooling %}{{ (target_temp - target_overshoot) | round(1) }}°C (cooling){% elif enable_heating %}{{ (target_temp + target_overshoot) | round(1) }}°C (heating){% else %}N/A{% endif %}
                     • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
 
                 🤔 Analysis:
                     • Probable Mode: {{ probable_mode }}
+                    • In Continue Mode (Cooling): {{ in_continue_mode_cooling }}
+                    • In Continue Mode (Heating): {{ in_continue_mode_heating }}
                     • Should AC Be Running: {{ should_be_running }}
 
-                🛠️ Action: {{ 'Updating helper to match AC operation' if should_be_running else 'Turning OFF AC (temp in comfort zone)' }}
-                💡 Reason: {{ 'Helper out of sync - AC running but helper says "off" (possible causes: HA restart, manual control, or helper update lag)' if should_be_running else 'AC is ON but temp is comfortable - no heating/cooling needed (possible causes: manual turn-on, another automation, or lingering AC state)' }}
+                🛠️ Action: {{ 'Updating helper to match AC operation' if should_be_running else 'Turning OFF AC (overshoot target reached)' }}
+                💡 Reason: {% if should_be_running %}Helper out of sync - AC running but helper says "off" (possible causes: HA restart, manual control, or helper update lag){% elif in_continue_mode_cooling or in_continue_mode_heating %}AC in continue mode - pursuing overshoot target{{ ' (cooling to ' + (target_temp - target_overshoot) | round(1) | string + '°C)' if in_continue_mode_cooling else ' (heating to ' + (target_temp + target_overshoot) | round(1) | string + '°C)' if in_continue_mode_heating }}{% else %}AC is ON but overshoot target reached - no further cooling/heating needed (possible causes: manual turn-on, another automation, or lingering AC state){% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -11532,7 +11547,7 @@ action:
                   message: >
                     ✅ {{ room_name | upper }} STATE SYNC: Helper updated to {{ probable_mode }}
                     📋 AC running correctly for current temp ({{ current_temp }}°C) - helper synced, will continue operation
-                    💡 Helper was "off" but AC should be running - restored tracking
+                    {% if in_continue_mode_cooling %}🎯 Continue mode: Cooling to overshoot target {{ (target_temp - target_overshoot) | round(1) }}°C{% elif in_continue_mode_heating %}🎯 Continue mode: Heating to overshoot target {{ (target_temp + target_overshoot) | round(1) }}°C{% else %}💡 Helper was "off" but AC should be running - restored tracking{% endif %}
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
@@ -11557,8 +11572,9 @@ action:
                 data:
                   message: >
                     ✅ {{ room_name | upper }} STATE SYNC: AC turned OFF
-                    📋 Temperature {{ current_temp }}°C is in comfort zone ({{ comfort_min_temp }}-{{ comfort_max_temp }}°C) - no cooling/heating needed
-                    💡 Helper was "off" but AC was running - turned off to save energy
+                    📋 Temperature {{ current_temp }}°C - overshoot target reached
+                    🎯 Overshoot target: {% if enable_cooling %}{{ (target_temp - target_overshoot) | round(1) }}°C (cooling){% elif enable_heating %}{{ (target_temp + target_overshoot) | round(1) }}°C (heating){% else %}{{ target_temp }}°C{% endif %}
+                    💡 Helper was "off" but AC was running - turned off after reaching overshoot target
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
