@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.37
+  name: Ultimate Smart Climate Control - v3.9.38
 
   description: |
-    **Ultimate Smart Climate Control v3.9.37**
+    **Ultimate Smart Climate Control v3.9.38**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3795,16 +3795,26 @@ action:
         
         {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
 
-        {# v3.9.37 FIX: Check if automation just made changes (within last 60 seconds)
-           This covers: override cleared, automation mode changes, AC control actions
-           Gives State Sync time to update last_mode to match actual AC state #}
-        {% set automation_just_changed = false %}
-        {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-          {% set seconds_since_last_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) %}
-          {% set automation_just_changed = (seconds_since_last_change < 60) %}
-        {% endif %}
+        {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
 
-        {% if not trigger_ok or automation_just_changed %}
+           THE PROBLEM with v3.9.37:
+           - Grace period checked helper_last_change (updated by State Sync, mode changes, etc.)
+           - State Sync runs frequently, constantly resetting the 60-second timer
+           - User turns off AC manually → Grace period blocks detection → AC turns back on immediately
+
+           REAL EXAMPLE:
+           - 20:27:26: State Sync updates helper_last_change
+           - 20:28:09: User manually turns OFF AC (43 seconds later)
+           - Grace period blocks detection (43 < 60 seconds)
+           - Automation immediately turns AC back on → User frustrated!
+
+           NEW APPROACH: No grace period - let manual detection run freely
+           - State Sync handles reconciliation AFTER manual override activates
+           - If user manually controls AC, we WANT to detect it immediately
+           - Override clear → State Sync reconciles on next check (no grace period needed)
+        #}
+
+        {% if not trigger_ok %}
           {% set result = false %}
         {% else %}
         
