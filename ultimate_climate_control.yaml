@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.36
+  name: Ultimate Smart Climate Control - v3.9.37
 
   description: |
-    **Ultimate Smart Climate Control v3.9.36**
+    **Ultimate Smart Climate Control v3.9.37**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3794,15 +3794,17 @@ action:
         {# v3.9.35 FIX: Don't detect manual changes for 5 seconds after clearing override #}
         
         {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
-        
-        {# Check if override was just cleared (within last 5 seconds) #}
-        {% set override_just_cleared = false %}
-        {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
-          {% set seconds_since_override_cleared = (as_timestamp(now()) - as_timestamp(states(helper_override_timestamp))) %}
-          {% set override_just_cleared = (is_state(helper_override_flag, 'off') and seconds_since_override_cleared < 5) %}
+
+        {# v3.9.37 FIX: Check if automation just made changes (within last 60 seconds)
+           This covers: override cleared, automation mode changes, AC control actions
+           Gives State Sync time to update last_mode to match actual AC state #}
+        {% set automation_just_changed = false %}
+        {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+          {% set seconds_since_last_change = (as_timestamp(now()) - as_timestamp(states(helper_change))) %}
+          {% set automation_just_changed = (seconds_since_last_change < 60) %}
         {% endif %}
-        
-        {% if not trigger_ok or override_just_cleared %}
+
+        {% if not trigger_ok or automation_just_changed %}
           {% set result = false %}
         {% else %}
         
