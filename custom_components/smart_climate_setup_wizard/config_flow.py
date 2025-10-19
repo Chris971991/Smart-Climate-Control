@@ -1849,17 +1849,17 @@ cards:
         mushroom-shape-icon {{
           --icon-color: rgb(255, 152, 0) !important;
           --shape-color: rgba(255, 152, 0, 0.2) !important;
-          animation: alert-pulse 2s ease-in-out infinite;
+          animation: alert-pulse 1.5s ease-in-out infinite;
           display: flex;
         }}
         @keyframes alert-pulse {{
           0%, 100% {{
-            transform: scale(1);
             opacity: 1;
+            transform: scale(1);
           }}
           50% {{
+            opacity: 0.6;
             transform: scale(1.15);
-            opacity: 0.7;
           }}
         }}
 
@@ -2235,17 +2235,17 @@ cards:
         mushroom-shape-icon {{
           --icon-color: rgb(255, 152, 0) !important;
           --shape-color: rgba(255, 152, 0, 0.2) !important;
-          animation: alert-pulse 2s ease-in-out infinite;
+          animation: alert-pulse 1.5s ease-in-out infinite;
           display: flex;
         }}
         @keyframes alert-pulse {{
           0%, 100% {{
-            transform: scale(1);
             opacity: 1;
+            transform: scale(1);
           }}
           50% {{
+            opacity: 0.6;
             transform: scale(1.15);
-            opacity: 0.7;
           }}
         }}
 
