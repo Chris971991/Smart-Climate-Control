@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.35
+  name: Ultimate Smart Climate Control - v3.9.36
 
   description: |
-    **Ultimate Smart Climate Control v3.9.35**
+    **Ultimate Smart Climate Control v3.9.36**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -2917,6 +2917,10 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
+      # v3.9.35 FIX: DON'T update last_mode here
+      # Let State Sync handle it on the next check - it has all the temperature variables available
+      # The expected helpers are already updated above, so no mismatch will be detected
+
   # Store inputs as variables first
   - variables:
       check_interval: !input check_interval_minutes
@@ -3786,120 +3790,78 @@ action:
       # v3.7.6 FIX: Removed unnecessary 15-second buffer - flag system handles persistence
       # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
-        {% set result = false %}
-
-        {# v3.9.35 FIX: Allow detection on ANY trigger that could indicate manual changes #}
-        {# Climate state changes, temp changes, or periodic checks can all detect manual override #}
-        {# Prevent race conditions by checking if helper was recently updated (automation just ran) #}
-        {% set is_valid_trigger = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
-        {% if not is_valid_trigger %}
-          {% set result = false %}
-        {% else %}
-
-        {% set last_mode_state = states(helper_mode) | default('off') %}
-        {% set actual_state = actual_ac_state %}
-
-        {# v3.8.11 CRITICAL FIX: actual_ac_state returns 'on'/'off', not HVAC modes #}
-        {# BUG: Was checking actual_state in ['cooling', 'heat', ...] but actual_state only ever = 'on' or 'off' #}
-        {# This caused false positives: helper='off', actual='on' → always triggered override #}
-
-        {# v3.9.14 FIX: Don't flag as manual if helper was JUST updated (state sync ran recently) #}
-        {# When automation turns ON AC, helper takes a moment to update. State sync fixes this. #}
-        {# If state sync JUST ran (helper updated in last 3min), it's NOT a manual change! #}
-        {% set helper_change_time = states(helper_change) %}
-        {% set helper_recently_updated = false %}
-        {% if helper_change_time and helper_change_time not in ['unknown', 'unavailable', ''] %}
-          {% set minutes_since_helper_change = (as_timestamp(now()) - as_timestamp(helper_change_time)) / 60 %}
-          {% set helper_recently_updated = minutes_since_helper_change < 3 %}
+        {# v3.9.35 COMPREHENSIVE: Detect ALL manual changes - on/off, temp, fan, swing, HVAC mode #}
+        {# v3.9.35 FIX: Don't detect manual changes for 5 seconds after clearing override #}
+        
+        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
+        
+        {# Check if override was just cleared (within last 5 seconds) #}
+        {% set override_just_cleared = false %}
+        {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
+          {% set seconds_since_override_cleared = (as_timestamp(now()) - as_timestamp(states(helper_override_timestamp))) %}
+          {% set override_just_cleared = (is_state(helper_override_flag, 'off') and seconds_since_override_cleared < 5) %}
         {% endif %}
-
-        {% set is_onoff_manual = (
-          (last_mode_state in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') or
-          (last_mode_state == 'off' and actual_state == 'on' and not helper_recently_updated)
-        ) %}
-
-        {# v3.9.3 FIX: Skip detection if helpers look stale - prevents false positives after HA restart #}
-        {# When HA restarts: helpers reset to initial values, but AC units stay in their physical state #}
-        {# This mismatch causes false manual override detection #}
-
-        {% set expected_temp = states(helper_expected_temp) | float(0) %}
-        {% set helpers_temp_invalid = (expected_temp < 16 or expected_temp > 30) %}
-
-        {# Check if helper hasn't been updated in a long time - suggests HA restart or stuck helper #}
-        {% set helper_last_changed = state_attr(helper_mode, 'last_changed') %}
-        {% set minutes_since_helper_update = ((as_timestamp(now()) - as_timestamp(helper_last_changed, 0)) / 60) if helper_last_changed else 9999 %}
-        {% set helper_seems_stale = minutes_since_helper_update > 180 %}  {# 3+ hours = likely HA restart #}
-
-        {# Also check: if last_mode is 'off' but hasn't changed in 2+ hours while AC is on = stale #}
-        {% set mode_stuck_at_off = (last_mode_state == 'off' and minutes_since_helper_update > 120 and actual_state == 'on') %}
-
-        {% if helpers_temp_invalid or helper_seems_stale or mode_stuck_at_off %}
+        
+        {% if not trigger_ok or override_just_cleared %}
           {% set result = false %}
         {% else %}
+        
+        {% set last_mode = states(helper_mode) | default('off') %}
+        {% set actual_state = actual_ac_state %}
+        
+        {# Detect ON/OFF changes - ALWAYS check these #}
+        {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
+        {% set is_manual_on = (last_mode == 'off' and actual_state == 'on') %}
+
+        {# v3.9.35 FIX: Only check temp/fan/swing/HVAC changes when AC should be OFF
+           When automation is actively controlling AC (last_mode != 'off'), don't compare expected values
+           because automation constantly changes them (escalation, de-escalation, etc.) #}
+        {% set check_detailed_changes = (last_mode == 'off' and actual_state == 'on') %}
+
+        {# Detect temperature changes - only when AC should be off but is on #}
+        {% set expected_temp = states(helper_expected_temp) | float(0) %}
         {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
-        {% set temp_tolerance = 0.5 %}
         {% set is_temp_manual = (
-          actual_state != 'off' and
+          check_detailed_changes and
           expected_temp > 0 and
           actual_temp > 0 and
-          (actual_temp - expected_temp) | abs > temp_tolerance
+          (actual_temp - expected_temp) | abs > 0.5
         ) %}
 
+        {# Detect fan mode changes - only when AC should be off but is on #}
         {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
         {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') %}
-        {% set expected_fan_lower = expected_fan | lower %}
-        {% set actual_fan_lower = actual_fan | lower %}
         {% set is_fan_manual = (
-          actual_state != 'off' and
+          check_detailed_changes and
           expected_fan not in ['unknown', 'unavailable', '', 'none'] and
           actual_fan not in ['unknown', 'unavailable', '', 'none'] and
-          expected_fan_lower != actual_fan_lower
+          expected_fan | lower != actual_fan | lower
         ) %}
 
+        {# Detect swing mode changes - only when AC should be off but is on #}
         {% set expected_swing = states(helper_expected_swing) | default('unknown') %}
         {% set actual_swing = state_attr(climate_list[0], 'swing_mode') | default('unknown') %}
-        {% set expected_swing_lower = expected_swing | lower %}
-        {% set actual_swing_lower = actual_swing | lower %}
-        {% set expected_normalized = expected_swing_lower.replace('horizontal+vertical', 'both').replace('all', 'both') %}
-        {% set actual_normalized = actual_swing_lower.replace('horizontal+vertical', 'both').replace('all', 'both') %}
         {% set is_swing_manual = (
-          actual_state != 'off' and
+          check_detailed_changes and
           expected_swing not in ['unknown', 'unavailable', '', 'none'] and
           actual_swing not in ['unknown', 'unavailable', '', 'none'] and
-          expected_normalized != actual_normalized
+          expected_swing | lower != actual_swing | lower
         ) %}
 
+        {# Detect HVAC mode changes - only when AC should be off but is on #}
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set actual_hvac = states(climate_list[0]) | default('unknown') %}
-        {% set hvac_map = {
-          'cool': 'cooling',
-          'heat': 'heating',
-          'heat_cool': 'auto',
-          'fan_only': 'fan',
-          'dry': 'dehumidify'
-        } %}
-        {% set expected_hvac_normalized = hvac_map.get(expected_hvac, expected_hvac) %}
-        {% set actual_hvac_normalized = hvac_map.get(actual_hvac, actual_hvac) %}
+        {% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}
         {% set is_hvac_manual = (
+          check_detailed_changes and
           expected_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
           actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
-          expected_hvac_normalized != actual_hvac_normalized
+          hvac_map.get(expected_hvac, expected_hvac) != hvac_map.get(actual_hvac, actual_hvac)
         ) %}
 
-        {% set result = is_onoff_manual or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+        {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
         {% endif %}
-        {% endif %}
-
-        {# DEBUG VALUES: onoff={{is_onoff_manual}} temp={{is_temp_manual}} fan={{is_fan_manual}} swing={{is_swing_manual}} hvac={{is_hvac_manual}} valid={{is_valid_trigger}} tempcheck={{helpers_temp_invalid}} stale={{helper_seems_stale}} stuck={{mode_stuck_at_off}} #}
         {{ result }}
-
-      manual_change_detected: >
-        {# v3.9.35 SIMPLIFIED: Remove complex validation, just detect on/off changes #}
-        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
-        {% set last_mode = states(helper_mode) | default('off') %}
-        {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') %}
-        {% set is_manual_on = (last_mode == 'off' and actual_ac_state == 'on') %}
-        {{ trigger_ok and (is_manual_off or is_manual_on) }}
 
       # Manual Override - Proper flag-based system with separate tracking
       # v3.1.9d CRITICAL FIX: Boolean type conversion - Jinja2 multiline templates return strings!
