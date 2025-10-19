@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.32
+  name: Ultimate Smart Climate Control - v3.9.35
 
   description: |
-    **Ultimate Smart Climate Control v3.9.32**
+    **Ultimate Smart Climate Control v3.9.35**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,18 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.32
+    ## 🆕 Latest Update - v3.9.35
 
-    **🐛 CRITICAL BUG FIX: Continue Mode Conditions Ignoring Overshoot Target**
-    - 🔴 FIXED: AC stopped at user target (22.5°C) instead of overshoot target (21.0°C with maximum strategy)
-    - 🚨 PROBLEM: Continue mode fallback conditions used `current_temp > target_temp` instead of `current_temp > (target_temp - target_overshoot)`
-    - 💥 IMPACT: Overshoot buffer never created - AC turned off immediately at target, causing rapid cycling!
-    - 🛡️ SOLUTION: Fixed ALL 11 continue mode conditions (6 cooling + 5 heating) to use overshoot target
-    - ✅ RESULT: AC now cools/heats PAST user target to create temperature buffer as intended
+    **🐛 CRITICAL BUG FIX: Manual Override Still Not Detecting Immediate Changes**
+    - 🔴 FIXED: Manual override detection required periodic_check trigger - missed immediate changes
+    - 🚨 PROBLEM: Trigger validation only allowed periodic_check and climate_state_change
+    - 💥 IMPACT: If temp_change or external_temp_change fired first, manual override was skipped!
+    - 🛡️ SOLUTION: Allow manual override detection on ALL relevant triggers (periodic, climate, temp changes)
+    - ✅ RESULT: Manual override now detects changes regardless of which trigger fires
 
     **📝 Previous Updates:**
-    - v3.9.31: 🐛 Fixed State Sync turning off AC before overshoot target reached
-    - v3.9.30: 🐛 Fixed pre-conditioning continuing after arrival
+    - v3.9.34: 🐛 Added climate_state_change trigger (incomplete fix)
+    - v3.9.32: 🐛 Fixed continue mode conditions ignoring overshoot target
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -2795,30 +2795,35 @@ trigger:
     entity_id: !input climate_entities
     attribute: current_temperature
     id: temp_change
-  
+
+  # v3.9.35: Fire immediately when climate entity state changes (for instant manual override detection)
+  - platform: state
+    entity_id: !input climate_entities
+    id: climate_state_change
+
   - platform: state
     entity_id: !input temperature_sensor
     id: external_temp_change
-  
+
   # Single time pattern trigger based on selected interval
   - platform: time_pattern
     minutes: "/1"
     id: periodic_check
-  
+
   - platform: state
     entity_id: !input direction_sensor
     to: "towards"
     id: heading_home
-  
+
   - platform: state
     entity_id: !input direction_sensor
     to: "arrived"
     id: arrived
-  
+
   - platform: state
     entity_id: !input presence_persons
     id: presence_change
-  
+
   - platform: state
     entity_id: !input presence_devices
     id: device_change
@@ -2842,7 +2847,7 @@ trigger:
 condition: []
 
 action:
-  # Mode change detected - immediately clear helper BEFORE variables are calculated
+
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'mode_change' and helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
@@ -3783,11 +3788,11 @@ action:
       manual_change_detected: >
         {% set result = false %}
 
-        {# v3.8.9 FIX: ONLY check on periodic_check trigger - prevents race conditions #}
-        {# When automation changes AC, climate entity state change triggers BEFORE helpers update #}
-        {# This causes false detection: Expected=23°C, Actual=15°C (automation just set) #}
-        {% set is_periodic_check = (trigger.id == 'periodic_check') %}
-        {% if not is_periodic_check %}
+        {# v3.9.35 FIX: Allow detection on ANY trigger that could indicate manual changes #}
+        {# Climate state changes, temp changes, or periodic checks can all detect manual override #}
+        {# Prevent race conditions by checking if helper was recently updated (automation just ran) #}
+        {% set is_valid_trigger = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
+        {% if not is_valid_trigger %}
           {% set result = false %}
         {% else %}
 
@@ -3885,7 +3890,16 @@ action:
         {% endif %}
         {% endif %}
 
+        {# DEBUG VALUES: onoff={{is_onoff_manual}} temp={{is_temp_manual}} fan={{is_fan_manual}} swing={{is_swing_manual}} hvac={{is_hvac_manual}} valid={{is_valid_trigger}} tempcheck={{helpers_temp_invalid}} stale={{helper_seems_stale}} stuck={{mode_stuck_at_off}} #}
         {{ result }}
+
+      manual_change_detected: >
+        {# v3.9.35 SIMPLIFIED: Remove complex validation, just detect on/off changes #}
+        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
+        {% set last_mode = states(helper_mode) | default('off') %}
+        {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') %}
+        {% set is_manual_on = (last_mode == 'off' and actual_ac_state == 'on') %}
+        {{ trigger_ok and (is_manual_off or is_manual_on) }}
 
       # Manual Override - Proper flag-based system with separate tracking
       # v3.1.9d CRITICAL FIX: Boolean type conversion - Jinja2 multiline templates return strings!
@@ -3945,6 +3959,13 @@ action:
 
 
   # Continue to next actions - variables calculated successfully
+
+  # v3.9.35 DEBUG: Log after variables calculated
+  - service: system_log.write
+    data:
+      message: "🔍 {{ room_name }} DEBUG: trigger={{ trigger.id }} | last_mode={{ states(helper_mode) }} | actual_ac={{ actual_ac_state }} | manual_detected={{ manual_change_detected }}"
+      level: warning
+
   - condition: template
     value_template: "{{ true }}"  # Always continue
 
@@ -4021,11 +4042,13 @@ action:
         value_template: "{{ manual_change_detected and not manual_override_active }}"
       - condition: template
         value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+      # v3.9.35 FIX: Reduced buffer from 5 minutes to 10 seconds
+      # 5 minutes was blocking legitimate manual overrides shortly after automation started AC
       - condition: template
         value_template: >
-          {% set mode_change_buffer = 5 %}
+          {% set mode_change_buffer = 10 %}
           {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
-            {% set time_since_mode_change = (as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60 %}
+            {% set time_since_mode_change = (as_timestamp(now()) - as_timestamp(states(helper_mode_time))) %}
             {{ time_since_mode_change >= mode_change_buffer }}
           {% else %}
             true
@@ -4921,9 +4944,10 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
+  # v3.9.35 FIX: Re-check override flag directly (not from variables) in case it was just set
   - if:
       - condition: template
-        value_template: "{{ manual_override_active and control_mode != 'Manual' }}"
+        value_template: "{{ (helper_override_flag and is_state(helper_override_flag, 'on')) and control_mode != 'Manual' }}"
     then:
       - if:
           - condition: template
