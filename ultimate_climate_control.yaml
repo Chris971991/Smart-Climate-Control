@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.38
+  name: Ultimate Smart Climate Control - v3.9.44
 
   description: |
-    **Ultimate Smart Climate Control v3.9.38**
+    **Ultimate Smart Climate Control v3.9.44**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,18 +57,20 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.35
+    ## 🆕 Latest Update - v3.9.44
 
-    **🐛 CRITICAL BUG FIX: Manual Override Still Not Detecting Immediate Changes**
-    - 🔴 FIXED: Manual override detection required periodic_check trigger - missed immediate changes
-    - 🚨 PROBLEM: Trigger validation only allowed periodic_check and climate_state_change
-    - 💥 IMPACT: If temp_change or external_temp_change fired first, manual override was skipped!
-    - 🛡️ SOLUTION: Allow manual override detection on ALL relevant triggers (periodic, climate, temp changes)
-    - ✅ RESULT: Manual override now detects changes regardless of which trigger fires
+    **🐛 CRITICAL BUG FIX: Manual Override False Positives from Stale Helper State**
+    - 🔴 FIXED: Override flag keeps coming back after clearing
+    - 🔴 FIXED: Helper says "cooling_low" but AC is OFF → false override triggers repeatedly
+    - 🚨 PROBLEM: State Sync only handled "helper=off, AC=on" but NOT "helper=on, AC=off"
+    - 💥 IMPACT: Helper gets stuck at old value → manual override re-triggers every 2 seconds forever
+    - 🛡️ SOLUTION 1: Added reverse State Sync to detect and fix "helper stuck ON, AC actually OFF"
+    - 🛡️ SOLUTION 2: Added 30-second grace period after clearing override to prevent re-detection loops
+    - ✅ RESULT: Override stays cleared, helpers auto-sync with reality, no more infinite loops
 
     **📝 Previous Updates:**
-    - v3.9.34: 🐛 Added climate_state_change trigger (incomplete fix)
-    - v3.9.32: 🐛 Fixed continue mode conditions ignoring overshoot target
+    - v3.9.43: 🐛 Reduced mode change buffer from 10s to 2s (faster manual detection)
+    - v3.9.42: 🐛 Fixed race condition causing false manual override loop
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3791,9 +3793,19 @@ action:
       # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
         {# v3.9.35 COMPREHENSIVE: Detect ALL manual changes - on/off, temp, fan, swing, HVAC mode #}
-        {# v3.9.35 FIX: Don't detect manual changes for 5 seconds after clearing override #}
-        
+        {# v3.9.44 FIX: Add grace period after override cleared to prevent immediate re-detection loop #}
+
         {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
+
+        {# v3.9.44: Check if override was JUST cleared - prevent immediate re-detection
+           When user clicks "Clear Override", the AC state may not match last_mode yet
+           Give State Sync 30 seconds to reconcile before allowing manual detection again #}
+        {% set override_just_cleared = (
+          helper_override_flag and
+          states(helper_override_flag) == 'off' and
+          state_attr(helper_override_flag, 'last_changed') and
+          ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) < 30)
+        ) %}
 
         {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
 
@@ -3871,7 +3883,12 @@ action:
           hvac_map.get(expected_hvac, expected_hvac) != hvac_map.get(actual_hvac, actual_hvac)
         ) %}
 
-        {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+        {# v3.9.44: Block detection if override was just cleared #}
+        {% if override_just_cleared %}
+          {% set result = false %}
+        {% else %}
+          {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
+        {% endif %}
         {% endif %}
         {{ result }}
 
@@ -4011,16 +4028,21 @@ action:
   # Manual Override Flag Management - SET flag when manual change detected
   # v3.1.9: Proper flag-based override system with separate tracking
   # v3.3.3: Added mode change buffer to prevent false detections from mode transitions
+  # v3.9.39 FIX: Only set override flag when NOT in Manual mode
   - if:
       - condition: template
         value_template: "{{ manual_change_detected and not manual_override_active }}"
       - condition: template
+        value_template: "{{ control_mode != 'Manual' }}"
+      - condition: template
         value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
       # v3.9.35 FIX: Reduced buffer from 5 minutes to 10 seconds
       # 5 minutes was blocking legitimate manual overrides shortly after automation started AC
+      # v3.9.43 FIX: Reduced buffer from 10 seconds to 2 seconds
+      # v3.9.42 fixed race condition (helper updates BEFORE AC commands), so long buffer no longer needed
       - condition: template
         value_template: >
-          {% set mode_change_buffer = 10 %}
+          {% set mode_change_buffer = 2 %}
           {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
             {% set time_since_mode_change = (as_timestamp(now()) - as_timestamp(states(helper_mode_time))) %}
             {{ time_since_mode_change >= mode_change_buffer }}
@@ -4746,6 +4768,12 @@ action:
                 • ✅ Manual HVAC change detected: {% if states(helper_expected_hvac) not in ['unknown', 'unavailable', '', 'none', 'off'] and states(climate_list[0]) not in ['unknown', 'unavailable', '', 'none', 'off'] %}{% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}{% set exp_norm = hvac_map.get(states(helper_expected_hvac), states(helper_expected_hvac)) %}{% set act_norm = hvac_map.get(states(climate_list[0]), states(climate_list[0])) %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
 
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+            🔓 Override Clear Grace Period (v3.9.44):
+                • Override flag state: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
+                • Flag last changed: {% if helper_override_flag and state_attr(helper_override_flag, 'last_changed') %}{{ ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) | round(1)) }}s ago{% else %}unknown{% endif %}
+                • Grace period active: {% if helper_override_flag and states(helper_override_flag) == 'off' and state_attr(helper_override_flag, 'last_changed') and ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) < 30) %}YES - blocking detection for {{ (30 - (as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed')))) | round(1) }}s{% else %}No{% endif %}
+
             🎯 DETECTION RESULT: {{ 'YES - Manual change detected' if manual_change_detected else 'NO - No manual changes detected' }}
 
             {% if manual_change_detected %}
@@ -5066,7 +5094,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_high' %}
                 {# Continue HIGH only if AC running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_heating %}
+                  False  {# v3.9.40 FIX: Heating disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -5144,6 +5174,14 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_high"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -5418,12 +5456,7 @@ action:
                   entity_id: "{{ helper_temp_history }}"
                 data:
                   value: "{{ current_temp }}"
-          # Always update mode helper to ensure state persistence despite rapid retriggering
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "heating_high"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           - if:
@@ -5443,7 +5476,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_medium' %}
                 {# Already heating medium - continue only if AC running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_heating %}
+                  False  {# v3.9.40 FIX: Heating disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -5522,6 +5557,14 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_medium"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -5782,11 +5825,7 @@ action:
             data:
               temperature: "{{ adjusted_target }}"
 
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "heating_medium"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           - if:
@@ -5806,7 +5845,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'heating_low' %}
                 {# Already heating low - continue only if AC running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_heating %}
+                  False  {# v3.9.40 FIX: Heating disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -5884,6 +5925,14 @@ action:
                 • Last Mode: {{ current_mode }}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "heating_low"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -6147,11 +6196,7 @@ action:
             data:
               temperature: "{{ adjusted_target }}"
 
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "heating_low"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           - if:
@@ -6171,7 +6216,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_high' %}
                 {# Continue HIGH only if AC is actually running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_cooling %}
+                  False  {# v3.9.40 FIX: Cooling disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -6257,6 +6304,14 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_high"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -6537,11 +6592,7 @@ action:
             data:
               temperature: "{{ adjusted_target }}"
 
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "cooling_high"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           - if:
@@ -6561,7 +6612,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_medium' %}
                 {# Already cooling medium - continue only if AC running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_cooling %}
+                  False  {# v3.9.40 FIX: Cooling disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -6654,6 +6707,14 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_medium"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -6922,12 +6983,7 @@ action:
                   entity_id: "{{ helper_temp_history }}"
                 data:
                   value: "{{ current_temp }}"
-          # Always update mode helper to ensure state persistence despite rapid retriggering
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "cooling_medium"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           # This prevents false manual override detection while maintaining runtime protection
@@ -6948,7 +7004,9 @@ action:
               {% set current_mode = states(helper_mode) | default('off') %}
               {% if current_mode == 'cooling_low' %}
                 {# Already cooling low - continue only if AC running AND temp needs adjustment #}
-                {% if time_in_current_mode < runtime_min %}
+                {% if not enable_cooling %}
+                  False  {# v3.9.40 FIX: Cooling disabled - turn off immediately regardless of runtime #}
+                {% elif time_in_current_mode < runtime_min %}
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
@@ -7020,6 +7078,15 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          # When AC turns on, helper must already match to avoid race condition
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "cooling_low"
+            continue_on_error: true
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -7259,12 +7326,7 @@ action:
                   entity_id: "{{ helper_temp_history }}"
                 data:
                   value: "{{ current_temp }}"
-          # Always update mode helper to ensure state persistence despite rapid retriggering
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "cooling_low"
+          # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
           - if:
@@ -11334,14 +11396,8 @@ action:
         target:
           entity_id: !input climate_entities
 
-      # Update helper to show AC is now off
-      - condition: template
-        value_template: >
-          {{
-            helper_mode is defined and
-            helper_mode not in ['', 'unavailable', 'unknown'] and
-            states(helper_mode) not in ['unavailable', 'unknown']
-          }}
+      # v3.9.41 FIX: ALWAYS update helper when turning off AC to prevent false manual override detection
+      # Removed condition check - helper MUST be updated to match AC state
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
@@ -11578,6 +11634,65 @@ action:
                     💡 Helper was "off" but AC was running - turned off after reaching overshoot target
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+  # v3.9.44 STATE SYNC REVERSE: Helper says AC should be running, but AC is OFF
+  # This happens when automation turns off AC but helper doesn't update (rare edge case)
+  # Without this, manual override keeps triggering because of the mismatch
+  # IMPORTANT: Must run even if override is active (to break the catch-22 loop)
+  - if:
+      - condition: template
+        value_template: "{{ last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🔄 {{ room_name | upper }} STATE SYNC REVERSE: Helper/AC mismatch detected (v3.9.44 FIX)
+
+                📊 Mismatch Details:
+                    • Helper Mode: {{ last_mode }} (says AC should be running)
+                    • Actual AC State: {{ actual_ac_state }} (AC is OFF)
+                    • Current Temp: {{ current_temp }}°C
+                    • Target Temp: {{ target_temp }}°C
+                    • Time since last change: {{ time_since_change | round(1) }}min
+
+                🔧 Analysis:
+                    • AC was probably turned off by automation (temperature reached)
+                    • Helper stuck at "{{ last_mode }}" instead of "off"
+                    • Without fix: Manual override keeps triggering on every check
+
+                ✅ Action: Syncing helper to "off" to match reality
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # Sync helper to match reality - AC is off
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "off"
+        continue_on_error: true
+
+      # Clear the override flag since we've synced the state
+      - service: input_boolean.turn_off
+        target:
+          entity_id: !input helper_override_active
+        continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                ✅ {{ room_name | upper }} STATE SYNC REVERSE: Helper updated to "off"
+                📋 Helper now matches AC state - manual override cleared automatically
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # v3.1.6/v3.1.7 helper_change update REMOVED - caused false override re-triggers
   # The update ran even when choose block had no actions, causing override re-activation
