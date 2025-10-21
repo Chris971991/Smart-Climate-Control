@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.44
+  name: Ultimate Smart Climate Control - v3.9.45
 
   description: |
-    **Ultimate Smart Climate Control v3.9.44**
+    **Ultimate Smart Climate Control v3.9.45**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,20 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.44
+    ## 🆕 Latest Update - v3.9.45
 
-    **🐛 CRITICAL BUG FIX: Manual Override False Positives from Stale Helper State**
-    - 🔴 FIXED: Override flag keeps coming back after clearing
-    - 🔴 FIXED: Helper says "cooling_low" but AC is OFF → false override triggers repeatedly
-    - 🚨 PROBLEM: State Sync only handled "helper=off, AC=on" but NOT "helper=on, AC=off"
-    - 💥 IMPACT: Helper gets stuck at old value → manual override re-triggers every 2 seconds forever
-    - 🛡️ SOLUTION 1: Added reverse State Sync to detect and fix "helper stuck ON, AC actually OFF"
-    - 🛡️ SOLUTION 2: Added 30-second grace period after clearing override to prevent re-detection loops
-    - ✅ RESULT: Override stays cleared, helpers auto-sync with reality, no more infinite loops
+    **🐛 CRITICAL BUG FIX: Stale Presence Detection from Hours Ago Triggering AC**
+    - 🔴 FIXED: AC activates based on presence detected 11+ hours ago
+    - 🔴 FIXED: Presence timer not resetting when leaving room if timer > 20 minutes old
+    - 🚨 PROBLEM: Reset logic only ran if timer was recent (within 2x timeout period)
+    - 💥 IMPACT: Enter room at 1 AM, leave after 20+ min → timer stuck at 1 AM forever → AC activates at noon based on stale presence
+    - 🛡️ SOLUTION: Timer now resets to "expired" EVERY time presence is lost, regardless of age
+    - ✅ RESULT: Fresh presence sessions only - old presence cannot trigger AC hours later
 
     **📝 Previous Updates:**
+    - v3.9.44: 🐛 Fixed manual override false positives from stale helper state
     - v3.9.43: 🐛 Reduced mode change buffer from 10s to 2s (faster manual detection)
-    - v3.9.42: 🐛 Fixed race condition causing false manual override loop
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -4003,7 +4002,8 @@ action:
   # Reset timer when presence LOST (so next entry starts fresh)
   # v3.8.5 FIX: Reset to (NOW - timeout - 1 min) = "expired" timer
   # This makes timer appear "old" so next detection triggers new session
-  # Only reset if we recently had presence (prevents resetting already-expired timer repeatedly)
+  # v3.9.45 FIX: ALWAYS reset when presence is lost, regardless of timer age
+  # Prevents stale presence from hours ago triggering AC activation
   - if:
       - condition: template
         value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
@@ -4013,8 +4013,8 @@ action:
             {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
             {% set current_timestamp = as_timestamp(now()) %}
             {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
-            {# Only reset if timer is recent (we just lost presence) - prevents unnecessary resets #}
-            {{ minutes_since_timer_set <= (presence_timeout * 2) }}
+            {# v3.9.45: Reset timer regardless of age when presence is lost #}
+            {{ minutes_since_timer_set >= 0 }}
           {% else %}
             false
           {% endif %}
