@@ -3792,15 +3792,14 @@ action:
 
         {# v3.10.1: Check if helper_mode was JUST set to "off" - prevent false positives when automation turns off AC
            When automation turns AC off for target achievement, helper is set to "off" then climate.turn_off is called
-           The AC may not turn off immediately, or may fail to turn off, or turn back on by itself
-           Give 2 minute grace period after helper changes to "off" before detecting ANY manual changes
-           This prevents BOTH "manual OFF" (helper=cooling, AC=off) AND "manual ON" (helper=off, AC=on) false positives
-           2 minutes covers the periodic_check interval so State Sync can reconcile without triggering override #}
+           The AC may not turn off immediately, or may fail to turn off
+           Give 30 seconds grace period after helper changes to "off" before detecting ANY manual changes
+           This prevents BOTH "manual OFF" (helper=cooling, AC=off) AND "manual ON" (helper=off, AC=on) false positives #}
         {% set helper_just_turned_off = (
           helper_mode and
           states(helper_mode) == 'off' and
           state_attr(helper_mode, 'last_changed') and
-          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 120)
+          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 30)
         ) %}
 
         {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
@@ -3831,13 +3830,20 @@ action:
 
         {# v3.10.1: Check if AC was recently unavailable - prevents false positives from wireless dropouts
            If AC loses connection and reconnects, state changes can look like manual control
-           Block detection for 60 seconds after AC becomes available again #}
-        {% set ac_was_unavailable = (
-          climate_list[0] and
-          state_attr(climate_list[0], 'last_changed') and
-          states(climate_list[0]) not in ['unavailable', 'unknown'] and
-          ((as_timestamp(now()) - as_timestamp(state_attr(climate_list[0], 'last_changed'))) < 60)
-        ) %}
+           Check if last_updated (entity refresh) is recent, indicating AC just came back online
+           Block detection for 60 seconds after AC entity refreshes/reconnects #}
+        {% set ac_recently_reconnected = false %}
+        {% if climate_list[0] %}
+          {% set current_state = states(climate_list[0]) %}
+          {% set last_updated = state_attr(climate_list[0], 'last_updated') %}
+          {# If AC is currently available but last_updated is very recent, likely just reconnected #}
+          {% if current_state not in ['unavailable', 'unknown'] and last_updated %}
+            {% set time_since_update = (as_timestamp(now()) - as_timestamp(last_updated)) %}
+            {% if time_since_update < 60 %}
+              {% set ac_recently_reconnected = true %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
 
         {# Detect ON/OFF changes - ALWAYS check these #}
         {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
@@ -3891,8 +3897,8 @@ action:
 
         {# v3.9.44: Block detection if override was just cleared #}
         {# v3.10.1: Block detection if helper was just set to "off" by automation #}
-        {# v3.10.1: Block detection if AC was recently unavailable (wireless dropout reconnection) #}
-        {% if override_just_cleared or helper_just_turned_off or ac_was_unavailable %}
+        {# v3.10.1: Block detection if AC recently reconnected (wireless dropout recovery) #}
+        {% if override_just_cleared or helper_just_turned_off or ac_recently_reconnected %}
           {% set result = false %}
         {% else %}
           {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
