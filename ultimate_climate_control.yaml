@@ -3792,14 +3792,15 @@ action:
 
         {# v3.10.1: Check if helper_mode was JUST set to "off" - prevent false positives when automation turns off AC
            When automation turns AC off for target achievement, helper is set to "off" then climate.turn_off is called
-           The AC may not turn off immediately, or may fail to turn off
-           Give 30 seconds grace period after helper changes to "off" before detecting ANY manual changes
-           This prevents BOTH "manual OFF" (helper=cooling, AC=off) AND "manual ON" (helper=off, AC=on) false positives #}
+           The AC may not turn off immediately, or may fail to turn off, or turn back on by itself
+           Give 2 minute grace period after helper changes to "off" before detecting ANY manual changes
+           This prevents BOTH "manual OFF" (helper=cooling, AC=off) AND "manual ON" (helper=off, AC=on) false positives
+           2 minutes covers the periodic_check interval so State Sync can reconcile without triggering override #}
         {% set helper_just_turned_off = (
           helper_mode and
           states(helper_mode) == 'off' and
           state_attr(helper_mode, 'last_changed') and
-          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 30)
+          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 120)
         ) %}
 
         {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
