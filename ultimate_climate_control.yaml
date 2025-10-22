@@ -3824,10 +3824,20 @@ action:
         {% if not trigger_ok %}
           {% set result = false %}
         {% else %}
-        
+
         {% set last_mode = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
-        
+
+        {# v3.10.1: Check if AC was recently unavailable - prevents false positives from wireless dropouts
+           If AC loses connection and reconnects, state changes can look like manual control
+           Block detection for 60 seconds after AC becomes available again #}
+        {% set ac_was_unavailable = (
+          climate_list[0] and
+          state_attr(climate_list[0], 'last_changed') and
+          states(climate_list[0]) not in ['unavailable', 'unknown'] and
+          ((as_timestamp(now()) - as_timestamp(state_attr(climate_list[0], 'last_changed'))) < 60)
+        ) %}
+
         {# Detect ON/OFF changes - ALWAYS check these #}
         {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
         {% set is_manual_on = (last_mode == 'off' and actual_state == 'on') %}
@@ -3880,7 +3890,8 @@ action:
 
         {# v3.9.44: Block detection if override was just cleared #}
         {# v3.10.1: Block detection if helper was just set to "off" by automation #}
-        {% if override_just_cleared or helper_just_turned_off %}
+        {# v3.10.1: Block detection if AC was recently unavailable (wireless dropout reconnection) #}
+        {% if override_just_cleared or helper_just_turned_off or ac_was_unavailable %}
           {% set result = false %}
         {% else %}
           {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
