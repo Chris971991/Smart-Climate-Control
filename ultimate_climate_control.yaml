@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.45
+  name: Ultimate Smart Climate Control - v3.9.46
 
   description: |
-    **Ultimate Smart Climate Control v3.9.45**
+    **Ultimate Smart Climate Control v3.9.46**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,20 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.45
+    ## 🆕 Latest Update - v3.9.46
 
-    **🐛 CRITICAL BUG FIX: Stale Presence Detection from Hours Ago Triggering AC**
-    - 🔴 FIXED: AC activates based on presence detected 11+ hours ago
-    - 🔴 FIXED: Presence timer not resetting when leaving room if timer > 20 minutes old
-    - 🚨 PROBLEM: Reset logic only ran if timer was recent (within 2x timeout period)
-    - 💥 IMPACT: Enter room at 1 AM, leave after 20+ min → timer stuck at 1 AM forever → AC activates at noon based on stale presence
-    - 🛡️ SOLUTION: Timer now resets to "expired" EVERY time presence is lost, regardless of age
-    - ✅ RESULT: Fresh presence sessions only - old presence cannot trigger AC hours later
+    **🐛 CRITICAL BUG FIX: Presence Validation Mode Not Enforcing Configured Requirements**
+    - 🔴 FIXED: Legacy "smart" mode had fallback logic allowing motion-only activation
+    - 🔴 FIXED: AC could activate from motion blips even when BLE+Motion mode was intended
+    - 🚨 PROBLEM: Old "smart" validation mode (not in UI) allowed fallback to single sensor
+    - 💥 IMPACT: Office with "BLE+Motion" could activate from just motion sensor alone
+    - 🛡️ SOLUTION: Removed legacy "smart" mode - only documented modes work now
+    - ✅ RESULT: Presence validation strictly follows configured mode (no hidden fallbacks)
+    - ⚠️ MIGRATION: If you used legacy "smart" mode, switch to "BLE_MOTION" for same behavior
 
     **📝 Previous Updates:**
+    - v3.9.45: 🐛 Fixed stale presence detection from hours ago triggering AC
     - v3.9.44: 🐛 Fixed manual override false positives from stale helper state
-    - v3.9.43: 🐛 Reduced mode change buffer from 10s to 2s (faster manual detection)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3611,22 +3612,6 @@ action:
             {# MAJORITY mode - more than half must be triggered #}
             {{ sensors_triggered.count > (sensor_count / 2) }}
             
-          {% elif validation_mode == 'smart' %}
-            {# SMART mode - intelligent BLE + motion validation #}
-            {% if ble_sensor_count.count > 0 and motion_sensor_count.count > 0 %}
-              {# Both BLE and motion sensors exist - require both #}
-              {{ ble_detected.value and motion_detected.value }}
-            {% elif ble_sensor_count.count > 0 %}
-              {# Only BLE sensors - use BLE detection #}
-              {{ ble_detected.value }}
-            {% elif motion_sensor_count.count > 0 %}
-              {# Only motion sensors - use motion detection #}
-              {{ motion_detected.value }}
-            {% else %}
-              {# Other sensors only - any triggered #}
-              {{ other_detected.value }}
-            {% endif %}
-
           {% elif validation_mode == 'ble_motion' %}
             {# BLE_MOTION mode - BOTH BLE and motion required (strict, no fallback) #}
             {# Prevents motion blips from triggering without you in room #}
@@ -4361,11 +4346,8 @@ action:
                 • BLE Detected: {{ ble_detected.value }} ({{ ble_detected.sensors | join(', ') if ble_detected.sensors else 'none' }})
                 • Motion Detected: {{ motion_detected.value }} ({{ motion_detected.sensors | join(', ') if motion_detected.sensors else 'none' }})
                 • Other Detected: {{ other_detected.value }} ({{ other_detected.sensors | join(', ') if other_detected.sensors else 'none' }})
-            
+
             ✅ Room Presence Result: {{ room_presence_detected }}
-            {% if validation_mode == 'smart' and ble_detected.sensors | length > 0 and motion_detected.sensors | length == 0 %}
-            ⚠️ BLE detected but no motion - likely false trigger from adjacent room
-            {% endif %}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.presence"
 
