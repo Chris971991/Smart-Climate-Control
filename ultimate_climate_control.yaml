@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.46
+  name: Ultimate Smart Climate Control - v3.9.47
 
   description: |
-    **Ultimate Smart Climate Control v3.9.46**
+    **Ultimate Smart Climate Control v3.9.47**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,20 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.46
+    ## 🆕 Latest Update - v3.9.47
 
-    **🐛 CRITICAL BUG FIX: Presence Validation Mode Not Enforcing Configured Requirements**
-    - 🔴 FIXED: Legacy "smart" mode had fallback logic allowing motion-only activation
-    - 🔴 FIXED: AC could activate from motion blips even when BLE+Motion mode was intended
-    - 🚨 PROBLEM: Old "smart" validation mode (not in UI) allowed fallback to single sensor
-    - 💥 IMPACT: Office with "BLE+Motion" could activate from just motion sensor alone
-    - 🛡️ SOLUTION: Removed legacy "smart" mode - only documented modes work now
-    - ✅ RESULT: Presence validation strictly follows configured mode (no hidden fallbacks)
-    - ⚠️ MIGRATION: If you used legacy "smart" mode, switch to "BLE_MOTION" for same behavior
+    **🐛 CRITICAL BUG FIX: Adaptive Control Blocked After Clearing Manual Override**
+    - 🔴 FIXED: Clearing manual override flag didn't immediately restore adaptive control
+    - 🔴 FIXED: Stale override timestamp caused 2.5-hour lockout even after clearing flag
+    - 🚨 PROBLEM: Timeout check applied to stale timestamp instead of current flag state
+    - 💥 IMPACT: AC turned back on after clearing override (adaptive control still blocked)
+    - 🛡️ SOLUTION: Timeout check now ONLY applies when override flag is currently ON
+    - ✅ RESULT: Clearing override flag immediately allows adaptive control to operate
 
     **📝 Previous Updates:**
+    - v3.9.46: 🐛 Fixed presence validation mode enforcement (removed legacy "smart" mode)
     - v3.9.45: 🐛 Fixed stale presence detection from hours ago triggering AC
-    - v3.9.44: 🐛 Fixed manual override false positives from stale helper state
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -8903,25 +8902,28 @@ action:
       - conditions:
           - condition: template
             value_template: "{{ adaptive_enabled }}"
-          # Manual Override Protection
+          # Manual Override Protection - COMBINED flag + timeout check
+          # v3.9.47 FIX: Timeout check should ONLY apply when flag is currently ON
+          # If flag is OFF, adaptive control is immediately allowed (no timeout penalty)
           - condition: template
             value_template: >
-              {% if adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] %}
-                {{ not is_state(adaptive_override_helper, 'on') }}
-              {% else %}
-                true
-              {% endif %}
-          - condition: template
-            value_template: >
-              {% if adaptive_override_timeout > 0 %}
-                {% set override_time = states(helper_override_timestamp) if helper_override_timestamp else none %}
-                {% if override_time and override_time not in ['unknown', 'unavailable', ''] %}
-                  {% set time_since_override = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}
-                  {{ time_since_override >= adaptive_override_timeout }}
+              {% set flag_active = adaptive_override_helper and adaptive_override_helper not in ['', 'unknown', 'unavailable'] and is_state(adaptive_override_helper, 'on') %}
+
+              {% if flag_active %}
+                {# Override flag is ON - check if timeout has expired to auto-clear #}
+                {% if adaptive_override_timeout > 0 %}
+                  {% set override_time = states(helper_override_timestamp) if helper_override_timestamp else none %}
+                  {% if override_time and override_time not in ['unknown', 'unavailable', ''] %}
+                    {% set time_since_override = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}
+                    {{ time_since_override >= adaptive_override_timeout }}
+                  {% else %}
+                    false  {# Flag is ON but no timestamp - block adaptive control #}
+                  {% endif %}
                 {% else %}
-                  true
+                  false  {# Flag is ON and no timeout configured - block indefinitely #}
                 {% endif %}
               {% else %}
+                {# Flag is OFF - allow adaptive control immediately (no timeout penalty) #}
                 true
               {% endif %}
         sequence:
@@ -11466,8 +11468,10 @@ action:
             {% set override_timestamp = as_timestamp(override_time) %}
             {% if override_timestamp %}
             {% set time_since_override = (as_timestamp(now()) - override_timestamp) / 3600 %}
+            {% set flag_is_on = adaptive_override_helper and is_state(adaptive_override_helper, 'on') %}
                 • Time Since Manual Override: {{ time_since_override | round(1) }}h ({{ 'normal automatic operation' if time_since_override >= 24 else 'recent manual change' }})
-                • Override Active: {{ time_since_override < adaptive_override_timeout }}
+                • Override Flag: {{ 'ON' if flag_is_on else 'OFF' }}
+                • Override Active: {{ flag_is_on and (time_since_override < adaptive_override_timeout) }}
             {% endif %}
             {% endif %}
             {% endif %}
