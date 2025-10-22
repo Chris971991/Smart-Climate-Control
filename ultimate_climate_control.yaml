@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.47
+  name: Ultimate Smart Climate Control - v3.9.48
 
   description: |
-    **Ultimate Smart Climate Control v3.9.47**
+    **Ultimate Smart Climate Control v3.9.48**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.47
+    ## 🆕 Latest Update - v3.9.48
 
-    **🐛 CRITICAL BUG FIX: Adaptive Control Blocked After Clearing Manual Override**
-    - 🔴 FIXED: Clearing manual override flag didn't immediately restore adaptive control
-    - 🔴 FIXED: Stale override timestamp caused 2.5-hour lockout even after clearing flag
-    - 🚨 PROBLEM: Timeout check applied to stale timestamp instead of current flag state
-    - 💥 IMPACT: AC turned back on after clearing override (adaptive control still blocked)
-    - 🛡️ SOLUTION: Timeout check now ONLY applies when override flag is currently ON
-    - ✅ RESULT: Clearing override flag immediately allows adaptive control to operate
+    **🐛 CRITICAL BUG FIX: Pre-conditioning & HVAC Mode Ignoring Heating/Cooling Settings**
+    - 🔴 FIXED: Pre-conditioning could set heat_cool mode even with heating disabled
+    - 🔴 FIXED: AC could heat when enable_heating: false via heat_cool fallback
+    - 🚨 PROBLEM: HVAC mode selection ignored enable_heating/enable_cooling settings
+    - 💥 IMPACT: AC activated heating modes at night despite heating being disabled
+    - 🛡️ SOLUTION: Pre-conditioning and cooling operations now respect heating/cooling settings
+    - ✅ RESULT: AC only uses modes compatible with user configuration (cooling-only = cool mode only)
 
     **📝 Previous Updates:**
+    - v3.9.47: 🐛 Fixed adaptive control blocked after clearing manual override
     - v3.9.46: 🐛 Fixed presence validation mode enforcement (removed legacy "smart" mode)
-    - v3.9.45: 🐛 Fixed stale presence detection from hours ago triggering AC
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -7382,6 +7382,7 @@ action:
                     value: "cool"
                   continue_on_error: true
 
+                # v3.9.48 FIX: Respect enable_heating setting - only use auto/heat_cool if heating enabled
                 - service: climate.set_hvac_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7391,16 +7392,16 @@ action:
                         cool
                         {% elif 'Cool' in available_modes %}
                         Cool
-                        {% elif 'auto' in available_modes %}
+                        {% elif enable_heating and 'auto' in available_modes %}
                         auto
-                        {% elif 'Auto' in available_modes %}
+                        {% elif enable_heating and 'Auto' in available_modes %}
                         Auto
-                        {% elif 'heat_cool' in available_modes %}
+                        {% elif enable_heating and 'heat_cool' in available_modes %}
                         heat_cool
-                        {% elif 'Heat/Cool' in available_modes %}
+                        {% elif enable_heating and 'Heat/Cool' in available_modes %}
                         Heat/Cool
                         {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
+                        off
                       {% endif %}
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -7872,17 +7873,24 @@ action:
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
+          # v3.9.48 FIX: Pre-conditioning now respects enable_heating/enable_cooling settings
           - service: input_text.set_value
             target:
               entity_id: "{{ helper_expected_hvac }}"
             data:
               value: >
-                {% if current_temp > comfort_max_temp %}
+                {% if current_temp > comfort_max_temp and enable_cooling %}
                   cool
-                {% elif current_temp < comfort_min_temp %}
+                {% elif current_temp < comfort_min_temp and enable_heating %}
+                  heat
+                {% elif enable_cooling and enable_heating %}
+                  heat_cool
+                {% elif enable_cooling %}
+                  cool
+                {% elif enable_heating %}
                   heat
                 {% else %}
-                  heat_cool
+                  off
                 {% endif %}
             continue_on_error: true
 
@@ -7891,12 +7899,18 @@ action:
               entity_id: !input climate_entities
             data:
               hvac_mode: >
-                {% if current_temp > comfort_max_temp %}
+                {% if current_temp > comfort_max_temp and enable_cooling %}
                   cool
-                {% elif current_temp < comfort_min_temp %}
+                {% elif current_temp < comfort_min_temp and enable_heating %}
+                  heat
+                {% elif enable_cooling and enable_heating %}
+                  heat_cool
+                {% elif enable_cooling %}
+                  cool
+                {% elif enable_heating %}
                   heat
                 {% else %}
-                  heat_cool
+                  off
                 {% endif %}
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
