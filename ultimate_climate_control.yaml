@@ -5167,19 +5167,46 @@ action:
               value: "heating_high"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "heat"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart heating mode selection - only use auto/heat_cool if cooling also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For heating, try heating-capable modes #}
+                      {% if 'heat' in modes %}
+                        heat
+                      {% elif 'Heat' in modes %}
+                        Heat
+                      {% elif enable_cooling and 'auto' in modes %}
+                        auto
+                      {% elif enable_cooling and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_cooling and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_cooling and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "heat"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -5550,19 +5577,46 @@ action:
               value: "heating_medium"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "heat"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart heating mode selection - only use auto/heat_cool if cooling also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For heating, try heating-capable modes #}
+                      {% if 'heat' in modes %}
+                        heat
+                      {% elif 'Heat' in modes %}
+                        Heat
+                      {% elif enable_cooling and 'auto' in modes %}
+                        auto
+                      {% elif enable_cooling and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_cooling and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_cooling and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "heat"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -5918,19 +5972,46 @@ action:
               value: "heating_low"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "heat"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart heating mode selection - only use auto/heat_cool if cooling also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For heating, try heating-capable modes #}
+                      {% if 'heat' in modes %}
+                        heat
+                      {% elif 'Heat' in modes %}
+                        Heat
+                      {% elif enable_cooling and 'auto' in modes %}
+                        auto
+                      {% elif enable_cooling and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_cooling and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_cooling and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "heat"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -6297,19 +6378,46 @@ action:
               value: "cooling_high"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "cool"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart cooling mode selection - only use auto/heat_cool if heating also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For cooling, try cooling-capable modes #}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif enable_heating and 'auto' in modes %}
+                        auto
+                      {% elif enable_heating and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_heating and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_heating and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "cool"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -6700,19 +6808,46 @@ action:
               value: "cooling_medium"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "cool"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart cooling mode selection - only use auto/heat_cool if heating also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For cooling, try cooling-capable modes #}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif enable_heating and 'auto' in modes %}
+                        auto
+                      {% elif enable_heating and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_heating and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_heating and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "cool"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -7072,19 +7207,46 @@ action:
               value: "cooling_low"
             continue_on_error: true
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
-          - service: input_text.set_value
-            target:
-              entity_id: "{{ helper_expected_hvac }}"
-            data:
-              value: "cool"
-            continue_on_error: true
+          # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart cooling mode selection - only use auto/heat_cool if heating also enabled
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For cooling, try cooling-capable modes #}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif enable_heating and 'auto' in modes %}
+                        auto
+                      {% elif enable_heating and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_heating and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_heating and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
+                      {% endif %}
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: "cool"
+                # Capture expected values for enhanced manual override detection (v3.3.0)
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
