@@ -7619,7 +7619,7 @@ action:
                           target:
                             entity_id: "{{ helper_expected_hvac }}"
                           data:
-                            value: "cool"
+                            value: "{{ selected_hvac_mode }}"
                           continue_on_error: true
 
                         - service: climate.set_hvac_mode
