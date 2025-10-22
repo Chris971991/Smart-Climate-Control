@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.10.0
+  name: Ultimate Smart Climate Control - v3.10.1
 
   description: |
-    **Ultimate Smart Climate Control v3.10.0**
+    **Ultimate Smart Climate Control v3.10.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,22 +57,19 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.10.0
+    ## 🆕 Latest Update - v3.10.1
 
-    **🐛 COMPREHENSIVE FIX: All HVAC Mode Selection Now Respects Heating/Cooling Settings**
-    - 🔴 FIXED: All 14 HVAC fallback locations now respect enable_heating/enable_cooling
-    - 🔴 FIXED: Cooling operations (HIGH/MEDIUM/LOW/Extreme temp) - 6 locations
-    - 🔴 FIXED: Heating operations (MEDIUM/LOW/Extreme temp) - 3 locations
-    - 🔴 FIXED: Eco modes (Room eco, Away eco) - 2 locations
-    - 🔴 FIXED: Temperature stability modes (Comfort zone idle) - 4 locations
-    - 🚨 PROBLEM: Legacy fallback logic used auto/heat_cool modes without checking settings
-    - 💥 IMPACT: AC could heat when enable_heating: false or cool when enable_cooling: false
-    - 🛡️ SOLUTION: All HVAC selections now validate against enable_heating/enable_cooling first
-    - ✅ RESULT: 100% guarantee AC only uses modes compatible with your configuration
+    **🐛 CRITICAL FIX: Manual Override False Positives When AC Turns Off for Target Achievement**
+    - 🔴 FIXED: Manual override triggering when automation turns off AC for target reached
+    - 🔴 FIXED: Race condition between helper update and climate.turn_off service call
+    - 🚨 PROBLEM: Helper set to "off" → AC turns off → State change fires → Old helper value read → False positive
+    - 💥 IMPACT: Manual override activated automatically every time target temperature achieved
+    - 🛡️ SOLUTION: Added 10-second grace period when helper_mode changes to "off"
+    - ✅ RESULT: Manual override only triggers on actual user intervention, not automation actions
 
     **📝 Previous Updates:**
+    - v3.10.0: 🐛 Comprehensive HVAC mode selection fix (all 22 locations respect enable_heating/enable_cooling)
     - v3.9.48: 🐛 Fixed pre-conditioning and HIGH cooling HVAC mode selection
-    - v3.9.47: 🐛 Fixed adaptive control blocked after clearing manual override
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3793,6 +3790,17 @@ action:
           ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) < 30)
         ) %}
 
+        {# v3.10.1: Check if helper_mode was JUST set to "off" - prevent false positives when automation turns off AC
+           When automation turns AC off for target achievement, helper is set to "off" then climate.turn_off is called
+           The state change trigger fires immediately, but helper update might not be fully committed yet
+           Give 10 seconds grace period after helper changes to "off" before detecting manual off #}
+        {% set helper_just_turned_off = (
+          helper_mode and
+          states(helper_mode) == 'off' and
+          state_attr(helper_mode, 'last_changed') and
+          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 10)
+        ) %}
+
         {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
 
            THE PROBLEM with v3.9.37:
@@ -3870,7 +3878,8 @@ action:
         ) %}
 
         {# v3.9.44: Block detection if override was just cleared #}
-        {% if override_just_cleared %}
+        {# v3.10.1: Block detection if helper was just set to "off" by automation #}
+        {% if override_just_cleared or helper_just_turned_off %}
           {% set result = false %}
         {% else %}
           {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
