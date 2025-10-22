@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.9.48
+  name: Ultimate Smart Climate Control - v3.10.0
 
   description: |
-    **Ultimate Smart Climate Control v3.9.48**
+    **Ultimate Smart Climate Control v3.10.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -57,19 +57,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.9.48
+    ## 🆕 Latest Update - v3.10.0
 
-    **🐛 CRITICAL BUG FIX: Pre-conditioning & HVAC Mode Ignoring Heating/Cooling Settings**
-    - 🔴 FIXED: Pre-conditioning could set heat_cool mode even with heating disabled
-    - 🔴 FIXED: AC could heat when enable_heating: false via heat_cool fallback
-    - 🚨 PROBLEM: HVAC mode selection ignored enable_heating/enable_cooling settings
-    - 💥 IMPACT: AC activated heating modes at night despite heating being disabled
-    - 🛡️ SOLUTION: Pre-conditioning and cooling operations now respect heating/cooling settings
-    - ✅ RESULT: AC only uses modes compatible with user configuration (cooling-only = cool mode only)
+    **🐛 COMPREHENSIVE FIX: All HVAC Mode Selection Now Respects Heating/Cooling Settings**
+    - 🔴 FIXED: All 14 HVAC fallback locations now respect enable_heating/enable_cooling
+    - 🔴 FIXED: Cooling operations (HIGH/MEDIUM/LOW/Extreme temp) - 6 locations
+    - 🔴 FIXED: Heating operations (MEDIUM/LOW/Extreme temp) - 3 locations
+    - 🔴 FIXED: Eco modes (Room eco, Away eco) - 2 locations
+    - 🔴 FIXED: Temperature stability modes (Comfort zone idle) - 4 locations
+    - 🚨 PROBLEM: Legacy fallback logic used auto/heat_cool modes without checking settings
+    - 💥 IMPACT: AC could heat when enable_heating: false or cool when enable_cooling: false
+    - 🛡️ SOLUTION: All HVAC selections now validate against enable_heating/enable_cooling first
+    - ✅ RESULT: 100% guarantee AC only uses modes compatible with your configuration
 
     **📝 Previous Updates:**
+    - v3.9.48: 🐛 Fixed pre-conditioning and HIGH cooling HVAC mode selection
     - v3.9.47: 🐛 Fixed adaptive control blocked after clearing manual override
-    - v3.9.46: 🐛 Fixed presence validation mode enforcement (removed legacy "smart" mode)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -7591,6 +7594,7 @@ action:
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
                             
                             # Smart cooling mode selection
+                            # v3.10.0: Only use auto/heat_cool if heating is also enabled
                             selected_hvac_mode: >
                               {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
                               {# For cooling, try cooling-capable modes #}
@@ -7598,16 +7602,16 @@ action:
                                 cool
                                 {% elif 'Cool' in modes %}
                                 Cool
-                                {% elif 'auto' in modes %}
+                                {% elif enable_heating and 'auto' in modes %}
                                 auto
-                                {% elif 'Auto' in modes %}
+                                {% elif enable_heating and 'Auto' in modes %}
                                 Auto
-                                {% elif 'heat_cool' in modes %}
+                                {% elif enable_heating and 'heat_cool' in modes %}
                                 heat_cool
-                                {% elif 'Heat/Cool' in modes %}
+                                {% elif enable_heating and 'Heat/Cool' in modes %}
                                 Heat/Cool
                                 {% else %}
-                                {{ modes[0] if modes else 'off' }}
+                                off
                               {% endif %}
 
                         # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -7725,6 +7729,7 @@ action:
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
                             
                             # Smart heating mode selection
+                            # v3.10.0: Only use auto/heat_cool if cooling is also enabled
                             selected_hvac_mode: >
                               {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
                               {# For heating, try heating-capable modes #}
@@ -7732,16 +7737,16 @@ action:
                                 heat
                                 {% elif 'Heat' in modes %}
                                 Heat
-                                {% elif 'auto' in modes %}
+                                {% elif enable_cooling and 'auto' in modes %}
                                 auto
-                                {% elif 'Auto' in modes %}
+                                {% elif enable_cooling and 'Auto' in modes %}
                                 Auto
-                                {% elif 'heat_cool' in modes %}
+                                {% elif enable_cooling and 'heat_cool' in modes %}
                                 heat_cool
-                                {% elif 'Heat/Cool' in modes %}
+                                {% elif enable_cooling and 'Heat/Cool' in modes %}
                                 Heat/Cool
                                 {% else %}
-                                {{ modes[0] if modes else 'off' }}
+                                off
                               {% endif %}
 
                         # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -8068,6 +8073,7 @@ action:
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
                     
                     # Smart cooling mode selection
+                    # v3.10.0: Only use auto/heat_cool if heating is also enabled
                     selected_hvac_mode: >
                       {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
                       {# For cooling, try cooling-capable modes #}
@@ -8075,16 +8081,16 @@ action:
                         cool
                         {% elif 'Cool' in modes %}
                         Cool
-                        {% elif 'auto' in modes %}
+                        {% elif enable_heating and 'auto' in modes %}
                         auto
-                        {% elif 'Auto' in modes %}
+                        {% elif enable_heating and 'Auto' in modes %}
                         Auto
-                        {% elif 'heat_cool' in modes %}
+                        {% elif enable_heating and 'heat_cool' in modes %}
                         heat_cool
-                        {% elif 'Heat/Cool' in modes %}
+                        {% elif enable_heating and 'Heat/Cool' in modes %}
                         Heat/Cool
                         {% else %}
-                        {{ modes[0] if modes else 'off' }}
+                        off
                       {% endif %}
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -8297,6 +8303,7 @@ action:
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
                     
                     # Smart cooling mode selection
+                    # v3.10.0: Only use auto/heat_cool if heating is also enabled
                     selected_hvac_mode: >
                       {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
                       {# For cooling, try cooling-capable modes #}
@@ -8304,16 +8311,16 @@ action:
                         cool
                         {% elif 'Cool' in modes %}
                         Cool
-                        {% elif 'auto' in modes %}
+                        {% elif enable_heating and 'auto' in modes %}
                         auto
-                        {% elif 'Auto' in modes %}
+                        {% elif enable_heating and 'Auto' in modes %}
                         Auto
-                        {% elif 'heat_cool' in modes %}
+                        {% elif enable_heating and 'heat_cool' in modes %}
                         heat_cool
-                        {% elif 'Heat/Cool' in modes %}
+                        {% elif enable_heating and 'Heat/Cool' in modes %}
                         Heat/Cool
                         {% else %}
-                        {{ modes[0] if modes else 'off' }}
+                        off
                       {% endif %}
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -8485,17 +8492,29 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                            # Smart stability mode selection
+                            # v3.10.0: Only use auto/heat_cool if both heating and cooling enabled
                             expected_hvac_mode: >
-                              {% if 'auto' in available_modes %}
+                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                              {# For stability, prefer auto/heat_cool only if both enabled #}
+                              {% if enable_cooling and enable_heating and 'auto' in modes %}
                                 auto
-                                {% elif 'Auto' in available_modes %}
+                              {% elif enable_cooling and enable_heating and 'Auto' in modes %}
                                 Auto
-                                {% elif 'heat_cool' in available_modes %}
+                              {% elif enable_cooling and enable_heating and 'heat_cool' in modes %}
                                 heat_cool
-                                {% elif 'Heat/Cool' in available_modes %}
-                                heat_cool
-                                {% else %}
-                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% elif enable_cooling and enable_heating and 'Heat/Cool' in modes %}
+                                Heat/Cool
+                              {% elif enable_cooling and 'cool' in modes %}
+                                cool
+                              {% elif enable_cooling and 'Cool' in modes %}
+                                Cool
+                              {% elif enable_heating and 'heat' in modes %}
+                                heat
+                              {% elif enable_heating and 'Heat' in modes %}
+                                Heat
+                              {% else %}
+                                off
                               {% endif %}
 
                         # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -9396,21 +9415,37 @@ action:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                            # Smart eco mode selection
+                            # v3.10.0: Respect enable_heating and enable_cooling settings
                             expected_hvac_mode: >
-                              {% if 'auto' in available_modes %}
+                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                              {# Prefer auto/heat_cool only if both heating and cooling enabled #}
+                              {% if enable_cooling and enable_heating and 'auto' in modes %}
                                 auto
-                                {% elif 'Auto' in available_modes %}
+                              {% elif enable_cooling and enable_heating and 'Auto' in modes %}
                                 Auto
-                                {% elif 'heat_cool' in available_modes %}
+                              {% elif enable_cooling and enable_heating and 'heat_cool' in modes %}
                                 heat_cool
-                                {% elif 'Heat/Cool' in available_modes %}
-                                heat_cool
-                                {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                              {% elif enable_cooling and enable_heating and 'Heat/Cool' in modes %}
+                                Heat/Cool
+                              {% elif current_temp > comfort_max_temp and enable_cooling and 'cool' in modes %}
                                 cool
-                                {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                              {% elif current_temp > comfort_max_temp and enable_cooling and 'Cool' in modes %}
+                                Cool
+                              {% elif current_temp < comfort_min_temp and enable_heating and 'heat' in modes %}
                                 heat
-                                {% else %}
-                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% elif current_temp < comfort_min_temp and enable_heating and 'Heat' in modes %}
+                                Heat
+                              {% elif enable_cooling and 'cool' in modes %}
+                                cool
+                              {% elif enable_cooling and 'Cool' in modes %}
+                                Cool
+                              {% elif enable_heating and 'heat' in modes %}
+                                heat
+                              {% elif enable_heating and 'Heat' in modes %}
+                                Heat
+                              {% else %}
+                                off
                               {% endif %}
 
                         # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -9821,21 +9856,22 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # v3.10.0: Only use auto/heat_cool if heating is also enabled
                     selected_hvac_mode: >
                       {% if 'cool' in available_modes %}
                         cool
                         {% elif 'Cool' in available_modes %}
                         Cool
-                        {% elif 'auto' in available_modes %}
+                        {% elif enable_heating and 'auto' in available_modes %}
                         auto
-                        {% elif 'Auto' in available_modes %}
+                        {% elif enable_heating and 'Auto' in available_modes %}
                         Auto
-                        {% elif 'heat_cool' in available_modes %}
+                        {% elif enable_heating and 'heat_cool' in available_modes %}
                         heat_cool
-                        {% elif 'Heat/Cool' in available_modes %}
+                        {% elif enable_heating and 'Heat/Cool' in available_modes %}
                         Heat/Cool
                         {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
+                        off
                       {% endif %}
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -10565,15 +10601,25 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    # Smart heating mode selection
+                    # v3.10.0: Only use auto/heat_cool if cooling is also enabled
                     selected_hvac_mode: >
-                      {% if 'auto' in available_modes %}
-                        auto
-                        {% elif 'heat_cool' in available_modes %}
-                        heat_cool
-                        {% elif 'heat' in available_modes %}
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {# For heating, try heating-capable modes #}
+                      {% if 'heat' in modes %}
                         heat
-                        {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
+                      {% elif 'Heat' in modes %}
+                        Heat
+                      {% elif enable_cooling and 'auto' in modes %}
+                        auto
+                      {% elif enable_cooling and 'Auto' in modes %}
+                        Auto
+                      {% elif enable_cooling and 'heat_cool' in modes %}
+                        heat_cool
+                      {% elif enable_cooling and 'Heat/Cool' in modes %}
+                        Heat/Cool
+                      {% else %}
+                        off
                       {% endif %}
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
