@@ -9603,7 +9603,15 @@ action:
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
-              
+
+                  # v3.11.1 FIX: Update last_mode to prevent false manual override detection
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_mode }}"
+                    data:
+                      value: "off"
+                    continue_on_error: true
+
               - conditions:
                   - condition: template
                     value_template: "{{ smart_behavior == 'eco' }}"
