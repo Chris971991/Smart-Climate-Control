@@ -2875,6 +2875,7 @@ trigger:
   # Fire when user clicks "Clear Override" button in dashboard
   - platform: state
     entity_id: !input helper_override_active
+    from: "on"
     to: "off"
     id: override_cleared_by_user
 
