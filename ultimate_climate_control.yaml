@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.0
+  name: Ultimate Smart Climate Control - v3.11.2
 
   description: |
-    **Ultimate Smart Climate Control v3.11.0**
+    **Ultimate Smart Climate Control v3.11.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,25 +58,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.0
+    ## 🆕 Latest Update - v3.11.2
 
-    **🎉 MAJOR OVERHAUL: Manual Override System Completely Redesigned**
-    - ✅ **NEW**: Override is now a 4th control mode (Auto/Smart/Manual/Override) - works just like Manual/Smart mode toggle!
-    - ✅ **FIXED**: All manual override false positives - removed ALL grace periods that caused race conditions
-    - ✅ **FIXED**: Clear Override button now works flawlessly - automation immediately takes over
-    - ✅ **IMPROVED**: Presence timers continue running during Override - ready when you clear it
-    - 🔥 **SIMPLIFIED**: No more complex flag system, timestamps, or grace periods - just mode changes
-    - 🎯 **RESULT**: Rock-solid override detection that actually works like you expect
-
-    **What Changed:**
-    - When you manually change AC (via HA or remote), mode automatically switches to "Override"
-    - Click "Clear Override" button → mode returns to Auto/Smart → automation resumes instantly
-    - Override timeout auto-returns to previous mode after configured hours
-    - **BREAKING**: Requires adding "Override" option to control_mode helper (Setup Wizard will handle this)
+    **⏱️ NEW: Dynamic Override Countdown Timer**
+    - ✅ **NEW**: Dashboard cards now show dynamic countdown timer on override button
+    - ✅ **NEW**: Timeout value automatically synced from automation config (no manual configuration!)
+    - ✅ **ENHANCED**: Shows remaining time in hours/minutes (e.g., "Override 2h 30m • Tap to Clear")
+    - 🎯 **UX IMPROVEMENT**: Users can see exactly when override will auto-clear
 
     **📝 Previous Updates:**
-    - v3.10.1: 🐛 Manual override false positive fixes (replaced by v3.11.0 complete redesign)
-    - v3.10.0: 🐛 Comprehensive HVAC mode selection fix
+    - v3.11.1: 🐛 Fixed false override after Smart mode turns off AC
+    - v3.11.0: 🎉 Complete manual override system redesign (4th control mode)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -225,6 +217,27 @@ blueprint:
       selector:
         entity:
           domain: input_boolean
+
+    helper_override_timeout:
+      name: Override Timeout Duration Helper
+      description: |
+        Input Number helper to store **adaptive override timeout duration** (in hours).
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_number.climate_override_timeout_living_room`
+
+        • `input_number.climate_override_timeout_bedroom`
+
+        • `input_number.climate_override_timeout_office`
+
+        **Purpose:** Stores the timeout duration from blueprint config for use in dashboard countdown timers.
+
+        **Note:** This is updated automatically when Override mode activates - do not manually edit.
+      selector:
+        entity:
+          domain: input_number
+      default: ""
 
     helper_expected_temp:
       name: Expected Temperature Helper *
@@ -2627,6 +2640,7 @@ variables:
   helper_mode_before_override: !input helper_mode_before_override
   helper_override_timestamp: !input helper_override_time
   helper_override_flag: !input helper_override_active
+  helper_override_timeout_storage: !input helper_override_timeout
   helper_expected_temp: !input helper_expected_temp
   helper_expected_fan: !input helper_expected_fan
   helper_expected_swing: !input helper_expected_swing
@@ -4074,6 +4088,18 @@ action:
           - service: input_boolean.turn_on
             target:
               entity_id: "{{ helper_override_flag }}"
+            continue_on_error: true
+
+      # Store timeout duration for dashboard countdown
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_override_timeout_storage }}"
+            data:
+              value: "{{ adaptive_override_timeout }}"
             continue_on_error: true
 
       # The mode_change trigger will handle recording timestamp and previous mode
