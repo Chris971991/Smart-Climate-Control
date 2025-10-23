@@ -4094,6 +4094,57 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
+  # v3.11.0: CLEAR Override when button clicked (boolean turned off) - runs every automation cycle
+  - if:
+      - condition: template
+        value_template: "{{ control_mode == 'Override' and helper_override_flag not in [none, '', 'unavailable', 'unknown'] and is_state(helper_override_flag, 'off') }}"
+      - condition: template
+        value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - variables:
+          return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else 'Auto' }}"
+
+      - service: input_select.select_option
+        target:
+          entity_id: "{{ control_mode_helper }}"
+        data:
+          option: "{{ return_to_mode }}"
+        continue_on_error: true
+
+      # Sync expected values to prevent re-detection
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_temp not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'temperature') | float(22) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "{{ states(climate_list[0]) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_fan not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_fan }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'fan_mode') | default('unknown') }}"
+            continue_on_error: true
+
   # v3.11.0: AUTO-CLEAR Override Mode - Return to previous mode when timeout expires
   - if:
       - condition: template
