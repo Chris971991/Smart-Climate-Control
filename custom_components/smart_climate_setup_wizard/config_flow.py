@@ -107,11 +107,12 @@ HELPER_DEFINITIONS = {
         "icon": "mdi:hand-back-right",
         "initial": False,
     },
-    "override_active": {
-        "domain": "input_boolean",
-        "name": "{room} Climate Override Active",
-        "icon": "mdi:alert-circle",
-        "initial": False,
+    "mode_before_override": {
+        "domain": "input_text",
+        "name": "{room} Mode Before Override",
+        "icon": "mdi:backup-restore",
+        "initial": "Auto",
+        "max_length": 50,
     },
     "override_time": {
         "domain": "input_datetime",
@@ -192,7 +193,7 @@ FEATURE_HELPERS = {
         "temp_stable_since",
         "last_transition",
     ],
-    "manual_override": ["manual_override", "override_active", "override_time", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
+    "manual_override": ["manual_override", "mode_before_override", "override_time", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected"],
 }
@@ -1391,7 +1392,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         if config.get("enable_manual_override", True):
             if "helper_proximity_override" not in helpers:
                 helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
-            helpers["helper_override_active"] = f"input_boolean.climate_override_active_{sanitized_name}"
+            helpers["helper_override_active"] = f"input_boolean.climate_manual_override_{sanitized_name}"
+            helpers["helper_mode_before_override"] = f"input_text.climate_mode_before_override_{sanitized_name}"
             helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
             helpers["helper_expected_temp"] = f"input_number.climate_expected_temp_{sanitized_name}"
             helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
@@ -1805,7 +1807,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             return ""
 
         control_mode_entity = f"input_select.climate_control_mode_{sanitized_name}"
-        override_active_entity = f"input_boolean.climate_override_active_{sanitized_name}"
+        override_active_entity = f"input_boolean.climate_manual_override_{sanitized_name}"
 
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
@@ -2191,7 +2193,7 @@ Copy this YAML and add it to your dashboard:
             return ""
 
         control_mode_entity = f"input_select.climate_control_mode_{sanitized_name}"
-        override_active_entity = f"input_boolean.climate_override_active_{sanitized_name}"
+        override_active_entity = f"input_boolean.climate_manual_override_{sanitized_name}"
 
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
@@ -2418,7 +2420,8 @@ card_mod:
 
         if config_entry.data.get("enable_manual_override", True):
             helpers_to_delete.extend([
-                f"input_boolean.climate_override_active_{sanitized_name}",
+                f"input_boolean.climate_manual_override_{sanitized_name}",
+                f"input_text.climate_mode_before_override_{sanitized_name}",
                 f"input_datetime.climate_override_time_{sanitized_name}",
                 f"input_number.climate_expected_temp_{sanitized_name}",
                 f"input_text.climate_expected_fan_{sanitized_name}",

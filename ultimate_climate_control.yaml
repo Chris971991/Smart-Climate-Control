@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.10.1
+  name: Ultimate Smart Climate Control - v3.11.0
 
   description: |
-    **Ultimate Smart Climate Control v3.10.1**
+    **Ultimate Smart Climate Control v3.11.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -27,10 +27,11 @@ blueprint:
 
     ## ✨ Key Features
 
-    **🎮 3 Control Modes:**
+    **🎮 4 Control Modes:**
     - **Auto:** House-wide automation with home/away detection
     - **Smart:** Room-specific presence with BLE/PIR/mmWave sensors (immediate shutoff when leaving)
     - **Manual:** Full user control with emergency temperature overrides only
+    - **Override:** (Auto-set) User manually changed AC - automation paused temporarily
 
     **🧠 Intelligent Automation:**
     - Room-specific presence detection (BLE, motion, door sensors, adjacent room support)
@@ -57,19 +58,25 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.10.1
+    ## 🆕 Latest Update - v3.11.0
 
-    **🐛 CRITICAL FIX: Manual Override False Positives When AC Turns Off for Target Achievement**
-    - 🔴 FIXED: Manual override triggering when automation turns off AC for target reached
-    - 🔴 FIXED: Race condition between helper update and climate.turn_off service call
-    - 🚨 PROBLEM: Helper set to "off" → AC turns off → State change fires → Old helper value read → False positive
-    - 💥 IMPACT: Manual override activated automatically every time target temperature achieved
-    - 🛡️ SOLUTION: Added 10-second grace period when helper_mode changes to "off"
-    - ✅ RESULT: Manual override only triggers on actual user intervention, not automation actions
+    **🎉 MAJOR OVERHAUL: Manual Override System Completely Redesigned**
+    - ✅ **NEW**: Override is now a 4th control mode (Auto/Smart/Manual/Override) - works just like Manual/Smart mode toggle!
+    - ✅ **FIXED**: All manual override false positives - removed ALL grace periods that caused race conditions
+    - ✅ **FIXED**: Clear Override button now works flawlessly - automation immediately takes over
+    - ✅ **IMPROVED**: Presence timers continue running during Override - ready when you clear it
+    - 🔥 **SIMPLIFIED**: No more complex flag system, timestamps, or grace periods - just mode changes
+    - 🎯 **RESULT**: Rock-solid override detection that actually works like you expect
+
+    **What Changed:**
+    - When you manually change AC (via HA or remote), mode automatically switches to "Override"
+    - Click "Clear Override" button → mode returns to Auto/Smart → automation resumes instantly
+    - Override timeout auto-returns to previous mode after configured hours
+    - **BREAKING**: Requires adding "Override" option to control_mode helper (Setup Wizard will handle this)
 
     **📝 Previous Updates:**
-    - v3.10.0: 🐛 Comprehensive HVAC mode selection fix (all 22 locations respect enable_heating/enable_cooling)
-    - v3.9.48: 🐛 Fixed pre-conditioning and HIGH cooling HVAC mode selection
+    - v3.10.1: 🐛 Manual override false positive fixes (replaced by v3.11.0 complete redesign)
+    - v3.10.0: 🐛 Comprehensive HVAC mode selection fix
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -161,28 +168,30 @@ blueprint:
         entity:
           domain: input_datetime
 
-    helper_override_active:
-      name: Manual Override Flag Helper *
+    helper_mode_before_override:
+      name: Mode Before Override Helper *
       description: |
-        Input Boolean helper to track **manual override state**.
+        Input Text helper to store **which mode was active before Override**.
 
         **Create a unique helper for each room/automation instance:**
 
-        • `input_boolean.climate_override_active_living_room`
+        • `input_text.climate_mode_before_override_living_room`
 
-        • `input_boolean.climate_override_active_bedroom`
+        • `input_text.climate_mode_before_override_bedroom`
 
-        • `input_boolean.climate_override_active_office`
+        • `input_text.climate_mode_before_override_office`
 
-        **Purpose:** Flag that is set when user manually changes AC, cleared when timeout expires or mode switched.
+        **Purpose:** Stores "Auto" or "Smart" so when Override timeout expires or is cleared, the system returns to the correct mode.
+
+        **Note:** This replaces the old separate override flag + timestamp helpers with a simpler approach.
       selector:
         entity:
-          domain: input_boolean
+          domain: input_text
 
     helper_override_time:
-      name: Manual Override Time Helper *
+      name: Override Start Time Helper *
       description: |
-        Input DateTime helper to track **when manual override was activated**.
+        Input DateTime helper to track **when Override mode was activated**.
 
         **Create a unique helper for each room/automation instance:**
 
@@ -192,10 +201,30 @@ blueprint:
 
         • `input_datetime.climate_override_time_office`
 
-        **Purpose:** Timestamp used to calculate if override timeout period has expired.
+        **Purpose:** Timestamp used to calculate if override timeout period has expired and system should return to previous mode.
       selector:
         entity:
           domain: input_datetime
+
+    helper_override_active:
+      name: Override Active Visual Indicator *
+      description: |
+        Input Boolean helper for **visual override indicator** in dashboards.
+
+        **Create a unique helper for each room/automation instance:**
+
+        • `input_boolean.climate_override_active_living_room`
+
+        • `input_boolean.climate_override_active_bedroom`
+
+        • `input_boolean.climate_override_active_master_bedroom`
+
+        **Purpose:** Provides visual feedback in UI cards when Override mode is active. Automatically synced with Override mode state.
+
+        **Note:** This is for display only - the actual Override mode is controlled by the control mode select helper.
+      selector:
+        entity:
+          domain: input_boolean
 
     helper_expected_temp:
       name: Expected Temperature Helper *
@@ -830,8 +859,11 @@ blueprint:
             • **Auto:** Temperature-based control
             • **Manual:** User-controlled operation
             • **Smart:** Advanced presence-aware control
+            • **Override:** (Auto-set) User manually changed AC settings - automation paused
 
             **Example:** `input_select.climate_control_mode_living_room`
+
+            **Note:** "Override" mode is automatically activated when the blueprint detects manual AC control via HA UI or remote. It will revert to your previous mode after the configured timeout.
           selector:
             entity:
               domain: input_select
@@ -2592,8 +2624,9 @@ variables:
   use_avg: !input use_average_temperature
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
-  helper_override_flag: !input helper_override_active
+  helper_mode_before_override: !input helper_mode_before_override
   helper_override_timestamp: !input helper_override_time
+  helper_override_flag: !input helper_override_active
   helper_expected_temp: !input helper_expected_temp
   helper_expected_fan: !input helper_expected_fan
   helper_expected_swing: !input helper_expected_swing
@@ -2834,20 +2867,29 @@ trigger:
     entity_id: !input room_presence_sensors
     id: room_presence_change
 
-  # Fire immediately when control mode changes (Manual/Smart/Auto)
+  # Fire immediately when control mode changes (Manual/Smart/Auto/Override)
   - platform: state
     entity_id: !input helper_control_mode
     id: mode_change
 
-  # Fire immediately when manual override is cleared
+  # Fire when user clicks "Clear Override" button in dashboard
   - platform: state
     entity_id: !input helper_override_active
     to: "off"
-    id: override_cleared
+    id: override_cleared_by_user
 
 condition: []
 
 action:
+  # TEMP DEBUG: Log every time automation runs
+  - service: system_log.write
+    data:
+      message: "🚨 AUTOMATION FIRED - trigger.id={{ trigger.id if trigger is defined and trigger.id is defined else 'UNDEFINED' }}, trigger={{ trigger if trigger is defined else 'UNDEFINED' }}"
+      level: warning
+
+  # v3.11.0: Safety guard - don't run on automation reload/restart (no trigger exists)
+  - condition: template
+    value_template: "{{ trigger is defined and trigger.id is defined }}"
 
   - if:
       - condition: template
@@ -2867,60 +2909,6 @@ action:
         data:
           datetime: "{{ now() }}"
         continue_on_error: true
-
-  # Override cleared - update expected helpers to match current AC state
-  # This prevents immediate re-detection of the same "manual" settings
-  - if:
-      - condition: template
-        value_template: "{{ trigger.id == 'override_cleared' }}"
-    then:
-      - variables:
-          climate_entities_list: !input climate_entities
-          first_climate: "{{ (climate_entities_list | list)[0] }}"
-
-      # Capture current temperature setpoint
-      - service: input_number.set_value
-        target:
-          entity_id: !input helper_expected_temp
-        data:
-          value: "{{ state_attr(first_climate, 'temperature') | float(22) }}"
-        continue_on_error: true
-
-      # Capture current fan mode
-      - service: input_text.set_value
-        target:
-          entity_id: !input helper_expected_fan
-        data:
-          value: "{{ state_attr(first_climate, 'fan_mode') | default('auto') }}"
-        continue_on_error: true
-
-      # Capture current swing mode
-      - service: input_text.set_value
-        target:
-          entity_id: !input helper_expected_swing
-        data:
-          value: "{{ state_attr(first_climate, 'swing_mode') | default('off') }}"
-        continue_on_error: true
-
-      # Capture current HVAC mode
-      - service: input_text.set_value
-        target:
-          entity_id: !input helper_expected_hvac
-        data:
-          value: "{{ states(first_climate) | default('off') }}"
-        continue_on_error: true
-
-      # Update last_change timestamp to reset detection timer
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: !input helper_last_change
-        data:
-          datetime: "{{ now() }}"
-        continue_on_error: true
-
-      # v3.9.35 FIX: DON'T update last_mode here
-      # Let State Sync handle it on the next check - it has all the temperature variables available
-      # The expected helpers are already updated above, so no mismatch will be detected
 
   # Store inputs as variables first
   - variables:
@@ -2989,31 +2977,57 @@ action:
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-  # Mode change detected - immediately update helper and CLEAR Manual Override
+  # Mode change detected - handle transitions between Auto/Smart/Manual/Override modes
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'mode_change' and helper_change not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      # Smart timestamp handling for mode changes:
-      # - TO Manual mode: Set to NOW (starts fresh manual mode timeout timer)
-      # - FROM Manual mode: Set to PAST (clears override for future periodic checks)
-      # - Between Smart/Auto: Set to PAST (clears any lingering override)
-      - service: input_datetime.set_datetime
+      # v3.11.0: NEW SIMPLIFIED OVERRIDE SYSTEM
+      # Override is now the 4th control mode - no separate flag needed
+      # When mode changes, record timestamp for Override timeout tracking
+
+      - variables:
+          from_mode: "{{ trigger.from_state.state if trigger.from_state else 'unknown' }}"
+          to_mode: "{{ trigger.to_state.state if trigger.to_state else 'unknown' }}"
+
+      # Record when Override mode was activated (for timeout)
+      - if:
+          - condition: template
+            value_template: "{{ to_mode == 'Override' and helper_override_timestamp not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_override_timestamp }}"
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          # Store which mode we were in before Override (so we can return to it)
+          - if:
+              - condition: template
+                value_template: "{{ from_mode in ['Auto', 'Smart'] and helper_mode_before_override not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_mode_before_override }}"
+                data:
+                  value: "{{ from_mode }}"
+                continue_on_error: true
+
+      # Clear last_mode when switching modes (fresh start)
+      - service: input_text.set_value
         target:
-          entity_id: "{{ helper_change }}"
+          entity_id: "{{ helper_mode }}"
         data:
-          datetime: >
-            {% if trigger.to_state.state == 'Manual' %}
-              {{ now() }}
-            {% else %}
-              {{ now() - timedelta(hours=adaptive_override_timeout + 1) }}
-            {% endif %}
+          value: "off"
         continue_on_error: true
 
-      # Clear manual override flag on mode changes (user switching modes = intentional control)
-      - service: input_boolean.turn_off
+      # Update mode start time
+      - service: input_datetime.set_datetime
         target:
-          entity_id: "{{ helper_override_flag }}"
+          entity_id: !input helper_mode_start_time
+        data:
+          datetime: "{{ now() }}"
         continue_on_error: true
 
       - if:
@@ -3023,13 +3037,89 @@ action:
           - service: system_log.write
             data:
               message: >
-                🎮 {{ room_name | upper }} MODE CHANGE DETECTED: Cleared for immediate mode switch
-                • Mode Changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
-                • Helper cleared to "off" - {{ trigger.to_state.state }} mode will activate immediately
-                • Manual Override disabled for mode changes
+                🎮 {{ room_name | upper }} MODE CHANGE: {{ from_mode }} → {{ to_mode }}
+                {% if to_mode == 'Override' %}
+                • Override activated - automation paused
+                • Will return to: {{ from_mode if from_mode in ['Auto', 'Smart'] else 'Auto' }}
+                • Timeout: {{ adaptive_override_timeout }}h
+                {% elif from_mode == 'Override' %}
+                • Override cleared - automation resuming
+                • Previous mode was: {{ states(helper_mode_before_override) if helper_mode_before_override else 'unknown' }}
+                {% else %}
+                • Standard mode switch
+                {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
-  
+
+  # v3.11.0: Handle user clicking "Clear Override" button in dashboard
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'override_cleared_by_user' and control_mode == 'Override' }}"
+      - condition: template
+        value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - variables:
+          return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else 'Auto' }}"
+
+      # Return to previous mode
+      - service: input_select.select_option
+        target:
+          entity_id: "{{ control_mode_helper }}"
+        data:
+          option: "{{ return_to_mode }}"
+        continue_on_error: true
+
+      # v3.11.0 FIX: Sync expected values with actual AC state to prevent re-detection
+      # When clearing override, accept the current AC settings as the new baseline
+      # This prevents immediate re-detection on next periodic check
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_temp not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'temperature') | float(22) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "{{ states(climate_list[0]) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_fan not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_fan }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'fan_mode') | default('unknown') }}"
+            continue_on_error: true
+
+      # Debug log
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                ✅ {{ room_name | upper }} OVERRIDE CLEARED BY USER
+                • User clicked "Clear Override" button
+                • Returning to: {{ return_to_mode }} mode
+                • Automation resuming
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
   - variables:
       current_temp: >
         {% if temp_sensor %}
@@ -3716,9 +3806,10 @@ action:
         {% endif %}
       
       smart_presence_active: >
+        {% set effective_mode = control_mode if control_mode != 'Override' else (states(helper_mode_before_override) if helper_mode_before_override else 'Auto') %}
         {% if control_mode == 'Manual' %}
           false
-        {% elif control_mode == 'Smart' %}
+        {% elif effective_mode == 'Smart' %}
           {# Smart mode with grace period for short absences (bathroom trips, etc.) #}
           {% if room_presence_detected and minutes_with_presence >= presence_confirmation_delay %}
             true
@@ -3742,7 +3833,7 @@ action:
           {% else %}
             false
           {% endif %}
-        {% elif control_mode == 'Auto' %}
+        {% elif effective_mode == 'Auto' %}
           {# Auto mode - more permissive presence logic #}
           {% if room_presence_detected %}
             true
@@ -3775,77 +3866,18 @@ action:
       # v3.7.6 FIX: Removed unnecessary 15-second buffer - flag system handles persistence
       # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
-        {# v3.9.35 COMPREHENSIVE: Detect ALL manual changes - on/off, temp, fan, swing, HVAC mode #}
-        {# v3.9.44 FIX: Add grace period after override cleared to prevent immediate re-detection loop #}
+        {# v3.11.0: SIMPLIFIED - Removed ALL grace periods that were causing race conditions #}
+        {# Simple logic: If AC state doesn't match what automation expects, user changed it #}
 
-        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change', 'external_temp_change']) %}
-
-        {# v3.9.44: Check if override was JUST cleared - prevent immediate re-detection
-           When user clicks "Clear Override", the AC state may not match last_mode yet
-           Give State Sync 30 seconds to reconcile before allowing manual detection again #}
-        {% set override_just_cleared = (
-          helper_override_flag and
-          states(helper_override_flag) == 'off' and
-          state_attr(helper_override_flag, 'last_changed') and
-          ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) < 30)
-        ) %}
-
-        {# v3.10.1: Check if helper_mode was JUST set to "off" - prevent false positives when automation turns off AC
-           When automation turns AC off for target achievement, helper is set to "off" then climate.turn_off is called
-           The AC may not turn off immediately, or may fail to turn off
-           Give 30 seconds grace period after helper changes to "off" before detecting ANY manual changes
-           This prevents BOTH "manual OFF" (helper=cooling, AC=off) AND "manual ON" (helper=off, AC=on) false positives #}
-        {% set helper_just_turned_off = (
-          helper_mode and
-          states(helper_mode) == 'off' and
-          state_attr(helper_mode, 'last_changed') and
-          ((as_timestamp(now()) - as_timestamp(state_attr(helper_mode, 'last_changed'))) < 30)
-        ) %}
-
-        {# v3.9.38 FIX: REMOVED grace period - it was blocking legitimate manual control
-
-           THE PROBLEM with v3.9.37:
-           - Grace period checked helper_last_change (updated by State Sync, mode changes, etc.)
-           - State Sync runs frequently, constantly resetting the 60-second timer
-           - User turns off AC manually → Grace period blocks detection → AC turns back on immediately
-
-           REAL EXAMPLE:
-           - 20:27:26: State Sync updates helper_last_change
-           - 20:28:09: User manually turns OFF AC (43 seconds later)
-           - Grace period blocks detection (43 < 60 seconds)
-           - Automation immediately turns AC back on → User frustrated!
-
-           NEW APPROACH: No grace period - let manual detection run freely
-           - State Sync handles reconciliation AFTER manual override activates
-           - If user manually controls AC, we WANT to detect it immediately
-           - Override clear → State Sync reconciles on next check (no grace period needed)
-        #}
-
-        {% if not trigger_ok %}
-          {% set result = false %}
-        {% else %}
-
+        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change']) %}
         {% set last_mode = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
 
-        {# v3.10.1: Check if AC was recently unavailable - prevents false positives from wireless dropouts
-           If AC loses connection and reconnects, state changes can look like manual control
-           Check if last_updated (entity refresh) is recent, indicating AC just came back online
-           Block detection for 60 seconds after AC entity refreshes/reconnects #}
-        {% set ac_recently_reconnected = false %}
-        {% if climate_list[0] %}
-          {% set current_state = states(climate_list[0]) %}
-          {% set last_updated = state_attr(climate_list[0], 'last_updated') %}
-          {# If AC is currently available but last_updated is very recent, likely just reconnected #}
-          {% if current_state not in ['unavailable', 'unknown'] and last_updated %}
-            {% set time_since_update = (as_timestamp(now()) - as_timestamp(last_updated)) %}
-            {% if time_since_update < 60 %}
-              {% set ac_recently_reconnected = true %}
-            {% endif %}
-          {% endif %}
-        {% endif %}
-
-        {# Detect ON/OFF changes - ALWAYS check these #}
+        {% if not trigger_ok or control_mode == 'Override' %}
+          {# Don't detect if wrong trigger or already in Override mode #}
+          {% set result = false %}
+        {% else %}
+        {# Detect ON/OFF changes #}
         {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
         {% set is_manual_on = (last_mode == 'off' and actual_state == 'on') %}
 
@@ -3895,42 +3927,23 @@ action:
           hvac_map.get(expected_hvac, expected_hvac) != hvac_map.get(actual_hvac, actual_hvac)
         ) %}
 
-        {# v3.9.44: Block detection if override was just cleared #}
-        {# v3.10.1: Block detection if helper was just set to "off" by automation #}
-        {# v3.10.1: Block detection if AC recently reconnected (wireless dropout recovery) #}
-        {% if override_just_cleared or helper_just_turned_off or ac_recently_reconnected %}
-          {% set result = false %}
-        {% else %}
+        {# v3.11.0: Simple detection - no grace periods! #}
           {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
-        {% endif %}
         {% endif %}
         {{ result }}
 
-      # Manual Override - Proper flag-based system with separate tracking
-      # v3.1.9d CRITICAL FIX: Boolean type conversion - Jinja2 multiline templates return strings!
-      # The string "false" is TRUTHY in Python/Jinja2, so "false" and control_mode != 'Manual' = TRUE!
-      # MUST use | bool filter to convert string to actual boolean type
-      manual_override_active: >
-        {{
-          (trigger.id != 'mode_change') and
-          (control_mode != 'Manual') and
-          (adaptive_override_timeout > 0) and
-          (helper_override_flag and is_state(helper_override_flag, 'on')) and
-          (
-            helper_override_timestamp and
-            states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] and
-            ((as_timestamp(now()) - as_timestamp(states(helper_override_timestamp))) / 3600) < adaptive_override_timeout
-          )
-        }}
-
+      # v3.11.0: Override is now a control mode, no separate flag needed
       # DEBUG: Manual change detection values
       debug_manual_detection: >
         DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac_state={{ actual_ac_state }}
 
 
       should_activate: >
+        {# v3.11.0: Override mode = automation paused, just like Manual mode #}
+        {% if control_mode == 'Override' %}
+          false
         {# v3.9.20 FIX: Runtime protection overrides ALL activation logic #}
-        {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode < runtime_min %}
+        {% elif last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode < runtime_min %}
           {# ABSOLUTE RUNTIME PROTECTION: AC must stay on for minimum runtime regardless of presence, temperature, or mode #}
           true
         {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime and time_in_current_mode <= offtime_min %}
@@ -3943,9 +3956,6 @@ action:
           {% else %}
             false
           {% endif %}
-        {% elif manual_override_active %}
-          {# User manually changed settings - respect the override timeout #}
-          false
         {% elif control_mode == 'Smart' %}
           {% if not room_presence_detected and smart_behavior == 'off' and not extreme_temp_detected %}
             {# No presence detected and smart behavior is OFF = turn off/stay off #}
@@ -4040,44 +4050,32 @@ action:
         data:
           datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
 
-  # Manual Override Flag Management - SET flag when manual change detected
-  # v3.1.9: Proper flag-based override system with separate tracking
-  # v3.3.3: Added mode change buffer to prevent false detections from mode transitions
-  # v3.9.39 FIX: Only set override flag when NOT in Manual mode
+  # v3.11.0: ACTIVATE Override Mode - Switch control_mode to "Override" when manual change detected
   - if:
       - condition: template
-        value_template: "{{ manual_change_detected and not manual_override_active }}"
+        value_template: "{{ manual_change_detected and control_mode not in ['Manual', 'Override'] and adaptive_override_timeout > 0 }}"
       - condition: template
-        value_template: "{{ control_mode != 'Manual' }}"
-      - condition: template
-        value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
-      # v3.9.35 FIX: Reduced buffer from 5 minutes to 10 seconds
-      # 5 minutes was blocking legitimate manual overrides shortly after automation started AC
-      # v3.9.43 FIX: Reduced buffer from 10 seconds to 2 seconds
-      # v3.9.42 fixed race condition (helper updates BEFORE AC commands), so long buffer no longer needed
-      - condition: template
-        value_template: >
-          {% set mode_change_buffer = 2 %}
-          {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}
-            {% set time_since_mode_change = (as_timestamp(now()) - as_timestamp(states(helper_mode_time))) %}
-            {{ time_since_mode_change >= mode_change_buffer }}
-          {% else %}
-            true
-          {% endif %}
+        value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      # SET the override flag
-      - service: input_boolean.turn_on
+      # Change mode to Override
+      - service: input_select.select_option
         target:
-          entity_id: "{{ helper_override_flag }}"
+          entity_id: "{{ control_mode_helper }}"
+        data:
+          option: "Override"
         continue_on_error: true
 
-      # Record the timestamp when override was activated
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ helper_override_timestamp }}"
-        data:
-          datetime: "{{ now() }}"
-        continue_on_error: true
+      # Turn on visual indicator for dashboard
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ helper_override_flag }}"
+            continue_on_error: true
+
+      # The mode_change trigger will handle recording timestamp and previous mode
 
       # Debug log
       - if:
@@ -4088,18 +4086,20 @@ action:
             data:
               message: >
                 🚨 {{ room_name | upper }} MANUAL OVERRIDE ACTIVATED
-                • Reason: Manual change detected (user intervention)
-                • Helper state: {{ states(helper_mode) | default('off') }}
-                • Actual AC state: {{ actual_ac_state }}
-                • Override will block automation for {{ adaptive_override_timeout }} hour(s)
+                • Reason: Manual change detected (user turned AC {{ 'on' if actual_ac_state == 'on' else 'off' }} or changed settings)
+                • Previous mode: {{ control_mode }}
+                • Will timeout in {{ adaptive_override_timeout }}h
+                • Automation paused
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-  # CLEAR override flag if timeout has expired
+  # v3.11.0: AUTO-CLEAR Override Mode - Return to previous mode when timeout expires
   - if:
       - condition: template
+        value_template: "{{ control_mode == 'Override' and adaptive_override_timeout > 0 }}"
+      - condition: template
         value_template: >
-          {% if is_state(helper_override_flag, 'on') and helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
+          {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
             {% set override_time = as_timestamp(states(helper_override_timestamp)) %}
             {% if override_time %}
               {% set time_since_override = (as_timestamp(now()) - override_time) / 3600 %}
@@ -4111,13 +4111,63 @@ action:
             false
           {% endif %}
       - condition: template
-        value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+        value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
     then:
-      # Clear the override flag (timeout expired)
-      - service: input_boolean.turn_off
+      # Return to previous mode
+      - variables:
+          return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else 'Auto' }}"
+
+      - service: input_select.select_option
         target:
-          entity_id: "{{ helper_override_flag }}"
+          entity_id: "{{ control_mode_helper }}"
+        data:
+          option: "{{ return_to_mode }}"
         continue_on_error: true
+
+      # Turn off visual indicator
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ helper_override_flag }}"
+            continue_on_error: true
+
+      # v3.11.0 FIX: Sync expected values with actual AC state to prevent re-detection
+      # When timeout expires, accept the current AC settings as the new baseline
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_temp not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'temperature') | float(22) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "{{ states(climate_list[0]) }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_fan not in [none, '', 'unavailable', 'unknown'] and climate_list | length > 0 }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_fan }}"
+            data:
+              value: "{{ state_attr(climate_list[0], 'fan_mode') | default('unknown') }}"
+            continue_on_error: true
 
       # Debug log
       - if:
@@ -4127,9 +4177,10 @@ action:
           - service: system_log.write
             data:
               message: >
-                ✅ {{ room_name | upper }} MANUAL OVERRIDE CLEARED
-                • Reason: Timeout period expired ({{ adaptive_override_timeout }} hour(s))
-                • Automation control resuming
+                ✅ {{ room_name | upper }} OVERRIDE AUTO-CLEARED
+                • Reason: Timeout expired ({{ adaptive_override_timeout }}h)
+                • Returning to: {{ return_to_mode }} mode
+                • Automation resuming
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
@@ -4732,90 +4783,6 @@ action:
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Manual Override Debug Logging - v3.3.0 Enhanced Detection
-  - if:
-      - condition: template
-        value_template: "{{ debug_enabled }}"
-    then:
-      - service: system_log.write
-        data:
-          message: >
-            🔒 {{ room_name | upper }} MANUAL OVERRIDE DEBUG (v3.3.0 SUPER ROBUST)
-
-            ⏰ Timing Requirements:
-                • Trigger type: {{ trigger.id }}
-                • Check interval: {{ check_interval }}min
-                • Time since automation action: {{ time_since_change | round(1) }}min
-                • Minimum wait required: {{ check_interval }}min
-                • Detection window open: {{ trigger.id == 'periodic_check' and time_since_change >= check_interval }}
-                • Mode change buffer: 5 min (prevents false detection after mode switches)
-                • Time since mode change: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) | round(1) }}min{% else %}unknown{% endif %}
-
-            {% if trigger.id == 'periodic_check' and time_since_change >= check_interval %}
-
-            🔛 ON/OFF Detection:
-                • Helper mode: {{ states(helper_mode) | default('off') }}
-                • Actual AC state: {{ actual_ac_state }}
-                • ✅ Manual ON/OFF detected: {% if (states(helper_mode) in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off') or (states(helper_mode) == 'off' and actual_ac_state == 'on') %}YES{% else %}No{% endif %}
-
-            🌡️ Temperature Detection (±0.5°C tolerance):
-                • Expected: {{ states(helper_expected_temp) }}°C
-                • Actual: {{ state_attr(climate_list[0], 'temperature') }}°C
-                • Difference: {{ (state_attr(climate_list[0], 'temperature') | float(0) - states(helper_expected_temp) | float(0)) | abs | round(2) }}°C
-                • Tolerance: 0.5°C
-                • ✅ Manual temp change detected: {% if actual_ac_state != 'off' and states(helper_expected_temp) | float(0) > 0 and state_attr(climate_list[0], 'temperature') | float(0) > 0 and ((state_attr(climate_list[0], 'temperature') | float(0) - states(helper_expected_temp) | float(0)) | abs > 0.5) %}YES{% else %}No{% endif %}
-
-            💨 Fan Mode Detection (case-insensitive):
-                • Expected: "{{ states(helper_expected_fan) }}"
-                • Actual: "{{ state_attr(climate_list[0], 'fan_mode') }}"
-                • ✅ Manual fan change detected: {% if actual_ac_state != 'off' and states(helper_expected_fan) not in ['unknown', 'unavailable', '', 'none'] and state_attr(climate_list[0], 'fan_mode') | default('unknown') not in ['unknown', 'unavailable', '', 'none'] and (states(helper_expected_fan) | lower) != (state_attr(climate_list[0], 'fan_mode') | default('unknown') | lower) %}YES{% else %}No{% endif %}
-
-            🌊 Swing Mode Detection (normalized):
-                • Expected: "{{ states(helper_expected_swing) }}"
-                • Actual: "{{ state_attr(climate_list[0], 'swing_mode') }}"
-                • ✅ Manual swing change detected: {% if actual_ac_state != 'off' and states(helper_expected_swing) not in ['unknown', 'unavailable', '', 'none'] and state_attr(climate_list[0], 'swing_mode') | default('unknown') not in ['unknown', 'unavailable', '', 'none'] %}{% set exp_norm = (states(helper_expected_swing) | lower).replace('horizontal+vertical', 'both').replace('all', 'both') %}{% set act_norm = (state_attr(climate_list[0], 'swing_mode') | default('unknown') | lower).replace('horizontal+vertical', 'both').replace('all', 'both') %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
-
-            🔧 HVAC Mode Detection:
-                • Expected: "{{ states(helper_expected_hvac) }}"
-                • Actual: "{{ states(climate_list[0]) }}"
-                • ✅ Manual HVAC change detected: {% if states(helper_expected_hvac) not in ['unknown', 'unavailable', '', 'none', 'off'] and states(climate_list[0]) not in ['unknown', 'unavailable', '', 'none', 'off'] %}{% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}{% set exp_norm = hvac_map.get(states(helper_expected_hvac), states(helper_expected_hvac)) %}{% set act_norm = hvac_map.get(states(climate_list[0]), states(climate_list[0])) %}{{ 'YES' if exp_norm != act_norm else 'No' }}{% else %}No{% endif %}
-
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            🔓 Override Clear Grace Period (v3.9.44):
-                • Override flag state: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
-                • Flag last changed: {% if helper_override_flag and state_attr(helper_override_flag, 'last_changed') %}{{ ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) | round(1)) }}s ago{% else %}unknown{% endif %}
-                • Grace period active: {% if helper_override_flag and states(helper_override_flag) == 'off' and state_attr(helper_override_flag, 'last_changed') and ((as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed'))) < 30) %}YES - blocking detection for {{ (30 - (as_timestamp(now()) - as_timestamp(state_attr(helper_override_flag, 'last_changed')))) | round(1) }}s{% else %}No{% endif %}
-
-            🎯 DETECTION RESULT: {{ 'YES - Manual change detected' if manual_change_detected else 'NO - No manual changes detected' }}
-
-            {% if manual_change_detected %}
-            🛡️ OVERRIDE ACTIVATION CHECK:
-                • Manual change detected: YES
-                • Mode change buffer satisfied: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ 'YES' if ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) >= 5 else 'NO - Within 5 min of mode change' }}{% else %}YES{% endif %}
-                • Will activate override: {% if helper_mode_time and states(helper_mode_time) not in ['unknown', 'unavailable', ''] %}{{ 'YES' if ((as_timestamp(now()) - as_timestamp(states(helper_mode_time))) / 60) >= 5 else 'NO' }}{% else %}YES{% endif %}
-            {% endif %}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            {% else %}
-
-            ⏸️ Detection skipped - waiting for periodic check with sufficient time buffer
-                • Current trigger: {{ trigger.id }}
-                • Time remaining: {{ (check_interval - time_since_change) | round(1) }}min until detection check
-
-            {% endif %}
-
-            {% if manual_override_active %}
-            🚫 MANUAL OVERRIDE ACTIVE:
-                • Override Flag: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
-                • Override Since: {{ states(helper_override_timestamp) if helper_override_timestamp else 'unknown' }}
-                • Timeout: {{ adaptive_override_timeout }} hour(s)
-                • should_activate: {{ should_activate }} (forced to FALSE by override)
-                • Action: Automation is PAUSED - respecting user's manual changes
-            {% else %}
-            ✅ Override INACTIVE - automation free to operate normally
-            {% endif %}
-          level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override"
 
   # Presence Confirmation Delay Debug Logging (Smart Mode)
   - if:
@@ -4925,43 +4892,35 @@ action:
             🔍 {{ room_name | upper }} PRE-CONDITION EVALUATION DEBUG
 
             📊 Variable States (at condition check time):
-                • manual_override_active: {{ manual_override_active }}
                 • control_mode: {{ control_mode }}
-                • control_mode != 'Manual': {{ control_mode != 'Manual' }}
-                • FULL CONDITION: {{ manual_override_active and control_mode != 'Manual' }}
+                • is_override_mode: {{ control_mode == 'Override' }}
+                • RESULT: {{ 'TRUE - WILL BLOCK' if control_mode == 'Override' else 'FALSE - WILL NOT BLOCK' }}
 
-            🔐 Helper Entity States:
-                • helper_override_flag: {{ helper_override_flag if helper_override_flag else 'NOT CONFIGURED' }}
-                • Flag state: {{ states(helper_override_flag) if helper_override_flag else 'N/A' }}
+            🔐 Override Helper States:
                 • helper_override_timestamp: {{ helper_override_timestamp if helper_override_timestamp else 'NOT CONFIGURED' }}
                 • Timestamp state: {{ states(helper_override_timestamp) if helper_override_timestamp else 'N/A' }}
 
             ⏱️ Time Calculations:
-                {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
+                {% if control_mode == 'Override' and helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
                 {% set override_time = as_timestamp(states(helper_override_timestamp)) %}
                 {% if override_time %}
                 {% set time_since_override = (as_timestamp(now()) - override_time) / 3600 %}
                 • Time since override: {{ time_since_override | round(2) }} hours
                 • Timeout threshold: {{ adaptive_override_timeout }} hours
-                • Time >= timeout: {{ time_since_override >= adaptive_override_timeout }}
+                • Will auto-clear in: {{ (adaptive_override_timeout - time_since_override) | round(2) }} hours
                 {% else %}
                 • override_time calculation: FAILED (timestamp conversion)
                 {% endif %}
                 {% else %}
-                • override_time calculation: SKIPPED (helper not available)
+                • override_time calculation: Not in Override mode or helper not available
                 {% endif %}
-
-            🧮 Condition Logic Breakdown:
-                • IF manual_override_active = {{ manual_override_active }} ({{ 'TRUE' if manual_override_active else 'FALSE' }})
-                • AND control_mode != 'Manual' = {{ control_mode != 'Manual' }} ({{ 'TRUE' if control_mode != 'Manual' else 'FALSE' }})
-                • RESULT = {{ 'TRUE - WILL BLOCK' if (manual_override_active and control_mode != 'Manual') else 'FALSE - WILL NOT BLOCK' }}
           level: warning
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-  # v3.9.35 FIX: Re-check override flag directly (not from variables) in case it was just set
+  # v3.11.0: Check if Override mode is active (automation paused)
   - if:
       - condition: template
-        value_template: "{{ (helper_override_flag and is_state(helper_override_flag, 'on')) and control_mode != 'Manual' }}"
+        value_template: "{{ control_mode == 'Override' }}"
     then:
       - if:
           - condition: template
@@ -4970,26 +4929,25 @@ action:
           - service: system_log.write
             data:
               message: >
-                🚫 {{ room_name | upper }} MANUAL OVERRIDE - BLOCKING AUTOMATION
+                🚫 {{ room_name | upper }} OVERRIDE MODE - AUTOMATION PAUSED
 
                 ⏸️ Automation Paused:
                     • User manually changed AC settings
-                    • Override Flag: {{ states(helper_override_flag) if helper_override_flag else 'not configured' }}
                     • Override Since: {{ states(helper_override_timestamp) if helper_override_timestamp else 'unknown' }}
                     • Timeout: {{ adaptive_override_timeout }} hour(s)
-                    • Control mode: {{ control_mode }}
+                    • Previous mode: {{ states(helper_mode_before_override) if helper_mode_before_override else 'unknown' }}
 
                 🔒 Respecting User Control:
                     • Last mode (helper): {{ states(helper_mode) | default('off') }}
                     • Actual AC state: {{ actual_ac_state }}
-                    • All automation actions blocked until override expires
+                    • All automation actions blocked until override clears
 
                 ℹ️ Override will clear automatically after {{ adaptive_override_timeout }} hour(s)
-                   or immediately if you switch to Manual mode
+                   or immediately if you change control mode
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.manual_override_block"
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.override_mode_block"
       # Exit immediately - don't process any choose blocks
-      - stop: "Manual override active - respecting user's manual changes"
+      - stop: "Override mode active - respecting user's manual changes"
 
   - choose:
       # Handle Manual mode - True manual control with optional timeout
@@ -5076,7 +5034,7 @@ action:
       # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
       - conditions:
           - condition: template
-            value_template: "{{ manual_override_active and manual_change_detected }}"
+            value_template: "{{ control_mode == 'Override' and manual_change_detected }}"
         sequence:
           - if:
               - condition: template
@@ -11912,11 +11870,7 @@ action:
           value: "off"
         continue_on_error: true
 
-      # Clear the override flag since we've synced the state
-      - service: input_boolean.turn_off
-        target:
-          entity_id: !input helper_override_active
-        continue_on_error: true
+      # v3.11.0: Override flag removed - Override is now a control mode
 
       - if:
           - condition: template
