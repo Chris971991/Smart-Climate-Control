@@ -121,6 +121,17 @@ HELPER_DEFINITIONS = {
         "has_date": True,
         "has_time": True,
     },
+    "override_timeout": {
+        "domain": "input_number",
+        "name": "{room} Override Timeout",
+        "icon": "mdi:timer-sand",
+        "min": 0,
+        "max": 24,
+        "step": 0.5,
+        "initial": 3,
+        "unit_of_measurement": "h",
+        "mode": "box",
+    },
     "proximity_override": {
         "domain": "input_boolean",
         "name": "{room} Climate Proximity Override",
@@ -193,7 +204,7 @@ FEATURE_HELPERS = {
         "temp_stable_since",
         "last_transition",
     ],
-    "manual_override": ["manual_override", "mode_before_override", "override_time", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
+    "manual_override": ["manual_override", "mode_before_override", "override_time", "override_timeout", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected"],
 }
@@ -1823,7 +1834,26 @@ cards:
     card:
       type: custom:mushroom-template-card
       primary: Climate Control
-      secondary: Manual Override - Tap to Clear
+      secondary: |-
+        {{% set override_time = states('input_datetime.climate_override_time_{sanitized_name}') %}}
+        {{% set timeout_hours = states('input_number.climate_override_timeout_{sanitized_name}') | float(3) %}}
+        {{% if override_time not in ['unknown', 'unavailable', ''] %}}
+          {{% set time_since = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}}
+          {{% set time_remaining = timeout_hours - time_since %}}
+          {{% if time_remaining > 0 %}}
+            {{% set hours = time_remaining | int %}}
+            {{% set minutes = ((time_remaining - hours) * 60) | int %}}
+            {{% if hours > 0 %}}
+              Override {{{{ hours }}}}h {{{{ minutes }}}}m • Tap to Clear
+            {{% else %}}
+              Override {{{{ minutes }}}}m • Tap to Clear
+            {{% endif %}}
+          {{% else %}}
+            Manual Override - Tap to Clear
+          {{% endif %}}
+        {{% else %}}
+          Manual Override - Tap to Clear
+        {{% endif %}}
       icon: mdi:alert-circle-outline
       icon_color: orange
       layout: horizontal
@@ -2209,7 +2239,26 @@ cards:
     card:
       type: custom:mushroom-template-card
       primary: Climate Control
-      secondary: Manual Override - Tap to Clear
+      secondary: |-
+        {{% set override_time = states('input_datetime.climate_override_time_{sanitized_name}') %}}
+        {{% set timeout_hours = states('input_number.climate_override_timeout_{sanitized_name}') | float(3) %}}
+        {{% if override_time not in ['unknown', 'unavailable', ''] %}}
+          {{% set time_since = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}}
+          {{% set time_remaining = timeout_hours - time_since %}}
+          {{% if time_remaining > 0 %}}
+            {{% set hours = time_remaining | int %}}
+            {{% set minutes = ((time_remaining - hours) * 60) | int %}}
+            {{% if hours > 0 %}}
+              Override {{{{ hours }}}}h {{{{ minutes }}}}m • Tap to Clear
+            {{% else %}}
+              Override {{{{ minutes }}}}m • Tap to Clear
+            {{% endif %}}
+          {{% else %}}
+            Manual Override - Tap to Clear
+          {{% endif %}}
+        {{% else %}}
+          Manual Override - Tap to Clear
+        {{% endif %}}
       icon: mdi:alert-circle-outline
       icon_color: orange
       layout: horizontal
