@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.5
+  name: Ultimate Smart Climate Control - v3.11.6
 
   description: |
-    **Ultimate Smart Climate Control v3.11.5**
+    **Ultimate Smart Climate Control v3.11.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,16 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.5
+    ## 🆕 Latest Update - v3.11.6
 
-    **🐛 CRITICAL FIX: False Override When Automation Turns AC On**
-    - ✅ **FIXED**: False override triggers when automation itself activates cooling/heating
-    - ✅ **ROOT CAUSE**: Race condition - helper update happens after AC command, causing false manual detection
-    - ✅ **SOLUTION**: Exclude climate_state_change trigger from manual detection (only check on periodic_check/temp_change)
-    - 🎯 **RESULT**: No more false "manual override" when reaching comfort zone
+    **🐛 CRITICAL FIX: False Override When Comfort Zone Turns AC Off**
+    - ✅ **FIXED**: False override triggers when automation turns OFF AC (comfort zone reached)
+    - ✅ **ROOT CAUSE**: helper_change not updated when comfort zone turns off AC → hardware delay check fails
+    - ✅ **SOLUTION**: Update helper_change timestamp when comfort zone turns OFF AC
+    - 🎯 **RESULT**: No more false "manual override" 8-30 seconds after comfort zone shutdown
 
     **📝 Previous Updates:**
-    - v3.11.3: 🐛 Fixed false override during AC off-cycle (45-second grace period)
+    - v3.11.5: 🐛 Fixed false override when automation turns AC ON (excluded climate_state_change trigger)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -8923,12 +8923,21 @@ action:
                 target:
                   entity_id: !input climate_entities
                 continue_on_error: true
-              
+
               - service: input_text.set_value
                 target:
                   entity_id: !input helper_last_mode
                 data:
                   value: "off"
+
+              # v3.11.6 FIX: Update helper_change to prevent false manual detection
+              # When automation turns OFF AC, update timestamp so hardware delay check works
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
               # Update mode start time for off-time protection tracking (always update when going to OFF)
               - if:
