@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.2
+  name: Ultimate Smart Climate Control - v3.11.5
 
   description: |
-    **Ultimate Smart Climate Control v3.11.2**
+    **Ultimate Smart Climate Control v3.11.5**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,17 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.2
+    ## 🆕 Latest Update - v3.11.5
 
-    **⏱️ NEW: Dynamic Override Countdown Timer**
-    - ✅ **NEW**: Dashboard cards now show dynamic countdown timer on override button
-    - ✅ **NEW**: Timeout value automatically synced from automation config (no manual configuration!)
-    - ✅ **ENHANCED**: Shows remaining time in hours/minutes (e.g., "Override 2h 30m • Tap to Clear")
-    - 🎯 **UX IMPROVEMENT**: Users can see exactly when override will auto-clear
+    **🐛 CRITICAL FIX: False Override When Automation Turns AC On**
+    - ✅ **FIXED**: False override triggers when automation itself activates cooling/heating
+    - ✅ **ROOT CAUSE**: Race condition - helper update happens after AC command, causing false manual detection
+    - ✅ **SOLUTION**: Exclude climate_state_change trigger from manual detection (only check on periodic_check/temp_change)
+    - 🎯 **RESULT**: No more false "manual override" when reaching comfort zone
 
     **📝 Previous Updates:**
-    - v3.11.1: 🐛 Fixed false override after Smart mode turns off AC
-    - v3.11.0: 🎉 Complete manual override system redesign (4th control mode)
+    - v3.11.3: 🐛 Fixed false override during AC off-cycle (45-second grace period)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3882,11 +3881,21 @@ action:
       # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
         {# v3.11.0: SIMPLIFIED - Removed ALL grace periods that were causing race conditions #}
+        {# v3.11.3 FIX: Added AC hardware off-cycle grace period (30-45 seconds) #}
+        {# v3.11.5 FIX: Exclude climate_state_change to prevent false positives when automation turns AC on/off #}
         {# Simple logic: If AC state doesn't match what automation expects, user changed it #}
 
-        {% set trigger_ok = (trigger.id in ['periodic_check', 'climate_state_change', 'temp_change']) %}
+        {% set trigger_ok = (trigger.id in ['periodic_check', 'temp_change']) %}
         {% set last_mode = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
+
+        {# v3.11.3: Check if automation recently commanded a change (AC hardware needs time to respond) #}
+        {% set last_change_time = states(helper_change) %}
+        {% set time_since_change = 999 %}
+        {% if last_change_time and last_change_time not in ['unknown', 'unavailable', ''] %}
+          {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change_time)) %}
+        {% endif %}
+        {% set within_hardware_delay = (time_since_change < 45) %}
 
         {% if not trigger_ok or control_mode == 'Override' %}
           {# Don't detect if wrong trigger or already in Override mode #}
@@ -3894,7 +3903,8 @@ action:
         {% else %}
         {# Detect ON/OFF changes #}
         {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off') %}
-        {% set is_manual_on = (last_mode == 'off' and actual_state == 'on') %}
+        {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
+        {% set is_manual_on = (last_mode == 'off' and actual_state == 'on' and not within_hardware_delay) %}
 
         {# v3.9.35 FIX: Only check temp/fan/swing/HVAC changes when AC should be OFF
            When automation is actively controlling AC (last_mode != 'off'), don't compare expected values
