@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.6
+  name: Ultimate Smart Climate Control - v3.11.7
 
   description: |
-    **Ultimate Smart Climate Control v3.11.6**
+    **Ultimate Smart Climate Control v3.11.7**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,16 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.6
+    ## 🆕 Latest Update - v3.11.7
 
-    **🐛 CRITICAL FIX: False Override When Comfort Zone Turns AC Off**
-    - ✅ **FIXED**: False override triggers when automation turns OFF AC (comfort zone reached)
-    - ✅ **ROOT CAUSE**: helper_change not updated when comfort zone turns off AC → hardware delay check fails
-    - ✅ **SOLUTION**: Update helper_change timestamp when comfort zone turns OFF AC
-    - 🎯 **RESULT**: No more false "manual override" 8-30 seconds after comfort zone shutdown
+    **🐛 CRITICAL FIX: AC Activates in Empty Room (Smart Mode Presence Bug)**
+    - ✅ **FIXED**: AC activates when room empty and grace period expired in Smart mode
+    - ✅ **ROOT CAUSE**: approaching_home pre-conditioning triggered when already home in different room
+    - ✅ **SOLUTION**: Only apply approaching_home when nobody home yet (actual pre-conditioning from outside)
+    - 🎯 **RESULT**: Pre-conditioning still works, but AC won't activate in empty rooms when you're elsewhere in house!
 
     **📝 Previous Updates:**
-    - v3.11.5: 🐛 Fixed false override when automation turns AC ON (excluded climate_state_change trigger)
+    - v3.11.6: 🐛 Fixed false override when automation turns AC OFF (comfort zone reached)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3842,7 +3842,9 @@ action:
             {% else %}
               false
             {% endif %}
-          {% elif approaching_home %}
+          {% elif approaching_home and not anyone_home %}
+            {# v3.11.7 FIX: Only use approaching_home if nobody is home yet (pre-conditioning) #}
+            {# This prevents AC activating when you're already home in a different room #}
             true
           {% else %}
             false
