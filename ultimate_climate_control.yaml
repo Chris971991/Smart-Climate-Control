@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.7
+  name: Ultimate Smart Climate Control - v3.11.8
 
   description: |
-    **Ultimate Smart Climate Control v3.11.7**
+    **Ultimate Smart Climate Control v3.11.8**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,16 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.7
+    ## 🆕 Latest Update - v3.11.8
 
-    **🐛 CRITICAL FIX: AC Activates in Empty Room (Smart Mode Presence Bug)**
-    - ✅ **FIXED**: AC activates when room empty and grace period expired in Smart mode
-    - ✅ **ROOT CAUSE**: approaching_home pre-conditioning triggered when already home in different room
-    - ✅ **SOLUTION**: Only apply approaching_home when nobody home yet (actual pre-conditioning from outside)
-    - 🎯 **RESULT**: Pre-conditioning still works, but AC won't activate in empty rooms when you're elsewhere in house!
+    **🐛 CRITICAL FIX: Grace Period False Activation in Smart Mode (Option C)**
+    - ✅ **FIXED**: AC activates in empty rooms when BLE shows you in a different room
+    - ✅ **ROOT CAUSE**: Grace period used stale presence timer, didn't check current BLE location or AC state
+    - ✅ **SOLUTION**: Split grace period logic - AC OFF = no start when in different room, AC ON = keep running normally
+    - 🎯 **RESULT**: Won't START AC when you're elsewhere, but preserves grace period when AC already running!
 
     **📝 Previous Updates:**
-    - v3.11.6: 🐛 Fixed false override when automation turns AC OFF (comfort zone reached)
+    - v3.11.7: 🐛 Fixed approaching_home triggering when already home in different room
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -3833,14 +3833,42 @@ action:
             {# 2. Had prior confirmed presence - left after AC was already running #}
             {# v3.8.2 FIX: Check if last presence timer shows we HAD accumulated enough time #}
             {# This prevents grace period from keeping AC on if someone just walked in briefly #}
-            {% set last_timer_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
-            {% if last_timer_val not in ['unknown', 'unavailable', '', None] %}
-              {% set time_when_left = as_timestamp(last_timer_val) %}
-              {% set time_at_timeout = as_timestamp(now()) - (presence_timeout * 60) %}
-              {# If timer was set more than (timeout + confirmation_delay) ago, we had confirmed presence #}
-              {{ (presence_confirmation_delay == 0) or (time_when_left < time_at_timeout) }}
-            {% else %}
+            {# v3.11.8 FIX (Option C): Split logic based on AC state #}
+            {# - AC OFF: Don't START it when BLE shows you in different room #}
+            {# - AC ON: Keep it running (grace period works normally) #}
+            {% set ble_in_different_room = namespace(value=false) %}
+            {% if room_ble_name %}
+              {% for sensor in room_sensors %}
+                {% if sensor.startswith('sensor.') and '_ble_area' in sensor %}
+                  {% set current_ble_state = states(sensor) | lower %}
+                  {% if current_ble_state not in ['unknown', 'unavailable', '', room_ble_name | lower] %}
+                    {# BLE is showing a specific different room (not unknown, not this room) #}
+                    {% set ble_in_different_room.value = true %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {# Check if AC is currently running (any climate entity in cooling/heating mode) #}
+            {% set ac_currently_running = namespace(value=false) %}
+            {% for entity in climate_list %}
+              {% if states(entity) in ['cool', 'heat', 'heat_cool', 'dry', 'fan_only'] %}
+                {% set ac_currently_running.value = true %}
+              {% endif %}
+            {% endfor %}
+            {% if ble_in_different_room.value and not ac_currently_running.value %}
+              {# BLE shows different room AND AC is OFF - don't START it via grace period #}
               false
+            {% else %}
+              {# Either BLE ok, OR AC already running (preserve grace period functionality) #}
+              {% set last_timer_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
+              {% if last_timer_val not in ['unknown', 'unavailable', '', None] %}
+                {% set time_when_left = as_timestamp(last_timer_val) %}
+                {% set time_at_timeout = as_timestamp(now()) - (presence_timeout * 60) %}
+                {# If timer was set more than (timeout + confirmation_delay) ago, we had confirmed presence #}
+                {{ (presence_confirmation_delay == 0) or (time_when_left < time_at_timeout) }}
+              {% else %}
+                false
+              {% endif %}
             {% endif %}
           {% elif approaching_home and not anyone_home %}
             {# v3.11.7 FIX: Only use approaching_home if nobody is home yet (pre-conditioning) #}
@@ -11824,13 +11852,21 @@ action:
 
           # v3.9.31 CRITICAL FIX: Check if AC is in continue mode pursuing overshoot target
           # Don't turn off AC if it's still trying to reach the overshoot target
+          # v3.11.8 FIX: Only apply continue mode when AC was ALREADY running in cooling/heating
+          # Prevents false activation when entering room at comfortable temp above overshoot target
           in_continue_mode_cooling: >
             {% set overshoot_target = target_temp - target_overshoot %}
-            {{ enable_cooling and current_temp > overshoot_target and current_temp <= comfort_max_temp }}
+            {{ enable_cooling
+               and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high']
+               and current_temp > overshoot_target
+               and current_temp <= comfort_max_temp }}
 
           in_continue_mode_heating: >
             {% set overshoot_target = target_temp + target_overshoot %}
-            {{ enable_heating and current_temp < overshoot_target and current_temp >= comfort_min_temp }}
+            {{ enable_heating
+               and last_mode in ['heating_low', 'heating_medium', 'heating_high']
+               and current_temp < overshoot_target
+               and current_temp >= comfort_min_temp }}
 
           should_be_running: >
             {% set actual_hvac_mode = states(climate_list[0]) | default('off') %}
