@@ -3998,7 +3998,9 @@ action:
         {% if control_mode == 'Override' %}
           false
         {# v3.9.20 FIX: Runtime protection overrides ALL activation logic #}
-        {% elif last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode < runtime_min %}
+        {# v3.11.8 FIX: Runtime protection should only apply when AC is actually still running #}
+        {# If user manually turned off AC, respect that even if runtime_min not reached #}
+        {% elif last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode < runtime_min and actual_ac_state == 'on' %}
           {# ABSOLUTE RUNTIME PROTECTION: AC must stay on for minimum runtime regardless of presence, temperature, or mode #}
           true
         {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime and time_in_current_mode <= offtime_min %}
@@ -11822,29 +11824,41 @@ action:
           logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # STATE SYNCHRONIZATION: Handle helper/AC mismatch (e.g., after HA restart)
-  # If helper says "off" but AC is actually running, intelligently decide what to do
+  # v3.11.8 FIX: Expanded to catch heating/cooling mode mismatches, not just off/on mismatches
+  # If helper says "off" but AC is running, OR helper says heating but AC is cooling (or vice versa)
   - if:
       - condition: template
-        value_template: "{{ last_mode == 'off' and actual_ac_state == 'on' }}"
+        value_template: >
+          {% set actual_hvac = states(climate_list[0]) | default('off') %}
+          {% set helper_is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+          {% set helper_is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+          {% set ac_is_heating = actual_hvac in ['heat'] %}
+          {% set ac_is_cooling = actual_hvac in ['cool'] %}
+          {{
+            (last_mode == 'off' and actual_ac_state == 'on') or
+            (helper_is_heating and ac_is_cooling) or
+            (helper_is_cooling and ac_is_heating)
+          }}
     then:
       # Determine what the AC is probably doing based on current temperature
+      # v3.11.8 FIX: Respect enable_cooling/enable_heating flags - don't guess heating mode if heating disabled!
       - variables:
           probable_mode: >
-            {% if current_temp >= cooling_high_temp %}
+            {% if enable_cooling and current_temp >= cooling_high_temp %}
               cooling_high
-            {% elif current_temp >= cooling_medium_temp %}
+            {% elif enable_cooling and current_temp >= cooling_medium_temp %}
               cooling_medium
-            {% elif current_temp >= cooling_low_temp %}
+            {% elif enable_cooling and current_temp >= cooling_low_temp %}
               cooling_low
-            {% elif current_temp <= heating_high_temp %}
+            {% elif enable_heating and current_temp <= heating_high_temp %}
               heating_high
-            {% elif current_temp <= heating_medium_temp %}
+            {% elif enable_heating and current_temp <= heating_medium_temp %}
               heating_medium
-            {% elif current_temp <= heating_low_temp %}
+            {% elif enable_heating and current_temp <= heating_low_temp %}
               heating_low
-            {% elif current_temp >= comfort_max_temp %}
+            {% elif enable_cooling and current_temp >= comfort_max_temp %}
               cooling_low
-            {% elif current_temp <= comfort_min_temp %}
+            {% elif enable_heating and current_temp <= comfort_min_temp %}
               heating_low
             {% else %}
               off
