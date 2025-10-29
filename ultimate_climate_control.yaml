@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.8
+  name: Ultimate Smart Climate Control - v3.11.9
 
   description: |
-    **Ultimate Smart Climate Control v3.11.8**
+    **Ultimate Smart Climate Control v3.11.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -8123,15 +8123,19 @@ action:
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Pre-conditioning when approaching
+      # v3.11.9 FIX: Only pre-condition when approaching from OUTSIDE, not when already home
       - conditions:
           - condition: template
             value_template: "{{ enable_pre_conditioning }}"
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ approaching_home }}"
+            value_template: "{{ approaching_home and not anyone_home }}"
           - condition: template
-            value_template: "{{ current_temp > cooling_medium_temp or current_temp < heating_medium_temp }}"
+            value_template: >
+              {% set needs_cooling = current_temp > cooling_medium_temp and current_temp > target_temp and enable_cooling %}
+              {% set needs_heating = current_temp < heating_medium_temp and current_temp < target_temp and enable_heating %}
+              {{ needs_cooling or needs_heating }}
         sequence:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -8260,9 +8264,10 @@ action:
       # Uses low fan speed for maximum efficiency with minimal power consumption
       # NEW: Prevents short cycling by using target-based hysteresis logic
       # IMPORTANT: Only for pre-conditioning - not when already home in Smart mode
+      # v3.11.9 FIX: Only pre-condition when approaching from OUTSIDE, not when already home
       - conditions:
           - condition: template
-            value_template: "{{ should_activate and approaching_home }}"
+            value_template: "{{ should_activate and approaching_home and not anyone_home }}"
           - condition: template
             value_template: >
               {% if last_mode == 'cooling' %}
