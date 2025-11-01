@@ -58,16 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.8
+    ## 🆕 Latest Update - v3.11.9
 
-    **🐛 CRITICAL FIX: Grace Period False Activation in Smart Mode (Option C)**
-    - ✅ **FIXED**: AC activates in empty rooms when BLE shows you in a different room
-    - ✅ **ROOT CAUSE**: Grace period used stale presence timer, didn't check current BLE location or AC state
-    - ✅ **SOLUTION**: Split grace period logic - AC OFF = no start when in different room, AC ON = keep running normally
-    - 🎯 **RESULT**: Won't START AC when you're elsewhere, but preserves grace period when AC already running!
-
+    **🐛 CRITICAL FIX: Presence Timer Reset Catch-22 (Instant AC Activation)**
+    - ✅ **FIXED**: AC activates instantly without waiting for presence confirmation delay
+    - ✅ **ROOT CAUSE**: Old timer timestamps blocked by smart_presence_active check creates circular logic
+    - ✅ **SOLUTION**: Removed blocking condition - timer ALWAYS resets when returning after grace period
+    - 🎯 **RESULT**: Presence confirmation delay works correctly - no more instant activation!
+    
     **📝 Previous Updates:**
-    - v3.11.7: 🐛 Fixed approaching_home triggering when already home in different room
+    - v3.11.8: 🐛 Fixed grace period false activation when BLE shows different room
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -84,7 +84,7 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.11.9** - 🐛 CRITICAL FIX: Manual override detection race condition (automation instantly overriding user's AC turn-off)
+    **v3.11.9** - 🐛 CRITICAL FIX: Presence confirmation delay bypassed (instant AC activation)
     **v3.11.8** - 🐛 Three major bug fixes: Continue mode false activation, runtime protection, state sync
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
@@ -4068,9 +4068,12 @@ action:
             {% set current_timestamp = as_timestamp(now()) %}
             {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
             {# Timer in "expired" state means you previously LEFT (reset block set it to NOW - timeout - 1) #}
-            {# v3.9.24 FIX: Only reset if NOT already confirmed (smart_presence_active = False) #}
-            {# If smart_presence_active = True, you've been here a while, don't reset! #}
-            {{ (minutes_since_timer_set > (presence_timeout + 1) and not smart_presence_active) or minutes_since_timer_set > 120 }}
+            {# v3.11.9 FIX: Removed smart_presence_active check - it creates a catch-22 where: #}
+            {# 1. Old timer timestamp makes smart_presence_active = TRUE #}
+            {# 2. TRUE blocks timer reset #}
+            {# 3. AC activates instantly using old timestamp #}
+            {# Solution: ALWAYS reset timer when returning after grace period expires #}
+            {{ minutes_since_timer_set > (presence_timeout + 1) }}
           {% else %}
             true
           {% endif %}
