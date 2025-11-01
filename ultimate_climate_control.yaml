@@ -84,8 +84,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.1.8** - 🐛 CRITICAL FIX: Removed time-based override persistence (eliminated all false re-triggers)
-    **v3.1.7** - ❌ BROKEN: Attempted mode change timestamp fix (still had re-trigger issues)
+    **v3.11.9** - 🐛 CRITICAL FIX: Manual override detection race condition (automation instantly overriding user's AC turn-off)
+    **v3.11.8** - 🐛 Three major bug fixes: Continue mode false activation, runtime protection, state sync
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -4162,6 +4162,12 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
+      # v3.11.9 FIX: Stop automation immediately to prevent control logic from running with stale control_mode variable
+      # The control_mode variable is calculated once at automation start. Even though we just changed
+      # control_mode_helper to "Override", the variable still holds the old value (e.g., "Smart").
+      # If we continue, the control logic will see control_mode="Smart" and turn AC back on!
+      - stop: "Manual override detected - stopping automation to prevent interference with user's manual changes"
+
   # v3.11.0: CLEAR Override when button clicked (boolean turned off) - runs every automation cycle
   - if:
       - condition: template
@@ -5070,6 +5076,31 @@ action:
       - stop: "Override mode active - respecting user's manual changes"
 
   - choose:
+      # v3.11.9 FIX: Defensive check - verify Override mode using actual helper state
+      # This catches cases where Override was just activated in this same automation run.
+      # The control_mode variable may still hold the old value, but the helper entity is already updated.
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ control_mode_helper not in [none, '', 'unavailable', 'unknown']
+                 and is_state(control_mode_helper, 'Override') }}
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🛡️ {{ room_name | upper }} DEFENSIVE CHECK: Override mode detected via helper state
+                    • control_mode variable: {{ control_mode }}
+                    • control_mode_helper state: {{ states(control_mode_helper) }}
+                    • This prevents AC control when Override was just activated
+                    • Stopping automation to respect user's manual changes
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.defensive_override_check"
+          - stop: "Override mode active (helper state check) - respecting user's manual changes"
+
       # Handle Manual mode - True manual control with optional timeout
       - conditions:
           - condition: template
