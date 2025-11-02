@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.13
+  name: Ultimate Smart Climate Control - v3.11.14
 
   description: |
-    **Ultimate Smart Climate Control v3.11.13**
+    **Ultimate Smart Climate Control v3.11.14**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -11992,6 +11992,25 @@ action:
       # Determine what the AC is probably doing based on current temperature
       # v3.11.8 FIX: Respect enable_cooling/enable_heating flags - don't guess heating mode if heating disabled!
       - variables:
+          # v3.11.14 FIX: Check if AC is in continue mode FIRST before calculating probable_mode
+          # This prevents State Sync from setting helper to "off" when AC should keep running
+          # in continue mode (pursuing overshoot target below normal thresholds)
+          in_continue_mode_cooling_check: >
+            {% set actual_hvac = states(climate_list[0]) | default('off') %}
+            {% set overshoot_target = target_temp - target_overshoot %}
+            {{ enable_cooling
+               and actual_hvac in ['cool']
+               and current_temp > overshoot_target
+               and current_temp <= comfort_max_temp }}
+
+          in_continue_mode_heating_check: >
+            {% set actual_hvac = states(climate_list[0]) | default('off') %}
+            {% set overshoot_target = target_temp + target_overshoot %}
+            {{ enable_heating
+               and actual_hvac in ['heat']
+               and current_temp < overshoot_target
+               and current_temp >= comfort_min_temp }}
+
           probable_mode: >
             {% if enable_cooling and current_temp >= cooling_high_temp %}
               cooling_high
@@ -12009,6 +12028,28 @@ action:
               cooling_low
             {% elif enable_heating and current_temp <= comfort_min_temp %}
               heating_low
+            {% elif in_continue_mode_cooling_check %}
+              {# v3.11.14 FIX: AC in continue mode cooling - set probable_mode based on distance from overshoot target #}
+              {% set overshoot_target = target_temp - target_overshoot %}
+              {% set distance = current_temp - overshoot_target %}
+              {% if distance >= 2.0 %}
+                cooling_high
+              {% elif distance >= 1.0 %}
+                cooling_medium
+              {% else %}
+                cooling_low
+              {% endif %}
+            {% elif in_continue_mode_heating_check %}
+              {# v3.11.14 FIX: AC in continue mode heating - set probable_mode based on distance from overshoot target #}
+              {% set overshoot_target = target_temp + target_overshoot %}
+              {% set distance = overshoot_target - current_temp %}
+              {% if distance >= 2.0 %}
+                heating_high
+              {% elif distance >= 1.0 %}
+                heating_medium
+              {% else %}
+                heating_low
+              {% endif %}
             {% else %}
               off
             {% endif %}
@@ -12019,21 +12060,10 @@ action:
           # Prevents false activation when entering room at comfortable temp above overshoot target
           # v3.11.13 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
           # Fixes state sync turning off AC prematurely when helper out of sync
-          in_continue_mode_cooling: >
-            {% set actual_hvac = states(climate_list[0]) | default('off') %}
-            {% set overshoot_target = target_temp - target_overshoot %}
-            {{ enable_cooling
-               and actual_hvac in ['cool']
-               and current_temp > overshoot_target
-               and current_temp <= comfort_max_temp }}
+          # v3.11.14 FIX: Use pre-calculated continue mode checks to avoid duplication
+          in_continue_mode_cooling: "{{ in_continue_mode_cooling_check }}"
 
-          in_continue_mode_heating: >
-            {% set actual_hvac = states(climate_list[0]) | default('off') %}
-            {% set overshoot_target = target_temp + target_overshoot %}
-            {{ enable_heating
-               and actual_hvac in ['heat']
-               and current_temp < overshoot_target
-               and current_temp >= comfort_min_temp }}
+          in_continue_mode_heating: "{{ in_continue_mode_heating_check }}"
 
           should_be_running: >
             {% set actual_hvac_mode = states(climate_list[0]) | default('off') %}
