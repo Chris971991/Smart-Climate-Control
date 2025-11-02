@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.9
+  name: Ultimate Smart Climate Control - v3.11.10
 
   description: |
-    **Ultimate Smart Climate Control v3.11.9**
+    **Ultimate Smart Climate Control v3.11.10**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,16 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.9
+    ## 🆕 Latest Update - v3.11.10
 
-    **🐛 CRITICAL FIX: Presence Timer Reset Catch-22 (Instant AC Activation)**
-    - ✅ **FIXED**: AC activates instantly without waiting for presence confirmation delay
-    - ✅ **ROOT CAUSE**: Old timer timestamps blocked by smart_presence_active check creates circular logic
-    - ✅ **SOLUTION**: Removed blocking condition - timer ALWAYS resets when returning after grace period
-    - 🎯 **RESULT**: Presence confirmation delay works correctly - no more instant activation!
-    
+    **🐛 CRITICAL FIX: State Sync Premature AC Turn-Off**
+    - ✅ **FIXED**: State sync turns off AC when temp still above overshoot target (e.g., 23.6°C vs 22.0°C)
+    - ✅ **ROOT CAUSE**: Continue mode checked helper state (`last_mode`) instead of actual AC HVAC mode
+    - ✅ **SOLUTION**: Use `actual_hvac` (AC state) instead of `last_mode` (helper state) in continue mode logic
+    - 🎯 **RESULT**: AC continues cooling/heating until overshoot target reached, even when helper out of sync!
+
     **📝 Previous Updates:**
-    - v3.11.8: 🐛 Fixed grace period false activation when BLE shows different room
+    - v3.11.9: 🐛 Fixed presence timer reset catch-22 (instant activation)
 
     📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
 
@@ -84,8 +84,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
+    **v3.11.10** - 🐛 CRITICAL FIX: State sync premature AC turn-off (continue mode uses actual AC state)
     **v3.11.9** - 🐛 CRITICAL FIX: Presence confirmation delay bypassed (instant AC activation)
-    **v3.11.8** - 🐛 Three major bug fixes: Continue mode false activation, runtime protection, state sync
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -11907,17 +11907,21 @@ action:
           # Don't turn off AC if it's still trying to reach the overshoot target
           # v3.11.8 FIX: Only apply continue mode when AC was ALREADY running in cooling/heating
           # Prevents false activation when entering room at comfortable temp above overshoot target
+          # v3.11.10 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
+          # Fixes state sync turning off AC prematurely when helper out of sync
           in_continue_mode_cooling: >
+            {% set actual_hvac = states(climate_list[0]) | default('off') %}
             {% set overshoot_target = target_temp - target_overshoot %}
             {{ enable_cooling
-               and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high']
+               and actual_hvac in ['cool']
                and current_temp > overshoot_target
                and current_temp <= comfort_max_temp }}
 
           in_continue_mode_heating: >
+            {% set actual_hvac = states(climate_list[0]) | default('off') %}
             {% set overshoot_target = target_temp + target_overshoot %}
             {{ enable_heating
-               and last_mode in ['heating_low', 'heating_medium', 'heating_high']
+               and actual_hvac in ['heat']
                and current_temp < overshoot_target
                and current_temp >= comfort_min_temp }}
 
