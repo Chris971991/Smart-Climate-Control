@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.14
+  name: Ultimate Smart Climate Control - v3.11.15
 
   description: |
-    **Ultimate Smart Climate Control v3.11.14**
+    **Ultimate Smart Climate Control v3.11.15**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -5344,6 +5344,17 @@ action:
               value: "heating_high"
             continue_on_error: true
 
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
               for_each: "{{ climate_list }}"
@@ -5754,6 +5765,17 @@ action:
               value: "heating_medium"
             continue_on_error: true
 
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
               for_each: "{{ climate_list }}"
@@ -6147,6 +6169,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "heating_low"
+            continue_on_error: true
+
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
             continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
@@ -6553,6 +6586,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_high"
+            continue_on_error: true
+
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
             continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
@@ -6985,6 +7029,17 @@ action:
               value: "cooling_medium"
             continue_on_error: true
 
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
               for_each: "{{ climate_list }}"
@@ -7382,6 +7437,17 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: "cooling_low"
+            continue_on_error: true
+
+          # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
+          # Without this, hardware delay protection fails (uses stale timestamp)
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
             continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
