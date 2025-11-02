@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.15
+  name: Ultimate Smart Climate Control - v3.11.16
 
   description: |
-    **Ultimate Smart Climate Control v3.11.15**
+    **Ultimate Smart Climate Control v3.11.16**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3034,6 +3034,19 @@ action:
             data:
               datetime: "{{ now() }}"
             continue_on_error: true
+
+          # v3.11.16 FIX: Store timeout duration for dashboard countdown timer
+          # Without this, manual mode switch to Override shows stale timeout value
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_override_timeout_storage }}"
+                data:
+                  value: "{{ adaptive_override_timeout }}"
+                continue_on_error: true
 
           # Store which mode we were in before Override (so we can return to it)
           - if:
