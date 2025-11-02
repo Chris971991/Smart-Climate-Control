@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.10
+  name: Ultimate Smart Climate Control - v3.11.11
 
   description: |
-    **Ultimate Smart Climate Control v3.11.10**
+    **Ultimate Smart Climate Control v3.11.11**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,13 +58,26 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.10
+    ## 🆕 Latest Update - v3.11.11
 
-    **🐛 CRITICAL FIX: State Sync Premature AC Turn-Off**
-    - ✅ **FIXED**: State sync turns off AC when temp still above overshoot target (e.g., 23.6°C vs 22.0°C)
-    - ✅ **ROOT CAUSE**: Continue mode checked helper state (`last_mode`) instead of actual AC HVAC mode
-    - ✅ **SOLUTION**: Use `actual_hvac` (AC state) instead of `last_mode` (helper state) in continue mode logic
-    - 🎯 **RESULT**: AC continues cooling/heating until overshoot target reached, even when helper out of sync!
+    **🐛 CRITICAL FIX #1: Presence Timer Reset Off-by-One Error**
+    - ✅ **FIXED**: Timer doesn't reset when returning after grace period (stays at expired timestamp)
+    - ✅ **ROOT CAUSE**: Comparison used > instead of >=, blocking reset at exact threshold (6 > 6 = FALSE)
+    - ✅ **SOLUTION**: Changed minutes_since_timer_set > (timeout + 1) to >= at line 4078
+    - 🎯 **RESULT**: Timer correctly resets when returning to room, AC activates after confirmation delay!
+
+    **🐛 CRITICAL FIX #2: Manual Mode Instantly Reverts to Smart**
+    - ✅ **FIXED**: Switching to Manual mode immediately reverts back to Smart mode
+    - ✅ **ROOT CAUSE**: Mode change handler didn't update helper_change timestamp
+    - ✅ **SOLUTION**: Added helper_change timestamp update to mode_change handler (line 3047-3057)
+    - 🎯 **RESULT**: Manual mode stays active, timeout calculated from actual mode switch time!
+
+    **🐛 CRITICAL FIX #3: Manual Override Never Activates**
+    - ✅ **FIXED**: Manual override doesn't activate when manually turning AC on/off
+    - ✅ **ROOT CAUSE**: climate_state_change trigger excluded from manual detection (v3.11.5 broke it)
+    - ✅ **SOLUTION**: Re-included climate_state_change in trigger_ok filter (line 3939)
+    - 🎯 **RESULT**: Override activates within 1-2 seconds of manual change, automation pauses correctly!
+
 
     **📝 Previous Updates:**
     - v3.11.9: 🐛 Fixed presence timer reset catch-22 (instant activation)
@@ -84,7 +97,7 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.11.10** - 🐛 CRITICAL FIX: State sync premature AC turn-off (continue mode uses actual AC state)
+    **v3.11.11** - 🐛 CRITICAL FIX: Presence timer reset + Manual mode timeout (2 critical bugs fixed)
     **v3.11.9** - 🐛 CRITICAL FIX: Presence confirmation delay bypassed (instant AC activation)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
@@ -3044,6 +3057,18 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
+      # v3.11.11 FIX: Update helper_change timestamp when mode changes
+      # Without this, Manual mode timeout uses stale timestamp from previous AC operation
+      # causing immediate/premature timeout and revert to Smart mode
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
       - if:
           - condition: template
             value_template: "{{ debug_enabled }}"
@@ -3914,8 +3939,10 @@ action:
         {# v3.11.3 FIX: Added AC hardware off-cycle grace period (30-45 seconds) #}
         {# v3.11.5 FIX: Exclude climate_state_change to prevent false positives when automation turns AC on/off #}
         {# Simple logic: If AC state doesn't match what automation expects, user changed it #}
+        {# v3.11.11 FIX: Re-include climate_state_change - the 45-second hardware delay already prevents #}
+        {# false positives. Excluding it breaks manual override detection entirely! #}
 
-        {% set trigger_ok = (trigger.id in ['periodic_check', 'temp_change']) %}
+        {% set trigger_ok = (trigger.id in ['periodic_check', 'temp_change', 'climate_state_change']) %}
         {% set last_mode = states(helper_mode) | default('off') %}
         {% set actual_state = actual_ac_state %}
 
@@ -4073,7 +4100,9 @@ action:
             {# 2. TRUE blocks timer reset #}
             {# 3. AC activates instantly using old timestamp #}
             {# Solution: ALWAYS reset timer when returning after grace period expires #}
-            {{ minutes_since_timer_set > (presence_timeout + 1) }}
+            {# v3.11.11 FIX: Changed > to >= to fix off-by-one error where timer at exactly #}
+            {# (timeout + 1) minutes wouldn't reset (e.g., 6 > 6 = FALSE) #}
+            {{ minutes_since_timer_set >= (presence_timeout + 1) }}
           {% else %}
             true
           {% endif %}
@@ -11907,7 +11936,7 @@ action:
           # Don't turn off AC if it's still trying to reach the overshoot target
           # v3.11.8 FIX: Only apply continue mode when AC was ALREADY running in cooling/heating
           # Prevents false activation when entering room at comfortable temp above overshoot target
-          # v3.11.10 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
+          # v3.11.11 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
           # Fixes state sync turning off AC prematurely when helper out of sync
           in_continue_mode_cooling: >
             {% set actual_hvac = states(climate_list[0]) | default('off') %}
