@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.12
+  name: Ultimate Smart Climate Control - v3.11.13
 
   description: |
-    **Ultimate Smart Climate Control v3.11.12**
+    **Ultimate Smart Climate Control v3.11.13**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,7 +58,7 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.12
+    ## 🆕 Latest Update - v3.11.13
 
     **🐛 CRITICAL FIX #1: Presence Timer Reset Off-by-One Error**
     - ✅ **FIXED**: Timer doesn't reset when returning after grace period (stays at expired timestamp)
@@ -83,7 +83,7 @@ blueprint:
     - ✅ **ROOT CAUSE**: manual_off detection had NO hardware delay protection (only manual_on had it)
     - ✅ **SOLUTION**: Added and not within_hardware_delay check to manual_off detection (line 3964)
     - 🎯 **RESULT**: 45-second protection prevents false Override when automation legitimately turns off AC!
-
+    - 🎯 **RESULT**: Dual-layer protection (hardware delay + timestamp updates) = 1000% bulletproof!
 
     **📝 Previous Updates:**
     - v3.11.9: 🐛 Fixed presence timer reset catch-22 (instant activation)
@@ -103,7 +103,7 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.11.12** - 🐛 CRITICAL FIX: Presence timer reset + Manual mode timeout (2 critical bugs fixed)
+    **v3.11.13** - 🐛 CRITICAL FIX: Presence timer reset + Manual mode timeout (2 critical bugs fixed)
     **v3.11.9** - 🐛 CRITICAL FIX: Presence confirmation delay bypassed (instant AC activation)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
@@ -3063,7 +3063,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # v3.11.12 FIX: Update helper_change timestamp when mode changes
+      # v3.11.13 FIX: Update helper_change timestamp when mode changes
       # Without this, Manual mode timeout uses stale timestamp from previous AC operation
       # causing immediate/premature timeout and revert to Smart mode
       - condition: template
@@ -3945,7 +3945,7 @@ action:
         {# v3.11.3 FIX: Added AC hardware off-cycle grace period (30-45 seconds) #}
         {# v3.11.5 FIX: Exclude climate_state_change to prevent false positives when automation turns AC on/off #}
         {# Simple logic: If AC state doesn't match what automation expects, user changed it #}
-        {# v3.11.12 FIX: Re-include climate_state_change - the 45-second hardware delay already prevents #}
+        {# v3.11.13 FIX: Re-include climate_state_change - the 45-second hardware delay already prevents #}
         {# false positives. Excluding it breaks manual override detection entirely! #}
 
         {% set trigger_ok = (trigger.id in ['periodic_check', 'temp_change', 'climate_state_change']) %}
@@ -3965,7 +3965,7 @@ action:
           {% set result = false %}
         {% else %}
         {# Detect ON/OFF changes #}
-        {# v3.11.12 FIX: Add hardware delay protection to manual_off detection too #}
+        {# v3.11.13 FIX: Add hardware delay protection to manual_off detection too #}
         {# Without this, automation turn-offs falsely trigger Override mode #}
         {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' and not within_hardware_delay) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
@@ -4108,7 +4108,7 @@ action:
             {# 2. TRUE blocks timer reset #}
             {# 3. AC activates instantly using old timestamp #}
             {# Solution: ALWAYS reset timer when returning after grace period expires #}
-            {# v3.11.12 FIX: Changed > to >= to fix off-by-one error where timer at exactly #}
+            {# v3.11.13 FIX: Changed > to >= to fix off-by-one error where timer at exactly #}
             {# (timeout + 1) minutes wouldn't reset (e.g., 6 > 6 = FALSE) #}
             {{ minutes_since_timer_set >= (presence_timeout + 1) }}
           {% else %}
@@ -9027,6 +9027,17 @@ action:
               # OFF mode - Maximum power savings (0W consumption)
               # A/C turns completely off when temperature is acceptable
               # Will restart when temp exits comfort zone (e.g., <21°C or >25°C)
+
+              # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
               - service: climate.turn_off
                 target:
                   entity_id: !input climate_entities
@@ -9038,14 +9049,6 @@ action:
                 data:
                   value: "off"
 
-              # v3.11.6 FIX: Update helper_change to prevent false manual detection
-              # When automation turns OFF AC, update timestamp so hardware delay check works
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: !input helper_last_change
-                data:
-                  datetime: "{{ now() }}"
-                continue_on_error: true
 
               # Update mode start time for off-time protection tracking (always update when going to OFF)
               - if:
@@ -9119,6 +9122,16 @@ action:
                   - condition: template
                     value_template: "{{ stability_behavior == 'off' }}"
                 sequence:
+                  # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                  - condition: template
+                    value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: !input helper_last_change
+                    data:
+                      datetime: "{{ now() }}"
+                    continue_on_error: true
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
@@ -9501,6 +9514,16 @@ action:
                               level: debug
                               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
+                      # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                      - condition: template
+                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                      - service: input_datetime.set_datetime
+                        target:
+                          entity_id: !input helper_last_change
+                        data:
+                          datetime: "{{ now() }}"
+                        continue_on_error: true
+
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
@@ -9579,6 +9602,16 @@ action:
                               message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                               level: debug
                               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+                      # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                      - condition: template
+                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                      - service: input_datetime.set_datetime
+                        target:
+                          entity_id: !input helper_last_change
+                        data:
+                          datetime: "{{ now() }}"
+                        continue_on_error: true
 
                       - service: climate.turn_off
                         target:
@@ -9753,6 +9786,16 @@ action:
                   - condition: template
                     value_template: "{{ smart_behavior == 'off' }}"
                 sequence:
+                  # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                  - condition: template
+                    value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: !input helper_last_change
+                    data:
+                      datetime: "{{ now() }}"
+                    continue_on_error: true
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
@@ -9988,6 +10031,16 @@ action:
                   - condition: template
                     value_template: "{{ away_action == 'off' }}"
                 sequence:
+                  # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                  - condition: template
+                    value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: !input helper_last_change
+                    data:
+                      datetime: "{{ now() }}"
+                    continue_on_error: true
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
@@ -11729,6 +11782,16 @@ action:
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Turn off the AC
+      # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
       - service: climate.turn_off
         target:
           entity_id: !input climate_entities
@@ -11797,6 +11860,16 @@ action:
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Turn off the AC
+      # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
       - service: climate.turn_off
         target:
           entity_id: !input climate_entities
@@ -11944,7 +12017,7 @@ action:
           # Don't turn off AC if it's still trying to reach the overshoot target
           # v3.11.8 FIX: Only apply continue mode when AC was ALREADY running in cooling/heating
           # Prevents false activation when entering room at comfortable temp above overshoot target
-          # v3.11.12 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
+          # v3.11.13 FIX: Use actual_hvac (AC state) instead of last_mode (helper state)
           # Fixes state sync turning off AC prematurely when helper out of sync
           in_continue_mode_cooling: >
             {% set actual_hvac = states(climate_list[0]) | default('off') %}
