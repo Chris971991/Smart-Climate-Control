@@ -709,6 +709,9 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         if user_input is not None:
             self._room_data.update(user_input)
+            # If bedroom with bed sensor, ask which sensor
+            if user_input.get("is_bedroom_with_bed_sensor"):
+                return await self.async_step_bed_sensor_selection()
             return await self.async_step_temperature()
 
         data_schema = vol.Schema({
@@ -722,6 +725,42 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             description_placeholders={
                 "room_name": self._room_data["room_name"],
                 "step": "5 of 6",
+            },
+        )
+
+    async def async_step_bed_sensor_selection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 5b: Select bed sensor and configure bed comfort mode."""
+        errors = {}
+
+        if user_input is not None:
+            self._room_data.update(user_input)
+            return await self.async_step_temperature()
+
+        data_schema = vol.Schema({
+            vol.Optional("bed_sensor_manual"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="binary_sensor")
+            ),
+            vol.Optional("bed_comfort_mode", default="off"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"label": "Off - Normal behavior (no special bed mode)", "value": "off"},
+                        {"label": "Quiet - Ultra-quiet fan when in bed ⭐ Recommended", "value": "quiet"},
+                        {"label": "Eco - Full eco mode when in bed", "value": "eco"},
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        })
+
+        return self.async_show_form(
+            step_id="bed_sensor_selection",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "room_name": self._room_data["room_name"],
+                "step": "5b of 6",
             },
         )
 
@@ -1499,6 +1538,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         else:
             # No sensors configured -> fallback to ANY mode
             automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "any"
+
+        # Add bed comfort settings (v3.12.0)
+        if config.get("bed_sensor_manual"):
+            automation_config["use_blueprint"]["input"]["bed_sensor_manual"] = config["bed_sensor_manual"]
+        if config.get("bed_comfort_mode"):
+            automation_config["use_blueprint"]["input"]["bed_comfort_mode"] = config["bed_comfort_mode"]
 
         # Read existing automations
         automations_file = hass.config.path("automations.yaml")

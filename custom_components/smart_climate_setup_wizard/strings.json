@@ -78,6 +78,14 @@
           "is_bedroom_with_bed_sensor": "Enable BEDROOM mode? (Adaptive sleep detection)"
         }
       },
+      "bed_sensor_selection": {
+        "title": "🛏️ Bed Comfort Configuration (Step 5b of 6)",
+        "description": "**Configure ultra-quiet mode when bed is occupied** for **{room_name}**.\n\n**🌙 Bed Comfort Mode** makes the AC whisper-quiet when you're in bed, improving sleep quality while maintaining comfortable temperature.\n\n**How it works:**\n• 🛏️ Detects when you're in bed via sensor\n• 🔇 Switches to quietest fan setting automatically (Silence/Quiet/Level 1)\n• 🌡️ Only activates after temperature is comfortable\n• ✅ Never interrupts active cooling/heating\n\n**Perfect for:**\n• Light sleepers who need ultra-quiet operation\n• Maintaining comfort without cycling on/off\n• Better sleep quality with continuous gentle airflow\n\n**Safety Features:**\n• ✅ Only runs when temp in comfort zone (no emergency cooling/heating interruption)\n• ✅ Respects overshoot targets (waits for complete cooling cycle)\n• ✅ Respects manual override (won't fight user changes)\n• ✅ Works with Smart mode presence detection\n\n**Leave bed sensor empty to skip this feature** (you can add it later by editing the automation).",
+        "data": {
+          "bed_sensor_manual": "🛏️ Bed Occupancy Sensor • Select your bed presence/pressure sensor",
+          "bed_comfort_mode": "🔇 Bed Comfort Mode • Choose behavior when in bed"
+        }
+      },
       "temperature": {
         "title": "Temperature Preferences (Step 6 of 6)",
         "description": "**Just 2 simple questions!** 🌡️ The wizard automatically calculates ALL temperature thresholds for **{room_name}**.\n\n**Choose your comfort style:**\n• **Tight** (±0.5°C): Precise control, 20+ AC cycles/day\n• **Balanced** (±1.0°C): ⭐ Recommended, 10-15 cycles/day\n• **Relaxed** (±1.5°C): Energy saving, 5-10 cycles/day\n\n**Example:** 23°C ± 1.0°C means:\n• Comfort zone: 22.0°C - 24.0°C (AC off)\n• Gentle cooling starts: 24.1°C\n• Medium cooling starts: 25.0°C\n• Max cooling starts: 26.0°C\n• *(Heating thresholds calculated similarly)*\n\n**What happens next:**\n✅ All 6 temperature tiers calculated automatically\n✅ Stall detection configured optimally\n✅ Dynamic escalation/de-escalation enabled\n✅ Ready to use immediately!",
