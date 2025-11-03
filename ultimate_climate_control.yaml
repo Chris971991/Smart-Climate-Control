@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.11.16
+  name: Ultimate Smart Climate Control - v3.12.8
 
   description: |
-    **Ultimate Smart Climate Control v3.11.16**
+    **Ultimate Smart Climate Control v3.12.8**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,19 +58,16 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.11.13
+    ## 🆕 Latest Update - v3.12.5
 
-    **🐛 CRITICAL FIX #1: Presence Timer Reset Off-by-One Error**
-    - ✅ **FIXED**: Timer doesn't reset when returning after grace period (stays at expired timestamp)
-    - ✅ **ROOT CAUSE**: Comparison used > instead of >=, blocking reset at exact threshold (6 > 6 = FALSE)
-    - ✅ **SOLUTION**: Changed minutes_since_timer_set > (timeout + 1) to >= at line 4078
-    - 🎯 **RESULT**: Timer correctly resets when returning to room, AC activates after confirmation delay!
+    **🐛 CRITICAL FIX: Manual Override Never Activates Due to Race Condition**
+    - ✅ **FIXED**: Manual override doesn't activate when user turns off AC while automation has it running
+    - ✅ **FIXED**: Helper gets set to 'off' before manual detection reads it
+    - ✅ **ROOT CAUSE**: mode_change trigger updates helper to 'off' at line 2991 BEFORE manual detection reads it at line 4028
+    - ✅ **SOLUTION**: Store helper value at automation start (line 2976), use stored value in manual detection (line 4028)
+    - 🎯 **RESULT**: Manual detection always reads helper's PREVIOUS state, not updated state - Override works!
 
-    **🐛 CRITICAL FIX #2: Manual Mode Instantly Reverts to Smart**
-    - ✅ **FIXED**: Switching to Manual mode immediately reverts back to Smart mode
-    - ✅ **ROOT CAUSE**: Mode change handler didn't update helper_change timestamp
-    - ✅ **SOLUTION**: Added helper_change timestamp update to mode_change handler (line 3047-3057)
-    - 🎯 **RESULT**: Manual mode stays active, timeout calculated from actual mode switch time!
+    **Previous Update - v3.12.4**
 
     **🐛 CRITICAL FIX #3: Manual Override Never Activates**
     - ✅ **FIXED**: Manual override doesn't activate when manually turning AC on/off
@@ -1224,6 +1221,60 @@ blueprint:
               options:
                 - "off"
                 - "eco"
+
+    # Bed/Sleep Comfort Settings (Optional)
+    bed_comfort_settings:
+      name: "Bed/Sleep Comfort Settings"
+      icon: mdi:bed
+      collapsed: true
+      input:
+        bed_comfort_mode:
+          name: "Bed Comfort Mode"
+          description: |
+            **Triggered when bed sensor detects occupancy** (requires bed sensor configured below):
+
+            **Purpose:** Ultra-quiet, sleep-optimized climate control when in bed
+
+            • **OFF:** Normal behavior (no special bed mode)
+            • **QUIET:** Ultra-quiet fan only (Level 1/Quiet/Silence) when in bed ⭐ Recommended
+            • **ECO:** Full eco mode (low power + quiet fan) when in bed
+
+            **Different from Eco Mode:** This responds to **bed occupancy**, not comfort zone
+            **Different from Stability:** This responds to **being in bed**, not temperature stability
+
+            **Benefits:**
+            • Ultra-quiet operation for better sleep
+            • Energy savings while maintaining comfort
+            • Automatic activation when entering bed
+
+            **Safe:** Only activates after temperature targets reached, never interrupts active cooling/heating
+          default: "off"
+          selector:
+            select:
+              options:
+                - label: "Off - Normal behavior (no special bed mode)"
+                  value: "off"
+                - label: "Quiet - Ultra-quiet fan when in bed ⭐ Recommended"
+                  value: "quiet"
+                - label: "Eco - Full eco mode when in bed"
+                  value: "eco"
+
+        bed_sensor_manual:
+          name: "Bed Occupancy Sensor"
+          description: |
+            Select the bed occupancy sensor (binary_sensor).
+
+            **Examples:**
+            - Bed pressure sensor
+            - ESPresense bed presence sensor
+            - mmWave bed occupancy sensor
+            - Weight-based bed sensor
+
+            **Leave empty to disable bed comfort mode.**
+          default: ""
+          selector:
+            entity:
+              domain: binary_sensor
 
     # Scheduling Settings (Optional)
     scheduling_settings:
@@ -2775,6 +2826,11 @@ variables:
   stability_tolerance: !input stability_tolerance
   stability_duration: !input stability_duration
   stability_behavior: !input stability_behavior
+  # Bed comfort mode (v3.12.0)
+  bed_comfort_mode: !input bed_comfort_mode
+  bed_sensor_manual: !input bed_sensor_manual
+  bed_occupied: >
+    {{ bed_comfort_mode != 'off' and bed_sensor_manual and is_state(bed_sensor_manual, 'on') }}
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
@@ -3179,6 +3235,10 @@ action:
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   - variables:
+      # v3.12.5 FIX: Store helper_last_mode at START before any updates (moved from line 2975)
+      # Must be in THIS variables block so manual_change_detected can access it
+      helper_last_mode_at_start: "{{ states(helper_mode) | default('off') }}"
+
       current_temp: >
         {% if temp_sensor %}
           {# v3.9.0: Multi-sensor support for rooms cooled/heated by one AC unit #}
@@ -3961,8 +4021,10 @@ action:
         {# v3.11.13 FIX: Re-include climate_state_change - the 45-second hardware delay already prevents #}
         {# false positives. Excluding it breaks manual override detection entirely! #}
 
-        {% set trigger_ok = (trigger.id in ['periodic_check', 'temp_change', 'climate_state_change']) %}
-        {% set last_mode = states(helper_mode) | default('off') %}
+        {# v3.12.7 FIX: Manual detection must run on ALL triggers including presence_change #}
+        {# Problem: presence_change wasn't in trigger_ok list, so manual detection never ran #}
+        {# When user turns off AC, presence_change fires first and re-activates before climate_state_change #}
+        {% set last_mode = helper_last_mode_at_start %}
         {% set actual_state = actual_ac_state %}
 
         {# v3.11.3: Check if automation recently commanded a change (AC hardware needs time to respond) #}
@@ -3973,21 +4035,24 @@ action:
         {% endif %}
         {% set within_hardware_delay = (time_since_change < 45) %}
 
-        {% if not trigger_ok or control_mode == 'Override' %}
-          {# Don't detect if wrong trigger or already in Override mode #}
+        {% if control_mode == 'Override' %}
+          {# Don't detect if already in Override mode #}
           {% set result = false %}
         {% else %}
         {# Detect ON/OFF changes #}
         {# v3.11.13 FIX: Add hardware delay protection to manual_off detection too #}
         {# Without this, automation turn-offs falsely trigger Override mode #}
-        {% set is_manual_off = (last_mode in ['cooling_high', 'cooling_medium', 'cooling_low', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' and not within_hardware_delay) %}
+        {# v3.12.4 FIX: Include simple 'cooling' and 'heating' modes (not just intensity variants) #}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' and not within_hardware_delay) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
-        {% set is_manual_on = (last_mode == 'off' and actual_state == 'on' and not within_hardware_delay) %}
+        {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
+        {% set is_manual_on = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on' and not within_hardware_delay) %}
 
         {# v3.9.35 FIX: Only check temp/fan/swing/HVAC changes when AC should be OFF
            When automation is actively controlling AC (last_mode != 'off'), don't compare expected values
            because automation constantly changes them (escalation, de-escalation, etc.) #}
-        {% set check_detailed_changes = (last_mode == 'off' and actual_state == 'on') %}
+        {# v3.12.3 FIX: Check all off variants for detailed change detection #}
+        {% set check_detailed_changes = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on') %}
 
         {# Detect temperature changes - only when AC should be off but is on #}
         {% set expected_temp = states(helper_expected_temp) | float(0) %}
@@ -4036,9 +4101,18 @@ action:
         {{ result }}
 
       # v3.11.0: Override is now a control mode, no separate flag needed
-      # DEBUG: Manual change detection values
+      # v3.12.5 DEBUG: Enhanced manual change detection debugging
       debug_manual_detection: >
-        DEBUG: manual_change_detected={{ manual_change_detected }}, helper_mode={{ states(helper_mode) | default('off') }}, actual_ac_state={{ actual_ac_state }}
+        🔍 MANUAL OVERRIDE DEBUG:
+        • trigger.id: {{ trigger.id }}
+        • control_mode: {{ control_mode }}
+        • helper_last_mode_at_start: {{ helper_last_mode_at_start }}
+        • actual_ac_state: {{ actual_ac_state }}
+        • time_since_change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
+        • within_hardware_delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
+        • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
+        • is_manual_on: {{ (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
+        • manual_change_detected: {{ manual_change_detected }}
 
 
       should_activate: >
@@ -4084,6 +4158,22 @@ action:
   - service: system_log.write
     data:
       message: "🔍 {{ room_name }} DEBUG: trigger={{ trigger.id }} | last_mode={{ states(helper_mode) }} | actual_ac={{ actual_ac_state }} | manual_detected={{ manual_change_detected }}"
+      level: warning
+
+  # v3.12.5 DEBUG: Detailed manual override detection trace
+  - service: system_log.write
+    data:
+      message: "{{ debug_manual_detection }}"
+      level: warning
+
+  # v3.12.5 DEBUG: Log should_activate value
+  - service: system_log.write
+    data:
+      message: >
+        🔍 {{ room_name }} SHOULD_ACTIVATE CHECK:
+        • control_mode (variable): {{ control_mode }}
+        • control_mode_helper (actual): {{ states(control_mode_helper) }}
+        • should_activate: {{ should_activate }}
       level: warning
 
   - condition: template
@@ -4161,6 +4251,20 @@ action:
           datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
 
   # v3.11.0: ACTIVATE Override Mode - Switch control_mode to "Override" when manual change detected
+  # v3.12.5 DEBUG: Log Override activation conditions
+  - service: system_log.write
+    data:
+      message: >
+        🔍 {{ room_name }} OVERRIDE ACTIVATION CHECK:
+        • manual_change_detected: {{ manual_change_detected }}
+        • control_mode: {{ control_mode }}
+        • control_mode not in ['Manual', 'Override']: {{ control_mode not in ['Manual', 'Override'] }}
+        • adaptive_override_timeout: {{ adaptive_override_timeout }}
+        • control_mode_helper: {{ control_mode_helper }}
+        • control_mode_helper valid: {{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
+        • WILL ACTIVATE: {{ manual_change_detected and control_mode not in ['Manual', 'Override'] and adaptive_override_timeout > 0 and control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
+      level: warning
+
   - if:
       - condition: template
         value_template: "{{ manual_change_detected and control_mode not in ['Manual', 'Override'] and adaptive_override_timeout > 0 }}"
@@ -4295,6 +4399,17 @@ action:
       # Return to previous mode
       - variables:
           return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else 'Auto' }}"
+
+      # v3.11.17 FIX: Update helper_change timestamp BEFORE switching modes
+      # This prevents false manual override detection if automation turns off AC after mode switch
+      - condition: template
+        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
 
       - service: input_select.select_option
         target:
@@ -5670,10 +5785,12 @@ action:
                   value: "{{ current_temp }}"
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
-          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes (not every trigger!)
+          # Old bug: Checked helper != 'heating_high', which was always TRUE in cooling modes
+          # Result: Timestamp updated every trigger, keeping within_hardware_delay TRUE forever
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'heating_high' }}"
+                value_template: "{{ helper_last_mode_at_start != 'heating_high' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -6077,10 +6194,10 @@ action:
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
-          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'heating_medium' }}"
+                value_template: "{{ helper_last_mode_at_start != 'heating_medium' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -6486,10 +6603,10 @@ action:
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
-          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'heating_low' }}"
+                value_template: "{{ helper_last_mode_at_start != 'heating_low' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -6920,10 +7037,10 @@ action:
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
-          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'cooling_high' }}"
+                value_template: "{{ helper_last_mode_at_start != 'cooling_high' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -7350,10 +7467,10 @@ action:
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
           # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
-          # This prevents false manual override detection while maintaining runtime protection
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'cooling_medium' }}"
+                value_template: "{{ helper_last_mode_at_start != 'cooling_medium' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -7730,10 +7847,10 @@ action:
                   value: "{{ current_temp }}"
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
-          # v3.9.18 FIX: Update helper_last_change ONLY when mode changes (for runtime protection)
+          # v3.12.8 FIX: Update helper_last_change ONLY when mode ACTUALLY changes
           - if:
               - condition: template
-                value_template: "{{ states(helper_mode) | default('off') != 'cooling_low' }}"
+                value_template: "{{ helper_last_mode_at_start != 'cooling_low' }}"
             then:
               - service: input_datetime.set_datetime
                 target:
@@ -9147,6 +9264,327 @@ action:
                 data:
                   title: "{{ room_name }} Climate Control"
                   message: "Turned off - Comfort zone ({{ current_temp }}°C)"
+
+      # =====================================
+      # BED COMFORT MODE - Ultra-quiet operation when in bed (v3.12.0)
+      # =====================================
+      # Triggered when bed sensor detects occupancy and temperature comfortable
+      # SAFE: Only activates after overshoot target reached, never interrupts active cooling/heating
+      - conditions:
+          # Feature must be enabled (not set to 'off')
+          - condition: template
+            value_template: "{{ bed_comfort_mode != 'off' }}"
+
+          # Bed sensor must be configured and active
+          - condition: template
+            value_template: "{{ bed_sensor_manual and is_state(bed_sensor_manual, 'on') }}"
+
+          # Temperature MUST be within comfort zone (no emergency heating/cooling needed)
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+
+          # AC must currently be ON (don't turn on AC just for bed comfort)
+          - condition: template
+            value_template: "{{ actual_ac_state != 'off' }}"
+
+          # Respect minimum runtime (anti-short-cycling)
+          - condition: template
+            value_template: "{{ time_since_change >= runtime_min }}"
+
+          # NOT in manual/override mode
+          - condition: template
+            value_template: "{{ control_mode not in ['Manual', 'Override'] }}"
+
+          # Smart mode presence requirement (if Smart mode active)
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ control_mode != 'Smart' }}"
+              - condition: template
+                value_template: "{{ smart_presence_active }}"
+
+          # CRITICAL SAFETY: Check overshoot target reached if in continue mode
+          # This prevents bed comfort from interrupting active cooling/heating to target
+          - condition: template
+            value_template: >
+              {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high',
+                                                        'heating_low', 'heating_medium', 'heating_high'] %}
+              {% if not in_continue_mode %}
+                true
+              {% elif last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {{ current_temp <= (target_temp - target_overshoot) }}
+              {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {{ current_temp >= (target_temp + target_overshoot) }}
+              {% else %}
+                true
+              {% endif %}
+
+        sequence:
+          # Debug logging
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🛏️ {{ room_name | upper }} BED COMFORT MODE ACTIVATED
+
+                Sleep Optimization:
+                    • Bed Comfort Mode: {{ bed_comfort_mode | upper }}
+                    • Bed Sensor: {{ bed_sensor_manual }} = ON
+                    • Current Temp: {{ current_temp }}°C
+                    • Comfort Zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
+                    • Last Mode: {{ last_mode }}
+                    • Overshoot Target: {{ target_temp - target_overshoot if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] else target_temp + target_overshoot }}°C
+
+                Action: {{ 'Ultra-quiet fan only' if bed_comfort_mode == 'quiet' else 'Full ECO mode' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+          # v3.12.1 FIX: Update timestamp BEFORE changing AC settings
+          # This prevents false manual override detection when bed comfort activates
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ helper_change }}"
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          # Choose action based on mode
+          - choose:
+              # QUIET mode - Ultra-quiet fan only (no temp/HVAC change)
+              - conditions:
+                  - condition: template
+                    value_template: "{{ bed_comfort_mode == 'quiet' }}"
+                sequence:
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            quietest_fan: >
+                              {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                              {% if 'silence' in fans %}
+                                silence
+                              {% elif 'Silence' in fans %}
+                                Silence
+                              {% elif 'quiet' in fans %}
+                                quiet
+                              {% elif 'Quiet' in fans %}
+                                Quiet
+                              {% elif '1' in fans %}
+                                1
+                              {% elif 'Level 1' in fans %}
+                                Level 1
+                              {% elif 'low' in fans %}
+                                low
+                              {% elif 'Low' in fans %}
+                                Low
+                              {% else %}
+                                {{ fans[0] if fans else 'Auto' }}
+                              {% endif %}
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            fan_mode: "{{ quietest_fan }}"
+
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                        - service: system_log.write
+                          data:
+                            message: "🛏️ {{ room_name | upper }}: Set {{ repeat.item }} fan to {{ quietest_fan }} (ultra-quiet)"
+                            level: debug
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+              # ECO mode - Actively maintain temperature using external sensor
+              # v3.12.0: Continuously monitor and adjust to keep temp at target
+              - conditions:
+                  - condition: template
+                    value_template: "{{ bed_comfort_mode == 'eco' }}"
+                sequence:
+                  # Set HVAC mode to auto for stable temperature maintenance
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                            # Smart stability mode selection
+                            # Only use auto/heat_cool if both heating and cooling enabled
+                            expected_hvac_mode: >
+                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                              {# For stability, prefer auto/heat_cool only if both enabled #}
+                              {% if enable_cooling and enable_heating and 'auto' in modes %}
+                                auto
+                              {% elif enable_cooling and enable_heating and 'Auto' in modes %}
+                                Auto
+                              {% elif enable_cooling and enable_heating and 'heat_cool' in modes %}
+                                heat_cool
+                              {% elif enable_cooling and enable_heating and 'Heat/Cool' in modes %}
+                                Heat/Cool
+                              {% elif enable_cooling and 'cool' in modes %}
+                                cool
+                              {% elif enable_cooling and 'Cool' in modes %}
+                                Cool
+                              {% elif enable_heating and 'heat' in modes %}
+                                heat
+                              {% elif enable_heating and 'Heat' in modes %}
+                                Heat
+                              {% else %}
+                                off
+                              {% endif %}
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ expected_hvac_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_hvac_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            hvac_mode: "{{ expected_hvac_mode }}"
+
+                  # Capture expected values for enhanced manual override detection (v3.3.0)
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ adjusted_target }}"
+                    continue_on_error: true
+
+                  - service: climate.set_temperature
+                    target:
+                      entity_id: !input climate_entities
+                    data:
+                      temperature: "{{ adjusted_target }}"
+
+                  - condition: template
+                    value_template: "{{ debug_enabled }}"
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🛏️ {{ room_name | upper }} BED COMFORT ECO: Maintaining Target Temperature
+                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
+                        Actual value: {{ target_temp | round(1) }}°C
+                        Reason: Bed occupied - continuous temperature maintenance in ECO mode
+                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+                      level: warning
+                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+                  # Set eco fan mode for quiet operation
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+                            desired_eco_fan: "{{ eco_fan_speed }}"
+                            expected_fan_mode: >
+                              {% if desired_eco_fan in available_fans %}
+                                {{ desired_eco_fan }}
+                                {% elif 'Auto' in available_fans %}
+                                Auto
+                                {% elif 'auto' in available_fans %}
+                                auto
+                                {% elif 'Quiet' in available_fans %}
+                                Quiet
+                                {% elif 'quiet' in available_fans %}
+                                quiet
+                                {% elif 'Silence' in available_fans %}
+                                Silence
+                                {% elif 'silence' in available_fans %}
+                                silence
+                                {% elif 'Level 1' in available_fans %}
+                                Level 1
+                                {% elif '1' in available_fans %}
+                                1
+                                {% elif 'low' in available_fans %}
+                                low
+                                {% elif 'Low' in available_fans %}
+                                Low
+                                {% else %}
+                                {{ available_fans[0] if available_fans else 'Auto' }}
+                              {% endif %}
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ expected_fan_mode }}"
+                          continue_on_error: true
+
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ expected_fan_mode }}"
+
+                  # Set swing mode with compatibility check for eco mode
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_swings: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                            desired_swing: !input swing_mode_active
+                            selected_swing_mode: >
+                              {% if desired_swing in available_swings %}
+                                {{ desired_swing }}
+                                {% elif desired_swing == 'both' and '3D' in available_swings %}
+                                3D
+                                {% elif desired_swing == 'both' and 'Both' in available_swings %}
+                                Both
+                                {% elif desired_swing == 'vertical' and 'Vertical' in available_swings %}
+                                Vertical
+                                {% elif desired_swing == 'Vertical' and 'vertical' in available_swings %}
+                                vertical
+                                {% elif desired_swing == 'horizontal' and 'Horizontal' in available_swings %}
+                                Horizontal
+                                {% elif desired_swing == 'Horizontal' and 'horizontal' in available_swings %}
+                                horizontal
+                                {% elif 'both' in available_swings %}
+                                both
+                                {% elif 'Both' in available_swings %}
+                                Both
+                                {% elif '3D' in available_swings %}
+                                3D
+                                {% elif 'Vertical' in available_swings %}
+                                Vertical
+                                {% elif 'vertical' in available_swings %}
+                                vertical
+                                {% else %}
+                                {{ available_swings[0] if available_swings else 'Off' }}
+                              {% endif %}
+
+                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_swing }}"
+                          data:
+                            value: "{{ selected_swing_mode | trim }}"
+                          continue_on_error: true
+
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: "{{ selected_swing_mode }}"
+
+          # Update helper to track bed comfort mode
+          - condition: template
+            value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_mode }}"
+            data:
+              value: "bed_comfort_{{ bed_comfort_mode }}"
 
       # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached AND in comfort zone)
       - conditions:
@@ -11606,16 +12044,20 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
                     selected_hvac_mode: >
-                      {% if current_temp > comfort_max_temp and 'cool' in available_modes %}
+                      {% if enable_cooling and current_temp > comfort_max_temp and 'cool' in available_modes %}
                         cool
-                        {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                        {% elif enable_heating and current_temp < comfort_min_temp and 'heat' in available_modes %}
                         heat
-                        {% elif 'auto' in available_modes %}
+                        {% elif enable_cooling and enable_heating and 'auto' in available_modes %}
                         auto
-                        {% elif 'heat_cool' in available_modes %}
+                        {% elif enable_cooling and enable_heating and 'heat_cool' in available_modes %}
                         heat_cool
+                        {% elif enable_cooling and 'cool' in available_modes %}
+                        cool
+                        {% elif enable_heating and 'heat' in available_modes %}
+                        heat
                         {% else %}
-                        {{ available_modes[0] if available_modes else 'off' }}
+                        off
                       {% endif %}
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -11799,10 +12241,12 @@ action:
               entity_id: !input helper_last_mode
             data:
               value: >
-                {% if current_temp > comfort_max_temp %}
+                {% if enable_cooling and current_temp > comfort_max_temp %}
                   cooling_escalated
+                {% elif enable_heating and current_temp < comfort_min_temp %}
+                  heating_escalated
                 {% else %}
-                  heating_escalated  
+                  off
                 {% endif %}
           
           # Update mode start time for effectiveness tracking (only if it exists)
