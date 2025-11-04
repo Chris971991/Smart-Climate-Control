@@ -1345,6 +1345,37 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             helpers_config[domain][object_id] = helper_config
             created_helpers.append(entity_id)
 
+        # Add scripts for Override mode control (v3.13.1)
+        if config.get("enable_control_mode", True):
+            helpers_config["script"] = {
+                f"climate_clear_override_{sanitized_name}": {
+                    "alias": f"Clear Override - {room_name}",
+                    "description": f"Clear manual override mode and return to Smart mode for {room_name}",
+                    "sequence": [
+                        {
+                            "service": "input_select.select_option",
+                            "data": {
+                                "entity_id": f"input_select.climate_control_mode_{sanitized_name}",
+                                "option": "Smart"
+                            }
+                        }
+                    ]
+                },
+                f"climate_set_override_{sanitized_name}": {
+                    "alias": f"Set Override - {room_name}",
+                    "description": f"Activate manual override mode for {room_name}",
+                    "sequence": [
+                        {
+                            "service": "input_select.select_option",
+                            "data": {
+                                "entity_id": f"input_select.climate_control_mode_{sanitized_name}",
+                                "option": "Override"
+                            }
+                        }
+                    ]
+                }
+            }
+
         # Write YAML package file
         try:
             packages_dir = os.path.join(hass.config.config_dir, "packages")
@@ -1868,23 +1899,23 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
 
-        # Generate card with conditional cards if manual override is enabled
+        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script)
         if has_manual_override:
             card_yaml = f"""type: vertical-stack
 cards:
   - type: conditional
     conditions:
-      - entity: {override_active_entity}
-        state: "on"
+      - entity: {control_mode_entity}
+        state: Override
     card:
       type: custom:mushroom-template-card
       primary: Climate Control
-      secondary: |-
-        {{% set override_time = states('input_datetime.climate_override_time_{sanitized_name}') %}}
-        {{% set timeout_hours = states('input_number.climate_override_timeout_{sanitized_name}') | float(3) %}}
-        {{% if override_time not in ['unknown', 'unavailable', ''] %}}
-          {{% set time_since = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}}
-          {{% set time_remaining = timeout_hours - time_since %}}
+      secondary: |
+        {{% set timeout = states('input_number.climate_override_timeout_{sanitized_name}') | float(0) %}}
+        {{% set override_time = state_attr('input_datetime.climate_override_time_{sanitized_name}', 'timestamp') | float(0) %}}
+        {{% if override_time > 0 and timeout > 0 %}}
+          {{% set time_since = (as_timestamp(now()) - override_time) / 3600 %}}
+          {{% set time_remaining = timeout - time_since %}}
           {{% if time_remaining > 0 %}}
             {{% set hours = time_remaining | int %}}
             {{% set minutes = ((time_remaining - hours) * 60) | int %}}
@@ -1905,9 +1936,7 @@ cards:
       fill_container: false
       tap_action:
         action: call-service
-        service: input_boolean.turn_off
-        service_data:
-          entity_id: {override_active_entity}
+        service: script.climate_clear_override_{sanitized_name}
       card_mod:
         style: |
           ha-card {{
@@ -1942,8 +1971,8 @@ cards:
 
   - type: conditional
     conditions:
-      - entity: {override_active_entity}
-        state: "off"
+      - entity: {control_mode_entity}
+        state_not: Override
     card:
       type: custom:mushroom-select-card
       entity: {control_mode_entity}
@@ -2273,23 +2302,23 @@ Copy this YAML and add it to your dashboard:
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
 
-        # Generate card with conditional cards if manual override is enabled
+        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script)
         if has_manual_override:
             card_yaml = f"""type: vertical-stack
 cards:
   - type: conditional
     conditions:
-      - entity: {override_active_entity}
-        state: "on"
+      - entity: {control_mode_entity}
+        state: Override
     card:
       type: custom:mushroom-template-card
       primary: Climate Control
-      secondary: |-
-        {{% set override_time = states('input_datetime.climate_override_time_{sanitized_name}') %}}
-        {{% set timeout_hours = states('input_number.climate_override_timeout_{sanitized_name}') | float(3) %}}
-        {{% if override_time not in ['unknown', 'unavailable', ''] %}}
-          {{% set time_since = (as_timestamp(now()) - as_timestamp(override_time)) / 3600 %}}
-          {{% set time_remaining = timeout_hours - time_since %}}
+      secondary: |
+        {{% set timeout = states('input_number.climate_override_timeout_{sanitized_name}') | float(0) %}}
+        {{% set override_time = state_attr('input_datetime.climate_override_time_{sanitized_name}', 'timestamp') | float(0) %}}
+        {{% if override_time > 0 and timeout > 0 %}}
+          {{% set time_since = (as_timestamp(now()) - override_time) / 3600 %}}
+          {{% set time_remaining = timeout - time_since %}}
           {{% if time_remaining > 0 %}}
             {{% set hours = time_remaining | int %}}
             {{% set minutes = ((time_remaining - hours) * 60) | int %}}
@@ -2310,9 +2339,7 @@ cards:
       fill_container: false
       tap_action:
         action: call-service
-        service: input_boolean.turn_off
-        service_data:
-          entity_id: {override_active_entity}
+        service: script.climate_clear_override_{sanitized_name}
       card_mod:
         style: |
           ha-card {{
@@ -2347,8 +2374,8 @@ cards:
 
   - type: conditional
     conditions:
-      - entity: {override_active_entity}
-        state: "off"
+      - entity: {control_mode_entity}
+        state_not: Override
     card:
       type: custom:mushroom-select-card
       entity: {control_mode_entity}
