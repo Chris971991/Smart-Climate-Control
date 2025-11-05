@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.13.12
+  name: Ultimate Smart Climate Control - v3.13.14
 
   description: |
-    **Ultimate Smart Climate Control v3.13.12**
+    **Ultimate Smart Climate Control v3.13.14**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,7 +58,23 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.13.0
+    ## 🆕 Latest Update - v3.13.14
+
+    **🐛 CRITICAL FIX: Continue Mode Not Respecting Presence + Escalation Temperature Not Applied**
+    - ✅ **FIXED**: AC now turns off when you leave room, even during continue mode (after grace period)
+    - 🔍 **ROOT CAUSE #1**: Presence check used `smart_presence_active` which short-circuits - now checks `room_presence_detected + minutes_since_presence >= timeout` directly
+    - ✅ **FIXED**: Escalated temperature (18°C) now actually sent to AC instead of staying at 23°C
+    - 🔍 **ROOT CAUSE #2**: LOW COOLING continue mode was MISSING the temperature command gatekeeper that all other sections have
+    - 🛠️ **SOLUTION**: Added command gatekeeper to allow escalated temperature commands through
+    - 🎯 **RESULT**: AC respects grace period AND escalation works correctly in continue mode
+
+    **Previous Update - v3.13.13**
+
+    **🐛 CRITICAL FIX: False Manual Override Detection When Automation Turns Off AC**
+    - ✅ **FIXED**: Automation turning off AC no longer triggers manual override mode!
+    - 🔍 **ROOT CAUSE**: `helper_expected_hvac` wasn't updated to 'off' when automation turned off AC
+    - 🛠️ **SOLUTION**: Added `helper_expected_hvac='off'` update after all 10 `climate.turn_off` calls
+    - 🎯 **RESULT**: Manual override detection now only triggers on actual user changes, not automation actions
 
     **🚀 MASSIVE PERFORMANCE UPGRADE: Command Gatekeeper System**
     - ⚡ **90% REDUCTION IN COMMAND SPAM**: Commands only sent when AC state actually needs changing!
@@ -5441,8 +5457,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% elif current_temp > heating_high_temp and (target_temp - current_temp) > 1.0 %}
@@ -5896,8 +5912,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% elif current_temp > heating_medium_temp and (target_temp - current_temp) > 1.0 %}
@@ -6336,8 +6352,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp >= (target_temp + target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - heated to {{ (target_temp + target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
@@ -6778,8 +6794,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% elif current_temp < cooling_high_temp and (current_temp - target_temp) > 1.0 %}
@@ -7245,8 +7261,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% elif current_temp < cooling_medium_temp and (current_temp - target_temp) > 1.0 %}
@@ -7708,8 +7724,8 @@ action:
                   True  {# RUNTIME PROTECTION: Stay on for minimum runtime regardless of conditions #}
                 {% elif current_temp <= (target_temp - target_overshoot) %}
                   False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}
-                {% elif control_mode == 'Smart' and not smart_presence_active %}
-                  False  {# EXIT: Smart mode requires presence to continue #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired ({{ presence_timeout }}min) #}
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off - don't restart from continue logic #}
                 {% else %}
@@ -8071,6 +8087,12 @@ action:
               milliseconds: 2000
 
           # v3.9.13: Set temperature with correct fan
+          # v3.13.14 FIX: Add missing command gatekeeper (present in all other sections)
+          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+          - condition: template
+            value_template: >
+              {{ within_hardware_delay or
+                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -9978,6 +10000,17 @@ action:
                 data:
                   value: "off"
 
+              # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                then:
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_expected_hvac }}"
+                    data:
+                      value: "off"
+                    continue_on_error: true
 
               # Update mode start time for off-time protection tracking (always update when going to OFF)
               - if:
@@ -10064,6 +10097,18 @@ action:
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
+
+                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_expected_hvac }}"
+                        data:
+                          value: "off"
+                        continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -10470,7 +10515,19 @@ action:
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
-                
+
+                # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                - if:
+                    - condition: template
+                      value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                  then:
+                    - service: input_text.set_value
+                      target:
+                        entity_id: "{{ helper_expected_hvac }}"
+                      data:
+                        value: "off"
+                      continue_on_error: true
+
                 # Update last mode helper to prevent conflicts
                 - service: input_text.set_value
                   target:
@@ -10559,14 +10616,26 @@ action:
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
-                
+
+                # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                - if:
+                    - condition: template
+                      value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                  then:
+                    - service: input_text.set_value
+                      target:
+                        entity_id: "{{ helper_expected_hvac }}"
+                      data:
+                        value: "off"
+                      continue_on_error: true
+
                 # Update last mode helper to prevent conflicts
                 - service: input_text.set_value
                   target:
                     entity_id: "{{ helper_mode }}"
                   data:
                     value: "adaptive_off"
-                
+
                 # Debug completion log
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -10696,6 +10765,18 @@ action:
             target:
               entity_id: !input climate_entities
 
+          # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+          - if:
+              - condition: template
+                value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_expected_hvac }}"
+                data:
+                  value: "off"
+                continue_on_error: true
+
       # Smart Mode room absence (room empty but still home)
       - conditions:
           - condition: template
@@ -10742,6 +10823,18 @@ action:
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
+
+                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_expected_hvac }}"
+                        data:
+                          value: "off"
+                        continue_on_error: true
 
                   # v3.11.1 FIX: Update last_mode to prevent false manual override detection
                   - service: input_text.set_value
@@ -11007,7 +11100,19 @@ action:
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
-              
+
+                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_expected_hvac }}"
+                        data:
+                          value: "off"
+                        continue_on_error: true
+
               - conditions:
                   - condition: template
                     value_template: "{{ away_action == 'eco' }}"
@@ -13004,6 +13109,18 @@ action:
           entity_id: !input climate_entities
         continue_on_error: true
 
+      # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "off"
+            continue_on_error: true
+
       # Update helper to reflect AC is now off
       - condition: template
         value_template: >
@@ -13080,6 +13197,18 @@ action:
       - service: climate.turn_off
         target:
           entity_id: !input climate_entities
+
+      # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "off"
+            continue_on_error: true
 
       # v3.9.41 FIX: ALWAYS update helper when turning off AC to prevent false manual override detection
       # Removed condition check - helper MUST be updated to match AC state
@@ -13371,6 +13500,18 @@ action:
                   target:
                     entity_id: "{{ repeat.item }}"
                   continue_on_error: true
+
+          # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+          - if:
+              - condition: template
+                value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_expected_hvac }}"
+                data:
+                  value: "off"
+                continue_on_error: true
 
           - if:
               - condition: template
