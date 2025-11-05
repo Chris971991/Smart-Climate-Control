@@ -1,22 +1,54 @@
-home-assistant_2025-09-07T03-51-24.795Z.log
+# Development environment
 .claude/settings.local.json
-ultimate_climate_control_backup.yaml
-CLAUDE.md
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 
-# Audit reports (test files should be tracked)
+# Backups and work-in-progress
+backups/
+*.backup
+*_backup.yaml
+*_wip.yaml
+*_updated.yaml
+*.backup_*/
+smart_climate_setup_wizard.backup_*/
+
+# Development scripts (tracked in scripts/ folder)
+scripts/
+
+# Documentation and summaries (tracked in docs/ folder)
+docs/
+
+# Audit reports
 AUDIT_REPORT.md
 AUDIT_IMPROVEMENTS.md
 ENHANCED_AUDIT_SUMMARY.md
 TEST_SUITE_ENHANCEMENTS.md
 CRITICAL_AUDIT_REPORT.md
-custom_components/smart_climate_setup_wizard/__pycache__/config_flow.cpython-312.pyc
-proximity_test_helpers.yaml
-proximity_spoof_automation.yaml
 PROXIMITY_TEST_GUIDE.md
 SYSTEM_REFERENCE.md
 Manual_Override_Upgrade_Plan.md
+
+# Test files
+proximity_test_helpers.yaml
+proximity_spoof_automation.yaml
+capture_summary.txt
+trigger_addition.txt
+
+# Logs
+*.log
+home-assistant_*.log
+
+# Legacy files
+CLAUDE.md
 auto_add_captures.py
 add_remaining_captures.py
-capture_summary.txt
 final_capture_batch.py
-trigger_addition.txt
+ultimate_climate_control.yaml.backup_before_gatekeeper_20251104_184511
