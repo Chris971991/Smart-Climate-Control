@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.13.14
+  name: Ultimate Smart Climate Control - v3.13.16
 
   description: |
-    **Ultimate Smart Climate Control v3.13.14**
+    **Ultimate Smart Climate Control v3.13.16**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,7 +58,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.13.14
+    ## 🆕 Latest Update - v3.13.16
+
+    **🐛 BUG FIXES: Bed Comfort ECO Mode Variable + Escalation Support**
+    - ✅ **FIXED**: Undefined `eco_fan_speed` variable (was reversed - should be `fan_speed_eco`)
+    - ✅ **ENHANCED**: Bed ECO mode now supports dynamic fan escalation!
+    - 🎯 **HOW IT WORKS**: Starts with eco fan (Level 2), escalates to Level 3→4→5 if room warming past target
+    - 🛏️ **BENEFIT**: Maintains target temperature with MINIMAL noise, but gets aggressive if needed
+    - 🧠 **SMART**: Uses same effectiveness tracking as continue mode - adapts to real conditions
+
+    **Previous Update - v3.13.15**
+
+    **🐛 CRITICAL FIX: Race Condition Causing False Override on Target Achievement**
+    - ✅ **FIXED**: AC reaching target and turning off no longer triggers manual override!
+    - 🔍 **ROOT CAUSE**: `helper_expected_hvac='off'` updated AFTER `climate.turn_off`, allowing presence sensors to trigger during transition
+    - 🛠️ **SOLUTION**: Moved ALL helper updates BEFORE the turn_off call (10 locations fixed)
+    - 🎯 **RESULT**: Helper state syncs FIRST, then AC turns off - no race condition window for false override
 
     **🐛 CRITICAL FIX: Continue Mode Not Respecting Presence + Escalation Temperature Not Applied**
     - ✅ **FIXED**: AC now turns off when you leave room, even during continue mode (after grace period)
@@ -67,14 +82,6 @@ blueprint:
     - 🔍 **ROOT CAUSE #2**: LOW COOLING continue mode was MISSING the temperature command gatekeeper that all other sections have
     - 🛠️ **SOLUTION**: Added command gatekeeper to allow escalated temperature commands through
     - 🎯 **RESULT**: AC respects grace period AND escalation works correctly in continue mode
-
-    **Previous Update - v3.13.13**
-
-    **🐛 CRITICAL FIX: False Manual Override Detection When Automation Turns Off AC**
-    - ✅ **FIXED**: Automation turning off AC no longer triggers manual override mode!
-    - 🔍 **ROOT CAUSE**: `helper_expected_hvac` wasn't updated to 'off' when automation turned off AC
-    - 🛠️ **SOLUTION**: Added `helper_expected_hvac='off'` update after all 10 `climate.turn_off` calls
-    - 🎯 **RESULT**: Manual override detection now only triggers on actual user changes, not automation actions
 
     **🚀 MASSIVE PERFORMANCE UPGRADE: Command Gatekeeper System**
     - ⚡ **90% REDUCTION IN COMMAND SPAM**: Commands only sent when AC state actually needs changing!
@@ -9603,46 +9610,145 @@ action:
                     data:
                       message: >
                         🛏️ {{ room_name | upper }} BED COMFORT ECO: Maintaining Target Temperature
-                        Set AC to: {{ target_temp | round(0) }}°C (rounded for AC compatibility)
-                        Actual value: {{ target_temp | round(1) }}°C
-                        Reason: Bed occupied - continuous temperature maintenance in ECO mode
-                        Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+
+                        Temperature:
+                            • Set AC to: {{ adjusted_target | round(1) }}°C
+                            • Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
+
+                        Escalation (v3.13.16):
+                            • Level: {{ final_escalation_level }} (0=Eco, 1-4=Escalated)
+                            • Fan will escalate if room not maintaining target
+                            • Uses same effectiveness tracking as continue mode
+
+                        Reason: Bed occupied - continuous temperature maintenance in ECO mode with dynamic fan escalation
                       level: warning
                       logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-                  # Set eco fan mode for quiet operation
+                  # v3.13.16: Set fan mode based on escalation level (start eco, escalate if needed)
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
                         - variables:
                             current_entity: "{{ repeat.item }}"
                             available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
-                            desired_eco_fan: "{{ eco_fan_speed }}"
+                            # Escalation-based fan selection (eco=Level 0, escalate up to Level 4)
                             expected_fan_mode: >
-                              {% if desired_eco_fan in available_fans %}
-                                {{ desired_eco_fan }}
-                                {% elif 'Auto' in available_fans %}
-                                Auto
-                                {% elif 'auto' in available_fans %}
-                                auto
-                                {% elif 'Quiet' in available_fans %}
-                                Quiet
-                                {% elif 'quiet' in available_fans %}
-                                quiet
-                                {% elif 'Silence' in available_fans %}
-                                Silence
-                                {% elif 'silence' in available_fans %}
-                                silence
-                                {% elif 'Level 1' in available_fans %}
-                                Level 1
-                                {% elif '1' in available_fans %}
-                                1
-                                {% elif 'low' in available_fans %}
-                                low
-                                {% elif 'Low' in available_fans %}
-                                Low
+                              {% set fans = available_fans %}
+                              {% if final_escalation_level == 0 %}
+                                {# Level 0: Eco fan speed (quietest) #}
+                                {% set desired_eco = fan_speed_eco %}
+                                {% if desired_eco in fans %}
+                                  {{ desired_eco }}
+                                {% elif 'quiet' in fans %}
+                                  quiet
+                                {% elif 'Quiet' in fans %}
+                                  Quiet
+                                {% elif 'silence' in fans %}
+                                  silence
+                                {% elif 'Silence' in fans %}
+                                  Silence
+                                {% elif '1' in fans %}
+                                  1
+                                {% elif 'Level 1' in fans %}
+                                  Level 1
+                                {% elif 'low' in fans %}
+                                  low
+                                {% elif 'Low' in fans %}
+                                  Low
+                                {% elif 'auto' in fans %}
+                                  auto
+                                {% elif 'Auto' in fans %}
+                                  Auto
                                 {% else %}
-                                {{ available_fans[0] if available_fans else 'Auto' }}
+                                  {{ fans[0] if fans else 'Auto' }}
+                                {% endif %}
+                              {% elif final_escalation_level == 1 %}
+                                {# Level 1: Small escalation - Fan 2 #}
+                                {% if '2' in fans %}
+                                  2
+                                {% elif 'Level 2' in fans %}
+                                  Level 2
+                                {% elif 'low' in fans %}
+                                  low
+                                {% elif 'Low' in fans %}
+                                  Low
+                                {% elif '3' in fans %}
+                                  3
+                                {% elif 'Level 3' in fans %}
+                                  Level 3
+                                {% elif 'auto' in fans %}
+                                  auto
+                                {% elif 'Auto' in fans %}
+                                  Auto
+                                {% else %}
+                                  {{ fans[1] if fans|length > 1 else fans[0] }}
+                                {% endif %}
+                              {% elif final_escalation_level == 2 %}
+                                {# Level 2: Moderate escalation - Fan 3 #}
+                                {% if '3' in fans %}
+                                  3
+                                {% elif 'Level 3' in fans %}
+                                  Level 3
+                                {% elif 'medium' in fans %}
+                                  medium
+                                {% elif 'Medium' in fans %}
+                                  Medium
+                                {% elif '4' in fans %}
+                                  4
+                                {% elif 'Level 4' in fans %}
+                                  Level 4
+                                {% elif 'auto' in fans %}
+                                  auto
+                                {% elif 'Auto' in fans %}
+                                  Auto
+                                {% else %}
+                                  {{ fans[2] if fans|length > 2 else (fans[1] if fans|length > 1 else fans[0]) }}
+                                {% endif %}
+                              {% elif final_escalation_level == 3 %}
+                                {# Level 3: Strong escalation - Fan 4 #}
+                                {% if '4' in fans %}
+                                  4
+                                {% elif 'Level 4' in fans %}
+                                  Level 4
+                                {% elif '5' in fans %}
+                                  5
+                                {% elif 'Level 5' in fans %}
+                                  Level 5
+                                {% elif 'high' in fans %}
+                                  high
+                                {% elif 'High' in fans %}
+                                  High
+                                {% elif 'auto' in fans %}
+                                  auto
+                                {% elif 'Auto' in fans %}
+                                  Auto
+                                {% else %}
+                                  {{ fans[-2] if fans|length > 1 else fans[-1] }}
+                                {% endif %}
+                              {% else %}
+                                {# Level 4: Emergency maximum - Fan 5 #}
+                                {% set desired_max = fan_speed_max %}
+                                {% if desired_max in fans %}
+                                  {{ desired_max }}
+                                {% elif '5' in fans %}
+                                  5
+                                {% elif 'Level 5' in fans %}
+                                  Level 5
+                                {% elif '4' in fans %}
+                                  4
+                                {% elif 'Level 4' in fans %}
+                                  Level 4
+                                {% elif 'high' in fans %}
+                                  high
+                                {% elif 'High' in fans %}
+                                  High
+                                {% elif 'auto' in fans %}
+                                  auto
+                                {% elif 'Auto' in fans %}
+                                  Auto
+                                {% else %}
+                                  {{ fans[-1] if fans else 'Auto' }}
+                                {% endif %}
                               {% endif %}
 
                         # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -9989,18 +10095,7 @@ action:
                   datetime: "{{ now() }}"
                 continue_on_error: true
 
-              - service: climate.turn_off
-                target:
-                  entity_id: !input climate_entities
-                continue_on_error: true
-
-              - service: input_text.set_value
-                target:
-                  entity_id: !input helper_last_mode
-                data:
-                  value: "off"
-
-              # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+              # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
               - if:
                   - condition: template
                     value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10011,6 +10106,17 @@ action:
                     data:
                       value: "off"
                     continue_on_error: true
+
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_last_mode
+                data:
+                  value: "off"
+
+              - service: climate.turn_off
+                target:
+                  entity_id: !input climate_entities
+                continue_on_error: true
 
               # Update mode start time for off-time protection tracking (always update when going to OFF)
               - if:
@@ -10094,11 +10200,7 @@ action:
                       datetime: "{{ now() }}"
                     continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-
-                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
                   - if:
                       - condition: template
                         value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10109,6 +10211,10 @@ action:
                         data:
                           value: "off"
                         continue_on_error: true
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
 
                   - service: system_log.write
                     data:
@@ -10516,7 +10622,7 @@ action:
                         target:
                           entity_id: "{{ repeat.item }}"
 
-                # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                # v3.13.15 FIX: Update expected_hvac BEFORE mode helper to prevent race condition
                 - if:
                     - condition: template
                       value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10613,21 +10719,21 @@ action:
                           datetime: "{{ now() }}"
                         continue_on_error: true
 
+                      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+                      - if:
+                          - condition: template
+                            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                        then:
+                          - service: input_text.set_value
+                            target:
+                              entity_id: "{{ helper_expected_hvac }}"
+                            data:
+                              value: "off"
+                            continue_on_error: true
+
                       - service: climate.turn_off
                         target:
                           entity_id: "{{ repeat.item }}"
-
-                # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
-                - if:
-                    - condition: template
-                      value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
-                  then:
-                    - service: input_text.set_value
-                      target:
-                        entity_id: "{{ helper_expected_hvac }}"
-                      data:
-                        value: "off"
-                      continue_on_error: true
 
                 # Update last mode helper to prevent conflicts
                 - service: input_text.set_value
@@ -10760,12 +10866,7 @@ action:
             data:
               datetime: "{{ now() }}"
               
-          # Turn off AC when switching to Manual mode from automation-controlled state
-          - service: climate.turn_off
-            target:
-              entity_id: !input climate_entities
-
-          # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+          # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
           - if:
               - condition: template
                 value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10776,6 +10877,11 @@ action:
                 data:
                   value: "off"
                 continue_on_error: true
+
+          # Turn off AC when switching to Manual mode from automation-controlled state
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entities
 
       # Smart Mode room absence (room empty but still home)
       - conditions:
@@ -10820,11 +10926,7 @@ action:
                       datetime: "{{ now() }}"
                     continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-
-                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
                   - if:
                       - condition: template
                         value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10835,6 +10937,10 @@ action:
                         data:
                           value: "off"
                         continue_on_error: true
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
 
                   # v3.11.1 FIX: Update last_mode to prevent false manual override detection
                   - service: input_text.set_value
@@ -11097,11 +11203,7 @@ action:
                       datetime: "{{ now() }}"
                     continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-
-                  # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+                  # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
                   - if:
                       - condition: template
                         value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -11112,6 +11214,10 @@ action:
                         data:
                           value: "off"
                         continue_on_error: true
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
 
               - conditions:
                   - condition: template
@@ -13104,12 +13210,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
-        continue_on_error: true
-
-      # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -13120,6 +13221,11 @@ action:
             data:
               value: "off"
             continue_on_error: true
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+        continue_on_error: true
 
       # Update helper to reflect AC is now off
       - condition: template
@@ -13194,11 +13300,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
-
-      # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -13209,6 +13311,10 @@ action:
             data:
               value: "off"
             continue_on_error: true
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
 
       # v3.9.41 FIX: ALWAYS update helper when turning off AC to prevent false manual override detection
       # Removed condition check - helper MUST be updated to match AC state
@@ -13493,15 +13599,7 @@ action:
               datetime: "{{ now() }}"
             continue_on_error: true
 
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - service: climate.turn_off
-                  target:
-                    entity_id: "{{ repeat.item }}"
-                  continue_on_error: true
-
-          # v3.13.13 FIX: Update expected_hvac to prevent false manual override detection
+          # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
           - if:
               - condition: template
                 value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -13512,6 +13610,14 @@ action:
                 data:
                   value: "off"
                 continue_on_error: true
+
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - service: climate.turn_off
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  continue_on_error: true
 
           - if:
               - condition: template
