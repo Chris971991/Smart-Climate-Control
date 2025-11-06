@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.13.16
+  name: Ultimate Smart Climate Control - v3.14.1
 
   description: |
-    **Ultimate Smart Climate Control v3.13.16**
+    **Ultimate Smart Climate Control v3.14.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,22 +58,38 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.13.16
+    ## 🆕 Latest Update - v3.14.0
+
+    **✨ NEW FEATURE: Two-Tier Debug System**
+    - 🟢 **ALWAYS-ON EVENT LOGGING** (Recommended: Keep ON): User-friendly logs when AC activates/deactivates/override detected
+    - 🔧 **FULL DEBUG LOGGING** (Use only when troubleshooting): Verbose technical debugging for deep analysis
+    - 📊 **DUAL FORMAT**: Each event log includes user-friendly info + technical debug data in one message
+    - 🎯 **SEPARATE LOGGER**: Event logs go to `.events` namespace (e.g., `blueprints.climate_control.living_room.events`)
+    - ⚡ **8 EVENT TYPES**: 6 activation (COOLING/HEATING HIGH/MEDIUM/LOW), 1 deactivation (presence timeout), 1 manual override
+    - 🛡️ **ALWAYS VISIBLE**: Event logs fire at WARNING level regardless of debug toggle state
+
+    **What You'll See in Event Logs:**
+    ```
+    🟢 LIVING ROOM AC ACTIVATED
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    📊 USER INFO:
+    Mode: COOLING HIGH
+    Temperature: 26.5°C → Target: 22.5°C
+    Fan: Level 5
+    Reason: High cooling activation - Temperature 26.5°C triggered COOLING HIGH mode
+
+    🔍 DEBUG DATA (for troubleshooting):
+    [Technical variables, conditions, state info...]
+    ```
+
+    **Previous Update - v3.13.17**
+
+    **🐛 CRITICAL FIX: Race Condition in Temperature Stability Shutoff**
+    - ✅ **FIXED**: AC reaching target via temperature stability no longer triggers manual override!
 
     **🐛 BUG FIXES: Bed Comfort ECO Mode Variable + Escalation Support**
     - ✅ **FIXED**: Undefined `eco_fan_speed` variable (was reversed - should be `fan_speed_eco`)
-    - ✅ **ENHANCED**: Bed ECO mode now supports dynamic fan escalation!
-    - 🎯 **HOW IT WORKS**: Starts with eco fan (Level 2), escalates to Level 3→4→5 if room warming past target
-    - 🛏️ **BENEFIT**: Maintains target temperature with MINIMAL noise, but gets aggressive if needed
-    - 🧠 **SMART**: Uses same effectiveness tracking as continue mode - adapts to real conditions
-
-    **Previous Update - v3.13.15**
-
-    **🐛 CRITICAL FIX: Race Condition Causing False Override on Target Achievement**
-    - ✅ **FIXED**: AC reaching target and turning off no longer triggers manual override!
-    - 🔍 **ROOT CAUSE**: `helper_expected_hvac='off'` updated AFTER `climate.turn_off`, allowing presence sensors to trigger during transition
-    - 🛠️ **SOLUTION**: Moved ALL helper updates BEFORE the turn_off call (10 locations fixed)
-    - 🎯 **RESULT**: Helper state syncs FIRST, then AC turns off - no race condition window for false override
+    - ✅ **ENHANCED**: Bed ECO mode now supports dynamic fan escalation (starts eco, escalates when needed)
 
     **🐛 CRITICAL FIX: Continue Mode Not Respecting Presence + Escalation Temperature Not Applied**
     - ✅ **FIXED**: AC now turns off when you leave room, even during continue mode (after grace period)
@@ -135,8 +151,8 @@ blueprint:
 
     ## 📋 Latest Changes
 
-    **v3.13.12** - 🐛 CRITICAL FIX: Debug logging blocking automation execution when debug disabled
-    **v3.13.3** - 🐛 FIX: Reverted debug wrapping changes that broke logging + Command Gatekeeper false positive Override detection
+    **v3.14.1** - 🐛 CRITICAL FIX: Bed ECO mode fan selection + presence detection + event log clarity
+    **v3.14.0** - ✨ NEW: Two-tier debug system (always-on event logging + optional full debug)
 
     [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
 
@@ -368,6 +384,73 @@ blueprint:
       selector:
         entity:
           domain: input_text
+
+    # Debugging & Logging Settings
+    debugging_settings:
+      name: "Debugging & Logging Settings"
+      icon: mdi:message-text
+      collapsed: true
+      input:
+        enable_event_logging:
+          name: "Event Logging (Recommended: Keep ON)"
+          description: |
+            🟢 **RECOMMENDED: Keep this enabled for easy troubleshooting!**
+
+            **Logs important events when AC turns on/off or manual override is detected.**
+
+            **What you'll see:**
+            • 🟢 AC Activation logs - Why AC turned on (temperature, mode, reason)
+            • 🔴 AC Deactivation logs - Why AC turned off (target reached, presence timeout, etc.)
+            • 🟡 Manual Override logs - When you manually change AC settings
+
+            **Benefits:**
+            • ✅ Understand why your AC turned on at 3am
+            • ✅ Debug issues without enabling verbose logging
+            • ✅ See manual override detection in real-time
+            • ✅ Minimal log spam (only on state changes)
+
+            **Performance Impact:** Very low (only logs on actual events)
+
+            **View logs:** Settings → System → Logs (search for your room name)
+
+            **Recommendation:** Leave this ON unless you want completely silent operation.
+          default: true
+          selector:
+            boolean:
+
+        enable_full_debug_logging:
+          name: "Full Debug Logging (Troubleshooting Only)"
+          description: |
+            ⚠️ **WARNING: Creates MANY log entries - enable only when troubleshooting!**
+
+            **Enables extensive debug logging for deep troubleshooting.**
+
+            **What you'll see:**
+            • 🔍 Every condition evaluation (true/false checks)
+            • 🔍 Variable states at decision points
+            • 🔍 Temperature calculations and thresholds
+            • 🔍 Presence detection logic
+            • 🔍 Effectiveness tracking details
+            • 🔍 Escalation/de-escalation reasoning
+            • 🔍 Fan speed selection logic
+            • 🔍 Continue mode decision-making
+
+            **Performance Impact:** Moderate (logs every periodic check)
+
+            **When to enable:**
+            • ✅ Diagnosing complex automation issues
+            • ✅ Understanding why specific conditions aren't met
+            • ✅ Debugging effectiveness tracking problems
+            • ✅ Investigating unexpected behavior
+
+            **When to disable:**
+            • ❌ Normal operation (generates too many logs)
+            • ❌ Once issue is identified and resolved
+
+            **Recommendation:** Keep this OFF unless actively troubleshooting.
+          default: false
+          selector:
+            boolean:
 
     # Temperature Settings - Simple Mode
     temperature_settings:
@@ -2357,22 +2440,7 @@ blueprint:
               step: 1
               unit_of_measurement: "°C"
               mode: box
-        
-        enable_debug_logging:
-          name: Enable Debug Logging
-          description: |
-            **Enable detailed warning-level logs** for troubleshooting.
 
-            • **Shows decision-making process** and sensor states
-            • **Helps diagnose** automation issues
-            • **View logs** in Settings → System → Logs
-            • **WARNING:** Creates many log entries!
-
-            **Recommendation:** Enable only when troubleshooting - disable for normal operation.
-          default: false
-          selector:
-            boolean:
-        
         check_interval_minutes:
           name: Check Interval
           description: |
@@ -3045,7 +3113,9 @@ action:
   # Store inputs as variables first
   - variables:
       check_interval: !input check_interval_minutes
-      debug_enabled: !input enable_debug_logging
+      # v3.14.0: Two-tier debug system
+      event_logging_enabled: !input enable_event_logging
+      debug_enabled: !input enable_full_debug_logging
       proximity_sensor: >
         {% if proximity_sensor_input and proximity_sensor_input not in [none, '', 'unavailable', 'unknown'] and proximity_sensor_input is string and proximity_sensor_input != '' %}
           {{ proximity_sensor_input }}
@@ -4398,6 +4468,75 @@ action:
       # The control_mode variable is calculated once at automation start. Even though we just changed
       # control_mode_helper to "Override", the variable still holds the old value (e.g., "Smart").
       # If we continue, the control logic will see control_mode="Smart" and turn AC back on!
+
+      # v3.14.0: Always-on manual override event logging
+      - condition: template
+        value_template: "{{ event_logging_enabled }}"
+      - service: system_log.write
+        data:
+          message: >
+            🟡 {{ room_name | upper }} MANUAL OVERRIDE DETECTED
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            📊 USER INFO:
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            Changed Parameter: {% if is_manual_off %}HVAC Mode (ON → OFF){% elif is_manual_on %}HVAC Mode (OFF → ON){% elif is_temp_manual %}Temperature Setpoint{% elif is_fan_manual %}Fan Speed{% elif is_swing_manual %}Swing Mode{% elif is_hvac_manual %}HVAC Mode{% else %}Unknown{% endif %}
+
+            Expected vs Actual:
+            {% if is_manual_off or is_manual_on %}
+                    • Expected HVAC: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • Actual HVAC: {{ states(climate_list[0]) if climate_list | length > 0 else 'unknown' }}
+            {% elif is_temp_manual %}
+                    • Expected Temp: {{ states(helper_expected_temp) | float(0) }}°C
+                    • Actual Temp: {{ state_attr(climate_list[0], 'temperature') | float(0) if climate_list | length > 0 else 'unknown' }}°C
+            {% elif is_fan_manual %}
+                    • Expected Fan: {{ states(helper_expected_fan) | default('unknown') }}
+                    • Actual Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('unknown') if climate_list | length > 0 else 'unknown' }}
+            {% elif is_swing_manual %}
+                    • Expected Swing: {{ states(helper_expected_swing) | default('unknown') }}
+                    • Actual Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('unknown') if climate_list | length > 0 else 'unknown' }}
+            {% endif %}
+
+            Time Since Last Change: {{ time_since_change | round(1) }}s (outside {{ 45 if time_since_change >= 45 else time_since_change }}s hardware delay)
+            Control Mode: {{ control_mode }} → Override Mode
+            Override Duration: {{ adaptive_override_timeout }}h (adaptive based on time of day)
+
+            🎮 Automation Response:
+            • Automation paused to respect your manual changes
+            • Will automatically resume after {{ adaptive_override_timeout }}h timeout
+            • Or manually clear override via dashboard button
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            🔍 DEBUG DATA (for troubleshooting):
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            Manual Detection Logic:
+                • manual_change_detected: {{ manual_change_detected }}
+                • is_manual_off: {{ is_manual_off }}
+                • is_manual_on: {{ is_manual_on }}
+                • is_temp_manual: {{ is_temp_manual }}
+                • is_fan_manual: {{ is_fan_manual }}
+                • is_swing_manual: {{ is_swing_manual }}
+                • is_hvac_manual: {{ is_hvac_manual }}
+
+            State Comparison:
+                • helper_last_mode: {{ states(helper_mode) | default('unknown') }}
+                • actual_ac_state: {{ actual_ac_state }}
+                • within_hardware_delay: {{ within_hardware_delay }}
+                • has_valid_expectation: {{ has_valid_expectation if has_valid_expectation is defined else 'N/A' }}
+
+            Override Configuration:
+                • control_mode_before: {{ control_mode }}
+                • adaptive_override_timeout: {{ adaptive_override_timeout }}h
+                • current_hour: {{ now().hour }}
+
+            Trigger Info:
+                • trigger.id: {{ trigger.id }}
+                • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+                • trigger.from_state: {{ trigger.from_state if trigger.from_state is defined else 'N/A' }}
+                • trigger.to_state: {{ trigger.to_state if trigger.to_state is defined else 'N/A' }}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
       - stop: "Manual override detected - stopping automation to prevent interference with user's manual changes"
 
   # v3.11.0: CLEAR Override when button clicked (boolean turned off) - runs every automation cycle
@@ -5539,7 +5678,56 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔥 {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: HEATING HIGH
+                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: High heating activation - Temperature {{ current_temp }}°C triggered HEATING HIGH mode
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -5995,7 +6183,56 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔥 {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: HEATING MEDIUM
+                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: Medium heating activation - Temperature {{ current_temp }}°C triggered HEATING MEDIUM mode
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -6434,7 +6671,56 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🔥 {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: HEATING LOW
+                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: Low heating activation - Temperature {{ current_temp }}°C triggered HEATING LOW mode
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -6884,7 +7170,56 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                ❄️ {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: COOLING HIGH
+                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: High cooling activation - Temperature {{ current_temp }}°C triggered COOLING HIGH mode
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -7358,7 +7693,56 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                ❄️ {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: COOLING MEDIUM
+                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: Medium cooling activation - Temperature {{ current_temp }}°C triggered COOLING MEDIUM mode
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -7723,8 +8107,8 @@ action:
           - condition: template
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
-              {% if current_mode == 'cooling_low' %}
-                {# Already cooling low - continue only if AC running AND temp needs adjustment #}
+              {% if current_mode in ['cooling_low', 'bed_comfort_eco'] %}
+                {# Already cooling low OR bed comfort eco - continue only if AC running AND temp needs adjustment #}
                 {% if not enable_cooling %}
                   False  {# v3.9.40 FIX: Cooling disabled - turn off immediately regardless of runtime #}
                 {% elif time_in_current_mode < runtime_min %}
@@ -7740,7 +8124,7 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'bed_comfort_eco'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off', 'bed_comfort_eco']) %}
                 {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
@@ -7757,8 +8141,14 @@ action:
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
                 {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
+                {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
 
-                {% if current_mode == 'cooling_low' %}
+                {% if last_mode_was_bed_eco %}
+                🛏️ {{ room_name | upper }} BED COMFORT ECO: Maintaining with Escalation
+                📊 {{ current_temp }}°C → Target: {{ target_temp }}°C (maintaining comfort)
+                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATED L{{ final_escalation_level }} for comfort){% else %} (ECO mode){% endif %}
+                🌙 Bed comfort mode active - gentle temperature maintenance
+                {% elif current_mode == 'cooling_low' %}
                   {% if distance <= 0.2 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PRECISION MODE 🎯
                 📊 {{ current_temp }}°C ≈ {{ overshoot_turnoff }}°C ({{ distance }}°C away){% if target_info %}
@@ -7800,7 +8190,58 @@ action:
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
-          # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
+          
+          # v3.14.0: Always-on event logging (user-friendly + debug data)
+          - condition: template
+            value_template: "{{ event_logging_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
+                {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+                ❄️ {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: COOLING LOW{% if last_mode_was_bed_eco or bed_active %} (Bed Comfort ECO){% endif %}
+                    • Temperature: {{ current_temp }}°C → {{ target_temp }}°C{% if last_mode_was_bed_eco or bed_active %} (bed comfort mode){% endif %}
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: {% if last_mode_was_bed_eco or bed_active %}Bed comfort mode - maintaining user target with gentle adjustments{% else %}Low cooling activation - Temperature {{ current_temp }}°C triggered COOLING LOW mode{% endif %}
+                    • Control Mode: {{ control_mode }}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ adjusted_target if adjusted_target is defined else target_temp }}°C
+                    • temp_gap: {{ (target_temp - current_temp) | abs | round(1) }}°C
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • time_since_change: {{ time_since_change | round(1) }}s
+                    • control_mode: {{ control_mode }}
+                    • smart_presence_active: {{ smart_presence_active if control_mode == 'Smart' else 'N/A' }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ states(helper_mode) | default('off') }}
+                    • helper_expected_hvac: {{ states(helper_expected_hvac) | default('unknown') }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
+
+# v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           # When AC turns on, helper must already match to avoid race condition
           - service: input_text.set_value
             target:
@@ -7898,10 +8339,53 @@ action:
                     available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
 
                     # LOW cooling adaptive fan selection with full 5-speed escalation
+                    # v3.13.17: Bed ECO mode uses ECO fan speed, escalates only if struggling
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {# De-escalation takes priority when no stall detected #}
-                      {% if deescalation_level == 3 and final_escalation_level == 0 %}
+                      {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
+                      {# BED ECO MODE: Start with ECO fan, escalate only if room warming #}
+                      {% if last_mode_was_bed_eco %}
+                        {% if final_escalation_level == 0 %}
+                          {# ECO mode - Use configured eco fan speed #}
+                          {{ fan_speed_eco }}
+                        {% elif final_escalation_level == 1 %}
+                          {# Slight escalation - Move to Level 3 #}
+                          {% if '3' in fans %}
+                            3
+                          {% elif 'Level 3' in fans %}
+                            Level 3
+                          {% elif 'medium' in fans %}
+                            medium
+                          {% elif 'Medium' in fans %}
+                            Medium
+                          {% else %}
+                            {{ fan_speed_eco }}
+                          {% endif %}
+                        {% elif final_escalation_level == 2 %}
+                          {# Moderate escalation - Move to Level 4 #}
+                          {% if '4' in fans %}
+                            4
+                          {% elif 'Level 4' in fans %}
+                            Level 4
+                          {% elif '5' in fans %}
+                            5
+                          {% else %}
+                            {{ fan_speed_eco }}
+                          {% endif %}
+                        {% else %}
+                          {# Strong escalation (Level 3-4) - Maximum fan #}
+                          {% if '5' in fans %}
+                            5
+                          {% elif 'Level 5' in fans %}
+                            Level 5
+                          {% elif '4' in fans %}
+                            4
+                          {% else %}
+                            {{ fans[-1] if fans else 'Auto' }}
+                          {% endif %}
+                        {% endif %}
+                      {# NORMAL COOLING: Full escalation for fast cooling to overshoot #}
+                      {% elif deescalation_level == 3 and final_escalation_level == 0 %}
                         {# Level 3: MAXIMUM de-escalation - Switch to eco/maintenance mode #}
                         {% if 'quiet' in fans %}
                           quiet
@@ -8725,9 +9209,9 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: Pre-conditioning activated
-                Reason: Approaching home
+                • Reason: Approaching home
                 {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
-                Temperature: {{ current_temp }}°C needs adjustment
+                • Temperature: {{ current_temp }}°C needs adjustment
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
@@ -8809,7 +9293,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: Pre-conditioning
                 Set AC to: {{ weather_adjusted_target | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ weather_adjusted_target | round(1) }}°C
-                Reason: Pre-conditioning target temperature (approaching home)
+                • Reason: Pre-conditioning target temperature (approaching home)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -10212,6 +10696,15 @@ action:
                           value: "off"
                         continue_on_error: true
 
+                  # v3.13.17 FIX: Update helper_last_mode BEFORE turn_off to prevent false override
+                  # If presence sensors trigger between turn_off and helper update, override detection
+                  # will see old mode (cooling_low) + AC off = false manual override!
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "stability_off"
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
@@ -10231,6 +10724,13 @@ action:
                   - condition: template
                     value_template: "{{ stability_behavior == 'eco' }}"
                 sequence:
+                  # v3.13.17 FIX: Update helper_last_mode BEFORE changing AC to prevent false override
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "stability_eco"
+
                   # Set HVAC mode with compatibility check for eco mode
                   - repeat:
                       for_each: "{{ climate_list }}"
@@ -10366,12 +10866,8 @@ action:
                                 {% else %}
                                 {{ available_fans[0] if available_fans else 'Auto' }}
                               {% endif %}
-          
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "stability_{{ stability_behavior }}"
+
+          # v3.13.17: Removed duplicate helper_last_mode update (now done in each branch BEFORE AC changes)
 
           # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
           - condition: template
@@ -11452,9 +11948,9 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH COOLING MODE
-                Temperature: {{ current_temp }}°C > {{ cooling_high_temp }}°C
+                • Temperature: {{ current_temp }}°C > {{ cooling_high_temp }}°C
                 Target: {{ cooling_target_temp }}°C
-                Fan: Maximum
+                • Fan: Maximum
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
@@ -11552,7 +12048,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: High Cooling
                 Set AC to: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ ([weather_adjusted_target, current_temp - 2] | min if gradual_enabled else weather_adjusted_target) | round(1) }}°C
-                Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
+                • Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -11718,12 +12214,12 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: MEDIUM COOLING MODE
-                Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
+                • Temperature: {{ current_temp }}°C ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C range)
                 Target: {{ cooling_target_temp }}°C
-                Fan: Auto/Medium (efficient)
+                • Fan: Auto/Medium (efficient)
                 
                 MANUAL MODE DEBUG:
-                Control Mode: {{ control_mode }}
+                • Control Mode: {{ control_mode }}
                 Should Activate: {{ should_activate }}
                 Extreme Temp Detected: {{ extreme_temp_detected }}
                 Room Presence: {{ room_presence_detected }}
@@ -11819,7 +12315,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: Medium Cooling
                 Set AC to: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ ([cooling_target_temp, current_temp - 1] | min if gradual_enabled else cooling_target_temp) | round(1) }}°C
-                Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
+                • Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -12027,9 +12523,9 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: LOW HEATING MODE
-                Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
+                • Temperature: {{ current_temp }}°C < {{ heating_low_temp }}°C
                 Target: {{ heating_target_temp }}°C
-                Fan: Low/Minimum (efficient)
+                • Fan: Low/Minimum (efficient)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
@@ -12098,7 +12594,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: Low Heating
                 Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ heating_target_temp | round(1) }}°C
-                Reason: Direct target temperature (no gradual adjustment for heating)
+                • Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -12309,9 +12805,9 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: MEDIUM HEATING MODE
-                Temperature: {{ current_temp }}°C ({{ heating_low_temp }}-{{ heating_medium_temp }}°C range)
+                • Temperature: {{ current_temp }}°C ({{ heating_low_temp }}-{{ heating_medium_temp }}°C range)
                 Target: {{ heating_target_temp }}°C
-                Fan: Auto/Medium (efficient)
+                • Fan: Auto/Medium (efficient)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
@@ -12401,7 +12897,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: Medium Heating
                 Set AC to: {{ heating_target_temp | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ heating_target_temp | round(1) }}°C
-                Reason: Direct target temperature (no gradual adjustment for heating)
+                • Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -12643,9 +13139,9 @@ action:
             data:
               message: >
                 🔍 {{ room_name | upper }} CLIMATE DEBUG: HIGH HEATING MODE
-                Temperature: {{ current_temp }}°C < {{ heating_high_temp }}°C
+                • Temperature: {{ current_temp }}°C < {{ heating_high_temp }}°C
                 Target: {{ heating_target_temp }}°C
-                Fan: Maximum (emergency)
+                • Fan: Maximum (emergency)
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
@@ -12890,7 +13386,7 @@ action:
               message: >
                 🔥 {{ room_name | upper }} SMART ESCALATION LEVEL {{ final_escalation_level }}/4 ACTIVATED
                 Effectiveness: {{ current_effectiveness }}% • Distance: {{ distance_from_target | round(1) }}°C • Runtime: {{ time_in_current_mode }}min
-                Reason: {% if final_escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
+                • Reason: {% if final_escalation_level == 4 %}🚨 EMERGENCY - {{ 'Far from target' if distance_from_target > 4 else 'Completely ineffective' if current_effectiveness <= 10 else 'Wrong direction trend' }}
                 {% elif final_escalation_level == 3 %}🔥 HIGH - {{ 'Still far after 5min' if distance_from_target > 3 else 'Poor effectiveness' if current_effectiveness <= 25 else 'Progress stalled' }}
                 {% elif final_escalation_level == 2 %}⚡ MEDIUM - {{ 'Moderate distance' if distance_from_target > 2 else 'Below average performance' }}
                 {% elif final_escalation_level == 1 %}📈 LOW - {{ 'Minor distance issue' if distance_from_target > 1 else 'Mediocre effectiveness' }}
@@ -12996,7 +13492,7 @@ action:
                 🌡️ {{ room_name | upper }} TEMP SET: Emergency Escalation
                 Set AC to: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(0) }}°C (rounded for AC compatibility)
                 Actual value: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
-                Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
+                • Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
@@ -13198,6 +13694,48 @@ action:
                 {% endif %}
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+
+      # v3.14.0: Always-on event logging for deactivation
+      - condition: template
+        value_template: "{{ event_logging_enabled }}"
+      - service: system_log.write
+        data:
+          message: >
+            🔴 {{ room_name | upper }} AC DEACTIVATED
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            📊 USER INFO:
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            Final Temperature: {{ current_temp }}°C (Target: {{ target_temp }}°C)
+            Mode at Shutdown: {{ states(helper_mode) | default('unknown') }}
+
+            Reason: Smart mode - No presence detected (grace period expired)
+            • Control Mode: {{ control_mode }}
+            • Temperature achieved: {{ current_temp | float <= (target_temp + 0.5) if 'Smart mode - No presence detected (grace period expired)' == 'Target achieved' else 'N/A' }}
+
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            🔍 DEBUG DATA (for troubleshooting):
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            Temperature Analysis:
+                • current_temp: {{ current_temp }}°C
+                • target_temp: {{ target_temp }}°C
+                • target_overshoot: {{ target_overshoot if target_overshoot is defined else 0 }}°C
+
+            Deactivation Conditions:
+                • actual_ac_state: {{ actual_ac_state }}
+                • time_since_change: {{ time_since_change | round(1) }}s
+                • control_mode: {{ control_mode }}
+
+            State Updates (performed):
+                • helper_last_mode: updated to appropriate off state
+                • helper_expected_hvac: updated to 'off' BEFORE climate.turn_off
+                • helper_change: updated to now()
+
+            Trigger Info:
+                • trigger.id: {{ trigger.id }}
+                • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+          level: warning
+          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
       # Turn off the AC
       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
