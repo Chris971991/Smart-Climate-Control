@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.14.1
+  name: Ultimate Smart Climate Control - v3.15.2
 
   description: |
-    **Ultimate Smart Climate Control v3.14.1**
+    **Ultimate Smart Climate Control v3.15.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -58,15 +58,24 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.14.0
+    ## 🆕 Latest Update - v3.15.2
+
+    **🐛 CRITICAL FIX: Manual Override Detection for Bed ECO Mode**
+    - 🛑 **FIXED**: Manual override now detects when you turn off AC via HA UI during bed ECO mode
+    - ❌ **OLD BEHAVIOR**: Press OFF button in HA → Manual override NOT detected → Automation fights you!
+    - ✅ **NEW BEHAVIOR**: Press OFF button in HA → Manual override detected immediately → Control mode switches to Override
+    - 🎯 **RESULT**: Automation respects your manual control during bed ECO mode - no more fighting!
+
+    **Previous Update - v3.15.1**
+    - 🐛 **FIXED**: Bed ECO mode can ONLY take over from existing cooling modes (respects your cooling thresholds)
+    - 🚫 **PREVENTS**: AC from starting when getting into bed if room below cooling threshold
+
+    **v3.15.0 Feature:**
+    - ✨ **NEW**: Bed absence grace period (0-30 min) for bathroom trips
 
     **✨ NEW FEATURE: Two-Tier Debug System**
     - 🟢 **ALWAYS-ON EVENT LOGGING** (Recommended: Keep ON): User-friendly logs when AC activates/deactivates/override detected
     - 🔧 **FULL DEBUG LOGGING** (Use only when troubleshooting): Verbose technical debugging for deep analysis
-    - 📊 **DUAL FORMAT**: Each event log includes user-friendly info + technical debug data in one message
-    - 🎯 **SEPARATE LOGGER**: Event logs go to `.events` namespace (e.g., `blueprints.climate_control.living_room.events`)
-    - ⚡ **8 EVENT TYPES**: 6 activation (COOLING/HEATING HIGH/MEDIUM/LOW), 1 deactivation (presence timeout), 1 manual override
-    - 🛡️ **ALWAYS VISIBLE**: Event logs fire at WARNING level regardless of debug toggle state
 
     **What You'll See in Event Logs:**
     ```
@@ -1393,6 +1402,33 @@ blueprint:
           selector:
             entity:
               domain: binary_sensor
+
+        bed_absence_grace_period:
+          name: "Bed Absence Grace Period"
+          description: |
+            **Minutes to keep bed ECO mode running** after bed becomes unoccupied.
+
+            Perfect for bathroom trips - prevents AC from exiting bed ECO mode during short absences.
+
+            **Common Scenarios:**
+            - **1-5 minutes:** Quick bathroom breaks
+            - **5-10 minutes:** Standard bathroom routine
+            - **10-15 minutes:** Longer absences
+            - **15-30 minutes:** Very forgiving (getting water, checking on kids, etc.)
+            - **0 minutes:** Exit immediately when bed unoccupied (old behavior)
+
+            **Recommended:** 5-10 minutes for optimal comfort/efficiency balance.
+
+            **How it works:** If you return to bed within the grace period, bed ECO mode seamlessly continues. If grace period expires, AC exits to normal cooling logic.
+
+            **Trade-off:** Higher values maintain comfort during absences but may waste energy if you don't return to bed.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 1
+              unit_of_measurement: minutes
 
     # Scheduling Settings (Optional)
     scheduling_settings:
@@ -2948,6 +2984,19 @@ variables:
   bed_sensor_manual: !input bed_sensor_manual
   bed_occupied: >
     {{ bed_comfort_mode != 'off' and bed_sensor_manual and is_state(bed_sensor_manual, 'on') }}
+  # Bed absence grace period (v3.15.0)
+  bed_absence_grace: !input bed_absence_grace_period
+  minutes_since_bed_off: >
+    {% if bed_sensor_manual and not is_state(bed_sensor_manual, 'on') %}
+      {% set last_change = state_attr(bed_sensor_manual, 'last_changed') %}
+      {% if last_change %}
+        {{ ((as_timestamp(now()) - as_timestamp(last_change)) / 60) | round(0) }}
+      {% else %}
+        999
+      {% endif %}
+    {% else %}
+      0
+    {% endif %}
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
@@ -3163,18 +3212,8 @@ action:
   # Continue with automation if conditions are met
   - condition: template
     value_template: "{{ should_proceed }}"
-  
-  # Debug: Log automation trigger (NOTE: Can't check debug_enabled here - variables not defined yet)
-  # This log shows for ALL rooms - will be filtered later in the automation
-  - service: system_log.write
-    data:
-      message: >
-        🏠 {{ room_name | upper }} CLIMATE CONTROL ACTIVATED
-        {% if trigger.id == 'temp_change' %}📊 Temperature changed{% elif trigger.id == 'presence_change' %}👤 Someone arrived/left{% elif trigger.id == 'periodic_check' %}⏰ Routine check{% elif trigger.id == 'mode_change' %}🎮 MODE CHANGED: {{ trigger.from_state.state if trigger.from_state else 'unknown' }} → {{ trigger.to_state.state if trigger.to_state else 'unknown' }}{% else %}🔄 {{ trigger.id }}{% endif %}
 
-        📋 Technical: {{ trigger.platform }}/{{ trigger.entity_id | default('timer') }}/2min
-      level: warning
-      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+  # v3.14.3: Removed spam activation log - event logs already include trigger info
 
   # Mode change detected - handle transitions between Auto/Smart/Manual/Override modes
   - if:
@@ -3186,8 +3225,8 @@ action:
       # When mode changes, record timestamp for Override timeout tracking
 
       - variables:
-          from_mode: "{{ trigger.from_state.state if trigger.from_state else 'unknown' }}"
-          to_mode: "{{ trigger.to_state.state if trigger.to_state else 'unknown' }}"
+          from_mode: "{{ trigger.from_state.state if trigger.from_state is defined and trigger.from_state else 'unknown' }}"
+          to_mode: "{{ trigger.to_state.state if trigger.to_state is defined and trigger.to_state else 'unknown' }}"
 
       # Record when Override mode was activated (for timeout)
       - if:
@@ -3754,12 +3793,20 @@ action:
 
       # Final escalation level includes: normal escalation + wrong-direction + outside temp boost
       # NOTE: All fan speed logic should reference final_escalation_level instead of escalation_level
+      # v3.14.2: Bed ECO mode resets escalation to 0 when maintaining in comfort zone
       final_escalation_level: >
-        {% set base_level = escalation_level | int(0) %}
-        {% set wrong_dir_add = wrong_direction_escalation_add | int(0) %}
-        {% set outside_boost = outside_temp_escalation_boost | int(0) %}
-        {% set total_level = base_level + wrong_dir_add + outside_boost %}
-        {{ [total_level, 4] | min }}
+        {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+        {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
+        {% set bed_eco_maintaining = bed_active and bed_comfort_mode == 'eco' and in_comfort_zone %}
+        {% if bed_eco_maintaining %}
+          0
+        {% else %}
+          {% set base_level = escalation_level | int(0) %}
+          {% set wrong_dir_add = wrong_direction_escalation_add | int(0) %}
+          {% set outside_boost = outside_temp_escalation_boost | int(0) %}
+          {% set total_level = base_level + wrong_dir_add + outside_boost %}
+          {{ [total_level, 4] | min }}
+        {% endif %}
 
       # Combined AC setpoint adjustment:
       # 1. Outside Temperature Compensation (initial strategy based on outdoor conditions)
@@ -4157,7 +4204,7 @@ action:
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set has_valid_expectation = (expected_hvac not in ['unknown', 'unavailable', '', 'none']) %}
         {% set automation_expects_off = (has_valid_expectation and expected_hvac in ['off', 'Off', 'OFF']) %}
-        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off) %}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
@@ -4171,41 +4218,49 @@ action:
         {% set check_detailed_changes = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on') %}
 
         {# Detect temperature changes - only when AC should be off but is on #}
+        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
         {% set expected_temp = states(helper_expected_temp) | float(0) %}
         {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
         {% set is_temp_manual = (
           check_detailed_changes and
+          not within_hardware_delay and
           expected_temp > 0 and
           actual_temp > 0 and
           (actual_temp - expected_temp) | abs > 0.5
         ) %}
 
         {# Detect fan mode changes - only when AC should be off but is on #}
+        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
         {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
         {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') %}
         {% set is_fan_manual = (
           check_detailed_changes and
+          not within_hardware_delay and
           expected_fan not in ['unknown', 'unavailable', '', 'none'] and
           actual_fan not in ['unknown', 'unavailable', '', 'none'] and
           expected_fan | lower != actual_fan | lower
         ) %}
 
         {# Detect swing mode changes - only when AC should be off but is on #}
+        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
         {% set expected_swing = states(helper_expected_swing) | default('unknown') %}
         {% set actual_swing = state_attr(climate_list[0], 'swing_mode') | default('unknown') %}
         {% set is_swing_manual = (
           check_detailed_changes and
+          not within_hardware_delay and
           expected_swing not in ['unknown', 'unavailable', '', 'none'] and
           actual_swing not in ['unknown', 'unavailable', '', 'none'] and
           expected_swing | lower != actual_swing | lower
         ) %}
 
         {# Detect HVAC mode changes - only when AC should be off but is on #}
+        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set actual_hvac = states(climate_list[0]) | default('unknown') %}
         {% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}
         {% set is_hvac_manual = (
           check_detailed_changes and
+          not within_hardware_delay and
           expected_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
           actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
           hvac_map.get(expected_hvac, expected_hvac) != hvac_map.get(actual_hvac, actual_hvac)
@@ -4226,7 +4281,7 @@ action:
         • actual_ac_state: {{ actual_ac_state }}
         • time_since_change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
         • within_hardware_delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
-        • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
+        • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
         • is_manual_on: {{ (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
         • manual_change_detected: {{ manual_change_detected }}
 
@@ -4470,11 +4525,31 @@ action:
       # If we continue, the control logic will see control_mode="Smart" and turn AC back on!
 
       # v3.14.0: Always-on manual override event logging
-      - condition: template
-        value_template: "{{ event_logging_enabled }}"
+      - if:
+
+          - condition: template
+
+            value_template: "{{ event_logging_enabled }}"
+
+        then:
       - service: system_log.write
         data:
           message: >
+            {% set within_hw_delay = ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false %}
+            {% set is_manual_off = (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco'] and actual_ac_state == 'off' and not within_hw_delay) %}
+            {% set is_manual_on = (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not within_hw_delay) %}
+            {% set expected_temp = states(helper_expected_temp) | float(0) %}
+            {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) if climate_list | length > 0 else 0 %}
+            {% set is_temp_manual = (expected_temp > 0 and actual_temp > 0 and (expected_temp - actual_temp) | abs > 0.5 and not within_hw_delay and actual_ac_state == 'on') %}
+            {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
+            {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') if climate_list | length > 0 else 'unknown' %}
+            {% set is_fan_manual = (expected_fan not in ['unknown', 'unavailable', '', 'none'] and actual_fan not in ['unknown', 'unavailable', '', 'none'] and expected_fan | lower != actual_fan | lower and not within_hw_delay and actual_ac_state == 'on') %}
+            {% set expected_swing = states(helper_expected_swing) | default('unknown') %}
+            {% set actual_swing = state_attr(climate_list[0], 'swing_mode') | default('unknown') if climate_list | length > 0 else 'unknown' %}
+            {% set is_swing_manual = (expected_swing not in ['unknown', 'unavailable', '', 'none'] and actual_swing not in ['unknown', 'unavailable', '', 'none'] and expected_swing | lower != actual_swing | lower and not within_hw_delay and actual_ac_state == 'on') %}
+            {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
+            {% set actual_hvac = states(climate_list[0]) | default('unknown') if climate_list | length > 0 else 'unknown' %}
+            {% set is_hvac_manual = (expected_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and expected_hvac != actual_hvac and not within_hw_delay and actual_ac_state == 'on') %}
             🟡 {{ room_name | upper }} MANUAL OVERRIDE DETECTED
 
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -5680,8 +5755,13 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
@@ -6185,8 +6265,13 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
@@ -6673,8 +6758,13 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
@@ -7172,8 +7262,13 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
@@ -7695,8 +7790,13 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
@@ -8102,6 +8202,391 @@ action:
                 data:
                   datetime: "{{ now() }}"
 
+      # BED COMFORT ECO MODE: Gentle temperature maintenance when bed occupied
+      # v3.14.2: Separate block to maintain at USER target (not overshoot) with ECO fan
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set current_mode = states(helper_mode) | default('off') %}
+              {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+              {% set overshoot_target = target_temp - target_overshoot %}
+              {% set in_maintenance_range = current_temp >= (overshoot_target - 0.5) and current_temp <= (target_temp + 0.5) %}
+
+              {% if current_mode == 'bed_comfort_eco' %}
+                {# Already in bed ECO - continue maintaining at user target #}
+                {% if not enable_cooling %}
+                  False  {# Cooling disabled - exit #}
+                {% elif not bed_active and minutes_since_bed_off >= bed_absence_grace %}
+                  False  {# EXIT: Bed unoccupied beyond grace period ({{ bed_absence_grace }}min) - return to normal cooling #}
+                {% elif time_in_current_mode < runtime_min %}
+                  True  {# RUNTIME PROTECTION: Stay on for minimum runtime #}
+                {% elif control_mode == 'Smart' and not room_presence_detected and minutes_since_presence >= presence_timeout %}
+                  False  {# EXIT: Smart mode requires presence - grace period expired #}
+                {% elif actual_ac_state == 'off' %}
+                  False  {# EXIT: AC is already off #}
+                {% else %}
+                  {{ should_activate and enable_cooling and bed_comfort_mode == 'eco' and current_temp >= (target_temp - 0.5) and (bed_active or minutes_since_bed_off < bed_absence_grace) }}
+                {% endif %}
+              {% else %}
+                {# Not in bed ECO - activate ONLY when taking over from existing cooling mode (LOW/MEDIUM/HIGH) #}
+                {# v3.15.1: Bed ECO is a TAKEOVER mode, never a STARTER mode - prevents AC from starting when room below threshold #}
+                {{ should_activate and enable_cooling and bed_active and bed_comfort_mode == 'eco' and in_maintenance_range and current_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and (control_mode != 'Smart' or room_presence_detected) }}
+              {% endif %}
+        sequence:
+          - service: system_log.write
+            data:
+              message: >
+                {% set distance_from_target = (current_temp - target_temp) | abs | round(1) %}
+                {% set esc_display = 'L' ~ final_escalation_level if final_escalation_level > 0 else 'L0' %}
+                {% set current_fan = fan_speed_eco if final_escalation_level == 0 else ('Level ' ~ (final_escalation_level + 2)) %}
+
+                🛏️ {{ room_name | upper }} BED COMFORT ECO MODE
+
+                📊 Temperature Maintenance:
+                    • Current: {{ current_temp }}°C
+                    • Target: {{ target_temp }}°C (user comfort target)
+                    • Distance: {{ distance_from_target }}°C
+                    {% set current_mode = states(helper_mode) | default('off') %}
+                    {% if current_mode not in ['bed_comfort_eco'] %}
+                    • Takeover from: {{ current_mode | upper | replace('_', ' ') }}
+                    {% endif %}
+
+                ⚡ Escalation Status:
+                    • Level: {{ esc_display }}
+                    • Fan: {{ current_fan }}
+                    {% if final_escalation_level == 0 %}
+                    • Status: ECO mode - minimal noise, gentle adjustments
+                    {% else %}
+                    • Status: Escalated Level {{ final_escalation_level }} - actively maintaining target
+                    {% endif %}
+
+                🌙 Bed occupied - maintaining comfort with quiet operation (v3.15.1: takeover mode only)
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+          # v3.14.0: Always-on event logging
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
+          - service: system_log.write
+            data:
+              message: >
+                ❄️ {{ room_name | upper }} AC ACTIVATED
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                📊 USER INFO:
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                    • Mode: BED COMFORT ECO
+                    • Temperature: {{ current_temp }}°C → {{ target_temp }}°C
+                    • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
+
+                    • Reason: Bed occupied - gentle temperature maintenance at user target
+                    • Control Mode: {{ control_mode }}
+                    • Presence: Person in bed
+
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                🔍 DEBUG DATA (for troubleshooting):
+                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                Variables:
+                    • current_temp: {{ current_temp }}°C
+                    • target_temp: {{ target_temp }}°C
+                    • adjusted_target: {{ target_temp }}°C (maintains at user target, not overshoot)
+                    • escalation_level: {{ final_escalation_level }}
+
+                Conditions Evaluated:
+                    • should_activate: {{ should_activate }}
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • bed_occupied: True
+                    • bed_comfort_mode: {{ bed_comfort_mode }}
+                    • control_mode: {{ control_mode }}
+
+                State Before Activation:
+                    • helper_last_mode: {{ helper_last_mode_at_start }}
+                    • within_hardware_delay: {{ within_hardware_delay }}
+
+                Trigger Info:
+                    • trigger.id: {{ trigger.id if trigger.id is defined else 'N/A' }}
+                    • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.events"
+
+          # Set helper to bed_comfort_eco mode
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "bed_comfort_eco"
+            continue_on_error: true
+
+          # Update timestamp only if mode is ACTUALLY changing
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'bed_comfort_eco' }}"
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          # Climate control - maintain at USER target (not overshoot)
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+                    selected_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif enable_heating and 'auto' in modes %}
+                        auto
+                      {% elif enable_heating and 'Auto' in modes %}
+                        Auto
+                      {% else %}
+                        off
+                      {% endif %}
+
+                # Capture expected HVAC mode
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_hvac }}"
+                  data:
+                    value: "{{ selected_hvac_mode }}"
+                  continue_on_error: true
+
+                # Command gatekeeper - only send if mode needs changing
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       states(current_entity) != selected_hvac_mode or
+                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+
+                # Turn on AC if off
+                - condition: template
+                  value_template: "{{ states(current_entity) == 'off' }}"
+                - service: climate.turn_on
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
+
+          # Capture expected temperature (user target, not overshoot)
+          - service: input_number.set_value
+            target:
+              entity_id: "{{ helper_expected_temp }}"
+            data:
+              value: "{{ target_temp }}"
+            continue_on_error: true
+
+          # Set fan mode - ECO fan with escalation support
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_fans: "{{ state_attr(repeat.item, 'fan_modes') | list }}"
+
+                    # Bed ECO fan selection: Start with ECO fan, escalate if struggling
+                    selected_fan_mode: >
+                      {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
+                      {% if final_escalation_level == 0 %}
+                        {# ECO mode - Use configured eco fan speed #}
+                        {{ fan_speed_eco }}
+                      {% elif final_escalation_level == 1 %}
+                        {# Level 1 escalation - Move to Level 3 #}
+                        {% if '3' in fans %}
+                          3
+                        {% elif 'Level 3' in fans %}
+                          Level 3
+                        {% elif 'medium' in fans %}
+                          medium
+                        {% elif 'Medium' in fans %}
+                          Medium
+                        {% else %}
+                          {{ fan_speed_eco }}
+                        {% endif %}
+                      {% elif final_escalation_level == 2 %}
+                        {# Level 2 escalation - Move to Level 4 #}
+                        {% if '4' in fans %}
+                          4
+                        {% elif 'Level 4' in fans %}
+                          Level 4
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% else %}
+                          {% if '3' in fans %}
+                            3
+                          {% elif 'Level 3' in fans %}
+                            Level 3
+                          {% else %}
+                            {{ fan_speed_eco }}
+                          {% endif %}
+                        {% endif %}
+                      {% elif final_escalation_level >= 3 %}
+                        {# Level 3-4 escalation - Move to Level 5 (max) #}
+                        {% if '5' in fans %}
+                          5
+                        {% elif 'Level 5' in fans %}
+                          Level 5
+                        {% elif 'high' in fans %}
+                          high
+                        {% elif 'High' in fans %}
+                          High
+                        {% else %}
+                          {% if '4' in fans %}
+                            4
+                          {% elif 'Level 4' in fans %}
+                            Level 4
+                          {% else %}
+                            {{ fan_speed_eco }}
+                          {% endif %}
+                        {% endif %}
+                      {% endif %}
+
+                # Capture expected fan mode
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_fan }}"
+                  data:
+                    value: "{{ selected_fan_mode }}"
+                  continue_on_error: true
+
+                # Command gatekeeper - only send if fan needs changing
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'fan_mode') | default('unknown') | lower != selected_fan_mode | lower) }}
+
+                - service: climate.set_fan_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    fan_mode: "{{ selected_fan_mode }}"
+
+          # Set temperature to USER target (not overshoot)
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+
+                # Command gatekeeper - only send if temperature needs changing
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - target_temp) | abs > 0.5 }}
+
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ target_temp }}"
+
+          # Set swing mode
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    available_swing: "{{ state_attr(repeat.item, 'swing_modes') | list }}"
+                    selected_swing_mode: >
+                      {% set swing_modes = state_attr(repeat.item, 'swing_modes') | list %}
+                      {% if swing_mode in swing_modes %}
+                        {{ swing_mode }}
+                      {% elif 'both' in swing_modes %}
+                        both
+                      {% elif 'Both' in swing_modes %}
+                        Both
+                      {% elif 'vertical' in swing_modes %}
+                        vertical
+                      {% elif 'Vertical' in swing_modes %}
+                        Vertical
+                      {% else %}
+                        {{ swing_modes[0] if swing_modes else 'off' }}
+                      {% endif %}
+
+                # Capture expected swing mode
+                - service: input_text.set_value
+                  target:
+                    entity_id: "{{ helper_expected_swing }}"
+                  data:
+                    value: "{{ selected_swing_mode }}"
+                  continue_on_error: true
+
+                # Command gatekeeper - only send if swing needs changing
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'swing_mode') | default('unknown') | lower != selected_swing_mode | lower) }}
+
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    swing_mode: "{{ selected_swing_mode }}"
+                  continue_on_error: true
+
+      # BED ECO MODE EXIT: Reset helper and log when exiting bed ECO mode
+      # v3.14.5: Reset helper to 'off' to allow other modes to take over
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set current_mode = states(helper_mode) | default('off') %}
+              {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+              {{ current_mode == 'bed_comfort_eco' and not bed_active and minutes_since_bed_off >= bed_absence_grace }}
+        sequence:
+          # Reset helper to 'off' so other modes can evaluate properly
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "off"
+            continue_on_error: true
+
+          # Debug logging (optional)
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+          - service: system_log.write
+            data:
+              message: >
+                🛏️ {{ room_name | upper }} EXITING BED COMFORT ECO MODE
+
+                📊 Exit Reason:
+                    • Bed no longer occupied (sensor: {{ bed_sensor_manual }})
+                    • Time since bed unoccupied: {{ minutes_since_bed_off }} minutes
+                    • Grace period: {{ bed_absence_grace }} minutes (EXPIRED)
+                    • Current temp: {{ current_temp }}°C
+                    • Target temp: {{ target_temp }}°C
+                    • Time in bed ECO mode: {{ time_in_current_mode | round(1) }} minutes
+
+                🔄 Next Action:
+                    • Helper reset to 'off'
+                    • Next trigger will evaluate normal cooling logic (LOW/MEDIUM/HIGH or turn off)
+
+                📋 Technical Details:
+                    • Previous mode: bed_comfort_eco
+                    • actual_ac_state: {{ actual_ac_state }}
+                    • should_activate: {{ should_activate }}
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
       # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
           - condition: template
@@ -8192,24 +8677,31 @@ action:
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
-          - condition: template
-            value_template: "{{ event_logging_enabled }}"
+          - if:
+
+              - condition: template
+
+                value_template: "{{ event_logging_enabled }}"
+
+            then:
           - service: system_log.write
             data:
               message: >
-                {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
                 {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+                {% set overshoot_target = target_temp - target_overshoot %}
+                {% set near_target = current_temp <= (target_temp + 0.5) and current_temp >= (overshoot_target - 0.5) %}
+                {% set bed_eco_active = bed_active and bed_comfort_mode == 'eco' and near_target %}
                 ❄️ {{ room_name | upper }} AC ACTIVATED
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-                    • Mode: COOLING LOW{% if last_mode_was_bed_eco or bed_active %} (Bed Comfort ECO){% endif %}
-                    • Temperature: {{ current_temp }}°C → {{ target_temp }}°C{% if last_mode_was_bed_eco or bed_active %} (bed comfort mode){% endif %}
+                    • Mode: COOLING LOW{% if bed_eco_active %} (Bed Comfort ECO){% endif %}
+                    • Temperature: {{ current_temp }}°C → {{ target_temp }}°C{% if bed_eco_active %} (bed comfort mode){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
-                    • Reason: {% if last_mode_was_bed_eco or bed_active %}Bed comfort mode - maintaining user target with gentle adjustments{% else %}Low cooling activation - Temperature {{ current_temp }}°C triggered COOLING LOW mode{% endif %}
+                    • Reason: {% if bed_eco_active %}Bed comfort mode - maintaining user target with gentle adjustments{% else %}Low cooling activation - Temperature {{ current_temp }}°C triggered COOLING LOW mode{% endif %}
                     • Control Mode: {{ control_mode }}
                     • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
 
@@ -8243,6 +8735,9 @@ action:
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           # When AC turns on, helper must already match to avoid race condition
+          # v3.14.2: Don't overwrite bed_comfort_eco mode
+          - condition: template
+            value_template: "{{ helper_last_mode_at_start != 'bed_comfort_eco' }}"
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -8340,11 +8835,43 @@ action:
 
                     # LOW cooling adaptive fan selection with full 5-speed escalation
                     # v3.13.17: Bed ECO mode uses ECO fan speed, escalates only if struggling
+                    # v3.14.2: TEMPORARY DEBUG - Remove after testing
+                    debug_bed_eco_check: >
+                      🛏️ BED ECO FAN SELECTION DEBUG:
+                      • bed_sensor_manual: {{ bed_sensor_manual if bed_sensor_manual is defined else 'UNDEFINED' }}
+                      • bed_sensor_state: {{ states(bed_sensor_manual) if bed_sensor_manual is defined and bed_sensor_manual else 'N/A' }}
+                      • bed_active: {{ (bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on')) }}
+                      • bed_comfort_mode: {{ bed_comfort_mode }}
+                      • current_temp: {{ current_temp }}°C
+                      • target_temp: {{ target_temp }}°C
+                      • target_overshoot: {{ target_overshoot }}°C
+                      • overshoot_target: {{ (target_temp - target_overshoot) | round(1) }}°C
+                      • near_target_check: {{ current_temp }} <= {{ target_temp + 0.5 }} AND {{ current_temp }} >= {{ (target_temp - target_overshoot) - 0.5 }}
+                      • near_target: {{ (current_temp <= (target_temp + 0.5) and current_temp >= ((target_temp - target_overshoot) - 0.5)) }}
+                      • final_escalation_level: {{ final_escalation_level }}
+                      • fan_speed_eco: {{ fan_speed_eco }}
+                      • BED ECO CONDITION MATCH: {{ (bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on')) and bed_comfort_mode == 'eco' and (current_temp <= (target_temp + 0.5) and current_temp >= ((target_temp - target_overshoot) - 0.5)) }}
+
+                # TEMPORARY: Debug bed ECO fan selection (optional - doesn't block execution)
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            message: "{{ debug_bed_eco_check }}"
+                            level: warning
+                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.bed_eco_debug"
+
+                - variables:
                     selected_fan_mode: >
                       {% set fans = state_attr(repeat.item, 'fan_modes') | list %}
-                      {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
-                      {# BED ECO MODE: Start with ECO fan, escalate only if room warming #}
-                      {% if last_mode_was_bed_eco %}
+                      {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+                      {% set overshoot_target = target_temp - target_overshoot %}
+                      {% set near_target = current_temp <= (target_temp + 0.5) and current_temp >= (overshoot_target - 0.5) %}
+                      {# BED ECO MODE: Use ECO fan when maintaining (already near/at target) #}
+                      {% if bed_active and bed_comfort_mode == 'eco' and near_target %}
                         {% if final_escalation_level == 0 %}
                           {# ECO mode - Use configured eco fan speed #}
                           {{ fan_speed_eco }}
@@ -11114,11 +11641,7 @@ action:
                           datetime: "{{ now() }}"
                         continue_on_error: true
 
-                      - service: climate.turn_off
-                        target:
-                          entity_id: "{{ repeat.item }}"
-
-                # v3.13.15 FIX: Update expected_hvac BEFORE mode helper to prevent race condition
+                # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
                 - if:
                     - condition: template
                       value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -11130,12 +11653,18 @@ action:
                         value: "off"
                       continue_on_error: true
 
-                # Update last mode helper to prevent conflicts
                 - service: input_text.set_value
                   target:
                     entity_id: "{{ helper_mode }}"
                   data:
                     value: "adaptive_off"
+
+                - repeat:
+                    for_each: "{{ climate_list }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ repeat.item }}"
 
                 # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                 - condition: template
@@ -11215,28 +11744,30 @@ action:
                           datetime: "{{ now() }}"
                         continue_on_error: true
 
-                      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
-                      - if:
-                          - condition: template
-                            value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
-                        then:
-                          - service: input_text.set_value
-                            target:
-                              entity_id: "{{ helper_expected_hvac }}"
-                            data:
-                              value: "off"
-                            continue_on_error: true
+                # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
+                - if:
+                    - condition: template
+                      value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                  then:
+                    - service: input_text.set_value
+                      target:
+                        entity_id: "{{ helper_expected_hvac }}"
+                      data:
+                        value: "off"
+                      continue_on_error: true
 
-                      - service: climate.turn_off
-                        target:
-                          entity_id: "{{ repeat.item }}"
-
-                # Update last mode helper to prevent conflicts
                 - service: input_text.set_value
                   target:
                     entity_id: "{{ helper_mode }}"
                   data:
                     value: "adaptive_off"
+
+                - repeat:
+                    for_each: "{{ climate_list }}"
+                    sequence:
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ repeat.item }}"
 
                 # Debug completion log
                 - condition: template
@@ -11422,7 +11953,7 @@ action:
                       datetime: "{{ now() }}"
                     continue_on_error: true
 
-                  # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+                  # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
                   - if:
                       - condition: template
                         value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -11434,17 +11965,16 @@ action:
                           value: "off"
                         continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-
-                  # v3.11.1 FIX: Update last_mode to prevent false manual override detection
                   - service: input_text.set_value
                     target:
                       entity_id: "{{ helper_mode }}"
                     data:
-                      value: "off"
+                      value: "smart_off"
                     continue_on_error: true
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
 
               - conditions:
                   - condition: template
@@ -11699,7 +12229,7 @@ action:
                       datetime: "{{ now() }}"
                     continue_on_error: true
 
-                  # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+                  # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
                   - if:
                       - condition: template
                         value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -11710,6 +12240,13 @@ action:
                         data:
                           value: "off"
                         continue_on_error: true
+
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_mode }}"
+                    data:
+                      value: "off"
+                    continue_on_error: true
 
                   - service: climate.turn_off
                     target:
@@ -13660,7 +14197,7 @@ action:
               control_mode == 'Smart' and
               not smart_presence_active and
               not room_presence_detected and
-              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and
+              last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high', 'bed_comfort_eco'] and
               time_since_change >= runtime_min
             }}
     then:
@@ -13696,8 +14233,13 @@ action:
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # v3.14.0: Always-on event logging for deactivation
-      - condition: template
-        value_template: "{{ event_logging_enabled }}"
+      - if:
+
+          - condition: template
+
+            value_template: "{{ event_logging_enabled }}"
+
+        then:
       - service: system_log.write
         data:
           message: >
@@ -13748,7 +14290,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+      # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -13760,24 +14302,16 @@ action:
               value: "off"
             continue_on_error: true
 
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
-        continue_on_error: true
-
-      # Update helper to reflect AC is now off
-      - condition: template
-        value_template: >
-          {{
-            helper_mode is defined and
-            helper_mode not in ['', 'unavailable', 'unknown'] and
-            states(helper_mode) not in ['unavailable', 'unknown']
-          }}
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
         data:
           value: "off"
+        continue_on_error: true
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
         continue_on_error: true
 
       # Update mode start time for off-time protection tracking
@@ -13838,7 +14372,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+      # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -13850,18 +14384,16 @@ action:
               value: "off"
             continue_on_error: true
 
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
-
-      # v3.9.41 FIX: ALWAYS update helper when turning off AC to prevent false manual override detection
-      # Removed condition check - helper MUST be updated to match AC state
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
         data:
           value: "off"
         continue_on_error: true
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
 
       # Update mode start time for off-time protection tracking
       - if:
@@ -14137,7 +14669,7 @@ action:
               datetime: "{{ now() }}"
             continue_on_error: true
 
-          # v3.13.15 FIX: Update expected_hvac BEFORE turn_off to prevent race condition
+          # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
           - if:
               - condition: template
                 value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -14148,6 +14680,13 @@ action:
                 data:
                   value: "off"
                 continue_on_error: true
+
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "off"
+            continue_on_error: true
 
           - repeat:
               for_each: "{{ climate_list }}"
