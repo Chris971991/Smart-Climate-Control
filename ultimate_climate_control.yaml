@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.0
+  name: Ultimate Smart Climate Control - v3.16.1
 
   description: |
-    **Ultimate Smart Climate Control v3.16.0**
+    **Ultimate Smart Climate Control v3.16.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,19 +59,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.16.0
+    ## 🆕 Latest Update - v3.16.1
 
-    **🐛 CRITICAL FIX: Presence Confirmation Delay Timer Accumulation Bug**
-    - 🎯 **FIXED**: Presence timer now ONLY counts when FULL validation criteria is met!
-    - ❌ **OLD BEHAVIOR**: Partial sensor triggers (bed+mmWave without BLE in ble_smart) accumulated timer → AC activated too early
-    - ✅ **NEW BEHAVIOR**: Timer resets on validation state transitions (FALSE → TRUE) → Accurate confirmation delays!
-    - 🔧 **SOLUTION**: New helper tracks validation state - timer only accumulates during continuous FULL presence detection
+    **🐛 CRITICAL FIX: Manual Override False Triggering When Leaving Home**
+    - 🎯 **FIXED**: Manual override no longer triggers when automation turns off AC because everyone left home!
+    - ❌ **OLD BEHAVIOR**: Both people leave → Automation turns off AC → Manual override detected → Control mode switches to Override
+    - ✅ **NEW BEHAVIOR**: Automation checks `should_activate` flag → If false (no one home), AC turning off is NOT manual
+    - 🔧 **ROOT CAUSE**: `manual_change_detected` calculated before `expected_hvac` updated → Variable timing issue
+    - 🎯 **RESULT**: Leaving home works correctly in ALL modes (Auto/Smart) - no false override detection
+
+    **Example Scenario:**
+    - Before: AC cooling → Both leave home → AC turns off → Override mode activated (wrong!)
+    - After: AC cooling → Both leave home → AC turns off → Stays in Auto/Smart mode (correct!)
+
+    **Previous Update - v3.16.0**
+    - 🐛 **FIXED**: Presence confirmation delay timer accumulation bug (BLE_SMART partial validation)
     - ⚠️ **REQUIRES**: New helper `input_boolean.climate_presence_validation_active_[room]` (Setup Wizard auto-creates)
-    - 🎯 **RESULT**: Confirmation delays work correctly for ALL validation modes (ble_smart, ble_motion, ble_bed, etc.)
-
-    **Example Scenario (BLE_SMART mode):**
-    - Before: Julia in bed + mmWave ON (no BLE) → Timer counted → Chris BLE enters 2min later → AC activated immediately!
-    - After: Julia in bed + mmWave ON (no BLE) → Timer expired → Chris BLE enters → Timer RESETS → Wait full 10min → AC activates correctly!
 
     **Previous Update - v3.15.2**
     - 🐛 **FIXED**: Manual override now detects when you turn off AC via HA UI during bed ECO mode
@@ -4229,10 +4232,13 @@ action:
         {# v3.13.2 FIX: Check expected_hvac to prevent false positives when Command Gatekeeper blocks calls #}
         {# If expected_hvac='off' AND it's valid (not unknown), automation INTENDED to turn off AC #}
         {# So actual_state='off' matching expected is NOT manual - it's automation working correctly #}
+        {# v3.16.1 FIX: Check should_activate - if false, automation WANTS AC off (e.g., both left home) #}
+        {# Without this, leaving home triggers Override mode because expected_hvac not yet updated #}
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set has_valid_expectation = (expected_hvac not in ['unknown', 'unavailable', '', 'none']) %}
         {% set automation_expects_off = (has_valid_expectation and expected_hvac in ['off', 'Off', 'OFF']) %}
-        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off) %}
+        {% set automation_wants_off = (not should_activate) %}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not automation_wants_off) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
