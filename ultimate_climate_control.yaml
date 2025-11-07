@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.1
+  name: Ultimate Smart Climate Control - v3.16.2
 
   description: |
-    **Ultimate Smart Climate Control v3.16.1**
+    **Ultimate Smart Climate Control v3.16.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,18 +59,21 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.16.1
+    ## 🆕 Latest Update - v3.16.2
 
-    **🐛 CRITICAL FIX: Manual Override False Triggering When Leaving Home**
-    - 🎯 **FIXED**: Manual override no longer triggers when automation turns off AC because everyone left home!
-    - ❌ **OLD BEHAVIOR**: Both people leave → Automation turns off AC → Manual override detected → Control mode switches to Override
-    - ✅ **NEW BEHAVIOR**: Automation checks `should_activate` flag → If false (no one home), AC turning off is NOT manual
-    - 🔧 **ROOT CAUSE**: `manual_change_detected` calculated before `expected_hvac` updated → Variable timing issue
-    - 🎯 **RESULT**: Leaving home works correctly in ALL modes (Auto/Smart) - no false override detection
+    **🐛 CRITICAL FIX: Manual Override False Triggering on Adaptive/Stability Auto-Off**
+    - 🎯 **FIXED**: Manual override no longer triggers when adaptive mode turns off AC after grace period expires!
+    - ❌ **OLD BEHAVIOR**: Grace period expires → Automation turns off AC → AC slow to respond → Manual override detected
+    - ✅ **NEW BEHAVIOR**: Gives 60 seconds for adaptive/stability/smart_off commands to complete before checking for manual changes
+    - 🔧 **ROOT CAUSE**: AC hardware takes 20-40 seconds to respond, automation checked again too soon → False positive
+    - 🎯 **RESULT**: Adaptive mode works correctly - no false override when leaving room after grace period
 
     **Example Scenario:**
-    - Before: AC cooling → Both leave home → AC turns off → Override mode activated (wrong!)
-    - After: AC cooling → Both leave home → AC turns off → Stays in Auto/Smart mode (correct!)
+    - Before: Leave room → 10min grace period → Automation turns AC off → 21 seconds later → Override triggered (wrong!)
+    - After: Leave room → 10min grace period → Automation turns AC off → Waits 60 seconds → AC turns off correctly (correct!)
+
+    **Previous Update - v3.16.1**
+    - 🐛 **FIXED**: Manual override false triggering when leaving home (both users away)
 
     **Previous Update - v3.16.0**
     - 🐛 **FIXED**: Presence confirmation delay timer accumulation bug (BLE_SMART partial validation)
@@ -4242,8 +4245,12 @@ action:
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
+        {# v3.16.2 FIX: Exclude adaptive/stability/smart_off when AC still turning off (slow hardware response) #}
+        {# Problem: Adaptive mode turns AC off → AC slow to respond → Automation checks again → Sees AC still on → False override! #}
+        {# Solution: If last_mode is an automation-triggered off mode, give extra time before assuming manual intervention #}
         {% set automation_expects_on = (has_valid_expectation and expected_hvac in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool']) %}
-        {% set is_manual_on = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on' and not within_hardware_delay and not automation_expects_on) %}
+        {% set automation_turning_off = (last_mode in ['adaptive_off', 'stability_off', 'smart_off'] and time_since_change < 60) %}
+        {% set is_manual_on = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on' and not within_hardware_delay and not automation_expects_on and not automation_turning_off) %}
 
         {# v3.9.35 FIX: Only check temp/fan/swing/HVAC changes when AC should be OFF
            When automation is actively controlling AC (last_mode != 'off'), don't compare expected values
