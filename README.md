@@ -5,7 +5,7 @@
 **The easiest way to set up climate control just got even easier!** Install the companion **Smart Climate Control Setup Wizard** HACS integration for:
 
 ✅ **2-Minute Setup** - Complete room configuration in ~2 minutes (vs 30-60 minutes manual)
-✅ **Zero Manual Helper Creation** - All 19 helper entities created automatically (4 new in v3.3.0)
+✅ **Zero Manual Helper Creation** - All 20 helper entities created automatically (1 new in v3.16.0)
 ✅ **Automatic Packages Configuration** - Wizard adds packages support to your configuration.yaml
 ✅ **Blueprint Automation Created** - Complete automation configured and ready to use
 ✅ **Dashboard Card Generator** - Auto-generates animated Mushroom card YAML for mode control
@@ -259,11 +259,17 @@ Create via Settings → Devices & Services → Helpers → Create Helper
    Name: presence_last_detected_[room_name]
    Entity ID: input_datetime.presence_last_detected_[room_name]
    Has Date: ✅ YES (Required)
-   Has Time: ✅ YES (Required)  
+   Has Time: ✅ YES (Required)
    Icon: mdi:account-clock
    Purpose: Tracks when presence was last detected for timeout calculations
 
-5. Input Boolean Helper:
+5. Input Boolean Helper (NEW v3.16.0):
+   Name: presence_validation_active_[room_name]
+   Entity ID: input_boolean.presence_validation_active_[room_name]
+   Icon: mdi:account-check
+   Purpose: Tracks presence validation state transitions (prevents false timer accumulation)
+
+6. Input Boolean Helper:
    Name: climate_proximity_override_[room_name]
    Entity ID: input_boolean.climate_proximity_override_[room_name]
    Icon: mdi:toggle-switch
@@ -275,38 +281,38 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 # ⚠️ REPLACE [room_name] with your actual room name
 # Dynamic Adaptation & Effectiveness Tracking
 
-6. Input Number Helper:
+8. Input Number Helper:
    Name: climate_temp_history_[room_name]
    Entity ID: input_number.climate_temp_history_[room_name]
    Min: 0, Max: 50, Step: 0.1
    Unit: °C
    Purpose: Stores previous temperature for trend analysis
 
-7. Input Number Helper:
+9. Input Number Helper:
    Name: climate_effectiveness_score_[room_name] 
    Entity ID: input_number.climate_effectiveness_score_[room_name]
    Min: 0, Max: 100, Step: 0.1
    Unit: %
    Purpose: Tracks how well the current mode is working (0-100%)
 
-8. Input Text Helper:
+10. Input Text Helper:
    Name: climate_trend_direction_[room_name]
    Entity ID: input_text.climate_trend_direction_[room_name]
    Purpose: Tracks if temperature is rising/falling/stable
 
-9. Input DateTime Helper:
+11. Input DateTime Helper:
    Name: climate_mode_start_time_[room_name]
    Entity ID: input_datetime.climate_mode_start_time_[room_name]  
    Has Date: ✅ YES, Has Time: ✅ YES
    Purpose: Tracks when current climate mode started
 
-10. Input DateTime Helper:
+12. Input DateTime Helper:
     Name: temp_stable_since_[room_name]
     Entity ID: input_datetime.temp_stable_since_[room_name]
     Has Date: ✅ YES, Has Time: ✅ YES
     Purpose: Tracks when temperature became stable (for auto-off feature)
 
-11. Input Text Helper:
+13. Input Text Helper:
     Name: climate_last_transition_[room_name]
     Entity ID: input_text.climate_last_transition_[room_name]
     Purpose: Prevents rapid switching between heating/cooling (hysteresis)
@@ -316,7 +322,7 @@ Create via Settings → Devices & Services → Helpers → Create Helper
 ```yaml
 # ⚠️ REPLACE [room_name] with your actual room name
 
-12. Input Boolean Helper (Optional):
+14. Input Boolean Helper (Optional):
     Name: climate_adaptive_override_[room_name]
     Entity ID: input_boolean.climate_adaptive_override_[room_name]
     Purpose: Manually disable adaptive control when needed

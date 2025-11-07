@@ -192,6 +192,11 @@ HELPER_DEFINITIONS = {
         "has_date": True,
         "has_time": True,
     },
+    "presence_validation_active": {
+        "domain": "input_boolean",
+        "name": "{room} Presence Validation Active",
+        "icon": "mdi:account-check",
+    },
 }
 
 # Feature groups for optional helpers
@@ -206,7 +211,7 @@ FEATURE_HELPERS = {
     ],
     "manual_override": ["manual_override", "mode_before_override", "override_time", "override_timeout", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
     "control_mode": ["control_mode"],
-    "smart_mode": ["presence_detected"],
+    "smart_mode": ["presence_detected", "presence_validation_active"],
 }
 
 
@@ -1460,6 +1465,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         if config.get("enable_smart_mode", True):
             helpers["helper_presence_detected"] = f"input_datetime.climate_presence_detected_{sanitized_name}"
+            helpers["helper_presence_validation_active"] = f"input_boolean.climate_presence_validation_active_{sanitized_name}"
             helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
 
         if config.get("enable_dynamic_adaptation", True):
@@ -2536,6 +2542,7 @@ card_mod:
         if config_entry.data.get("enable_smart_mode", True):
             helpers_to_delete.extend([
                 f"input_datetime.climate_presence_detected_{sanitized_name}",
+                f"input_boolean.climate_presence_validation_active_{sanitized_name}",
                 f"input_boolean.climate_proximity_override_{sanitized_name}",
             ])
 

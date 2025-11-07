@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.15.2
+  name: Ultimate Smart Climate Control - v3.16.0
 
   description: |
-    **Ultimate Smart Climate Control v3.15.2**
+    **Ultimate Smart Climate Control v3.16.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -13,7 +13,7 @@ blueprint:
     **⚠️ Don't create helpers manually!** Install the companion **Setup Wizard** for automated setup:
 
     ✅ **2-Minute Setup** - Complete automation in ~2 minutes
-    ✅ **Zero Manual Work** - All 19 helpers created automatically (4 new in v3.3.0)
+    ✅ **Zero Manual Work** - All 20 helpers created automatically (1 new in v3.16.0)
     ✅ **Dashboard Card Generator** - Animated control card included
     ✅ **Safe & Isolated** - Package-based helpers won't affect existing setup
 
@@ -39,6 +39,7 @@ blueprint:
     - Temperature stability auto-off (prevents wasted runtime)
     - Proximity pre-conditioning (cools/heats before you arrive home)
     - Near-target stall detection (pushes through final degrees)
+    - **NEW v3.16.0:** Accurate presence confirmation delays (no more false timer accumulation!)
     - **NEW v3.3.0:** Enhanced manual override detection (temp, fan, swing, HVAC mode changes)
 
     **⚡ Energy Efficiency:**
@@ -58,11 +59,22 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.15.2
+    ## 🆕 Latest Update - v3.16.0
 
-    **🐛 CRITICAL FIX: Manual Override Detection for Bed ECO Mode**
-    - 🛑 **FIXED**: Manual override now detects when you turn off AC via HA UI during bed ECO mode
-    - ❌ **OLD BEHAVIOR**: Press OFF button in HA → Manual override NOT detected → Automation fights you!
+    **🐛 CRITICAL FIX: Presence Confirmation Delay Timer Accumulation Bug**
+    - 🎯 **FIXED**: Presence timer now ONLY counts when FULL validation criteria is met!
+    - ❌ **OLD BEHAVIOR**: Partial sensor triggers (bed+mmWave without BLE in ble_smart) accumulated timer → AC activated too early
+    - ✅ **NEW BEHAVIOR**: Timer resets on validation state transitions (FALSE → TRUE) → Accurate confirmation delays!
+    - 🔧 **SOLUTION**: New helper tracks validation state - timer only accumulates during continuous FULL presence detection
+    - ⚠️ **REQUIRES**: New helper `input_boolean.climate_presence_validation_active_[room]` (Setup Wizard auto-creates)
+    - 🎯 **RESULT**: Confirmation delays work correctly for ALL validation modes (ble_smart, ble_motion, ble_bed, etc.)
+
+    **Example Scenario (BLE_SMART mode):**
+    - Before: Julia in bed + mmWave ON (no BLE) → Timer counted → Chris BLE enters 2min later → AC activated immediately!
+    - After: Julia in bed + mmWave ON (no BLE) → Timer expired → Chris BLE enters → Timer RESETS → Wait full 10min → AC activates correctly!
+
+    **Previous Update - v3.15.2**
+    - 🐛 **FIXED**: Manual override now detects when you turn off AC via HA UI during bed ECO mode
     - ✅ **NEW BEHAVIOR**: Press OFF button in HA → Manual override detected immediately → Control mode switches to Override
     - 🎯 **RESULT**: Automation respects your manual control during bed ECO mode - no more fighting!
 
@@ -1050,7 +1062,22 @@ blueprint:
           selector:
             entity:
               domain: input_boolean
-        
+
+        helper_presence_validation_active:
+          name: Presence Validation State Helper Entity
+          description: |
+            **Input Boolean helper** to track presence validation state transitions.
+
+            • **Tracks** when room_presence_detected changes from FALSE to TRUE
+            • **Prevents** false timer accumulation from partial sensor triggers
+            • **Required** for accurate presence confirmation delays
+            • **NEW in v3.16.0** - fixes timer accumulation bug
+
+            **Example:** `input_boolean.climate_presence_validation_active_master_bedroom`
+          selector:
+            entity:
+              domain: input_boolean
+
         presence_timeout_minutes:
           name: Presence Timeout
           description: |
@@ -2954,6 +2981,7 @@ variables:
   # Smart mode settings
   control_mode_helper: !input helper_control_mode
   presence_detected_helper: !input helper_presence_detected
+  presence_validation_helper: !input helper_presence_validation_active
   proximity_override_helper: !input helper_proximity_override
   presence_timeout: !input presence_timeout_minutes
   presence_confirmation_delay: !input presence_confirmation_delay
@@ -4378,21 +4406,73 @@ action:
   # DISABLED: No longer auto-switching to Manual mode when manual changes detected
   # The automation will continue to work normally even if user manually adjusts AC
 
-  # Update presence helper only when room presence FIRST becomes detected after being away
-  # v3.8.3 FIX: Never reset timer during active presence session
-  # OLD LOGIC: Timer would reset after (timeout + 5) buffer even if someone still in room
-  # Result: Multi-person rooms (Office with 2 people) would reset timer when one person left
-  # NEW LOGIC: Timer only resets when truly away for extended period (timeout * 2 + 5) minutes
-  # This provides buffer for continuous multi-person presence scenarios
+  # v3.16.0: NEW PRESENCE VALIDATION STATE TRANSITION TRACKING
+  # =============================================================
+  # This fixes the bug where presence timer accumulates time when only PARTIAL validation is met
+  # (e.g., bed sensor + mmWave active but no BLE in ble_smart mode)
+  #
+  # OLD BEHAVIOR (BROKEN):
+  # - Timer accumulated time whenever room_presence_detected was TRUE
+  # - BLE_SMART: Bed + mmWave (no BLE) would set timer, then BLE arrival would use old timer
+  # - Result: Confirmation delay bypassed, AC activates too early
+  #
+  # NEW BEHAVIOR (FIXED):
+  # - Track validation state transitions (FALSE → TRUE)
+  # - Reset timer ONLY when validation state changes from OFF to ON
+  # - Timer only accumulates when FULL validation continuously met
+  #
+  # EXAMPLE WITH BLE_SMART (your scenario):
+  # 1. Julia in bed + mmWave (no BLE) → validation_helper = OFF, timer expired
+  # 2. Chris BLE enters → validation changes OFF → ON → Timer RESETS to NOW
+  # 3. 10 min later → Timer shows 10 min → AC can activate
+  # 4. Chris BLE leaves → validation changes ON → OFF → Timer expires
+  # =============================================================
 
-  # Set timer when ENTERING room (starting new presence session)
-  # v3.8.5 FIX: Simple logic - if timer is older than timeout, we're starting fresh
-  # SET timer when ENTERING room (starting NEW presence session)
-  # v3.8.7 FIX: Only set if timer shows you LEFT the room (expired state from reset block below)
-  # v3.9.24 FIX: Don't reset timer if smart_presence_active (you've been here a while)
-  # Timer is "expired" when it's set to (NOW - timeout - 1) by the reset block
-  # This means: timer older than (timeout + 1) = you left and grace period expired = NEW session
+  # Update presence validation state helper when room_presence_detected changes
   - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ room_presence_detected and is_state(presence_validation_helper, 'off') }}"
+        then:
+          # FALSE → TRUE transition detected: Set validation helper to ON and reset timer
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ presence_validation_helper }}"
+            continue_on_error: true
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ presence_detected_helper }}"
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ not room_presence_detected and is_state(presence_validation_helper, 'on') }}"
+        then:
+          # TRUE → FALSE transition detected: Set validation helper to OFF and expire timer
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ presence_validation_helper }}"
+            continue_on_error: true
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ presence_detected_helper }}"
+            data:
+              datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
+            continue_on_error: true
+
+  # LEGACY FALLBACK: For automations created before v3.16.0 without presence_validation_helper
+  # This preserves the old (buggy) behavior for backward compatibility
+  # Users should add the new helper to get the fixed behavior
+  - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
       - condition: template
         value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
       - condition: template
@@ -4401,41 +4481,7 @@ action:
             {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
             {% set current_timestamp = as_timestamp(now()) %}
             {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
-            {# Timer in "expired" state means you previously LEFT (reset block set it to NOW - timeout - 1) #}
-            {# v3.11.9 FIX: Removed smart_presence_active check - it creates a catch-22 where: #}
-            {# 1. Old timer timestamp makes smart_presence_active = TRUE #}
-            {# 2. TRUE blocks timer reset #}
-            {# 3. AC activates instantly using old timestamp #}
-            {# Solution: ALWAYS reset timer when returning after grace period expires #}
-            {# v3.11.13 FIX: Changed > to >= to fix off-by-one error where timer at exactly #}
-            {# (timeout + 1) minutes wouldn't reset (e.g., 6 > 6 = FALSE) #}
             {{ minutes_since_timer_set >= (presence_timeout + 1) }}
-          {% else %}
-            true
-          {% endif %}
-    then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ presence_detected_helper }}"
-        data:
-          datetime: "{{ now() }}"
-
-  # Reset timer when presence LOST (so next entry starts fresh)
-  # v3.8.5 FIX: Reset to (NOW - timeout - 1 min) = "expired" timer
-  # This makes timer appear "old" so next detection triggers new session
-  # v3.9.45 FIX: ALWAYS reset when presence is lost, regardless of timer age
-  # Prevents stale presence from hours ago triggering AC activation
-  - if:
-      - condition: template
-        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
-      - condition: template
-        value_template: >
-          {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-            {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
-            {% set current_timestamp = as_timestamp(now()) %}
-            {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
-            {# v3.9.45: Reset timer regardless of age when presence is lost #}
-            {{ minutes_since_timer_set >= 0 }}
           {% else %}
             false
           {% endif %}
@@ -4444,7 +4490,22 @@ action:
         target:
           entity_id: "{{ presence_detected_helper }}"
         data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
+  # Legacy fallback for timer expiration when presence lost
+  - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
           datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
+        continue_on_error: true
 
   # v3.11.0: ACTIVATE Override Mode - Switch control_mode to "Override" when manual change detected
   # v3.12.5 DEBUG: Log Override activation conditions
