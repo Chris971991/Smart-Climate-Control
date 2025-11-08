@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.2
+  name: Ultimate Smart Climate Control - v3.16.15
 
   description: |
-    **Ultimate Smart Climate Control v3.16.2**
+    **Ultimate Smart Climate Control v3.16.15**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3344,7 +3344,6 @@ action:
             • Standard mode switch
             {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   # v3.11.0: Handle user clicking "Clear Override" button in dashboard
   - if:
@@ -3411,7 +3410,6 @@ action:
             • Returning to: {{ return_to_mode }} mode
             • Automation resuming
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   - variables:
       # v3.12.5 FIX: Store helper_last_mode at START before any updates (moved from line 2975)
@@ -4235,13 +4233,12 @@ action:
         {# v3.13.2 FIX: Check expected_hvac to prevent false positives when Command Gatekeeper blocks calls #}
         {# If expected_hvac='off' AND it's valid (not unknown), automation INTENDED to turn off AC #}
         {# So actual_state='off' matching expected is NOT manual - it's automation working correctly #}
-        {# v3.16.1 FIX: Check should_activate - if false, automation WANTS AC off (e.g., both left home) #}
-        {# Without this, leaving home triggers Override mode because expected_hvac not yet updated #}
+        {# v3.16.1 FIX: Removed should_activate check - causes undefined variable error (evaluated before should_activate calculated) #}
+        {# v3.16.12 FIX: automation_expects_off is sufficient - it's set when automation turns off AC #}
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set has_valid_expectation = (expected_hvac not in ['unknown', 'unavailable', '', 'none']) %}
         {% set automation_expects_off = (has_valid_expectation and expected_hvac in ['off', 'Off', 'OFF']) %}
-        {% set automation_wants_off = (not should_activate) %}
-        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not automation_wants_off) %}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
@@ -4591,7 +4588,6 @@ action:
                 • Will timeout in {{ adaptive_override_timeout }}h
                 • Automation paused
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # v3.11.9 FIX: Stop automation immediately to prevent control logic from running with stale control_mode variable
       # The control_mode variable is calculated once at automation start. Even though we just changed
@@ -4684,7 +4680,6 @@ action:
                 • trigger.from_state: {{ trigger.from_state if trigger.from_state is defined else 'N/A' }}
                 • trigger.to_state: {{ trigger.to_state if trigger.to_state is defined else 'N/A' }}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
       - stop: "Manual override detected - stopping automation to prevent interference with user's manual changes"
 
@@ -4839,7 +4834,6 @@ action:
                 • Returning to: {{ return_to_mode }} mode
                 • Automation resuming
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   # Update temperature stability tracking - record when temp became stable
   - condition: template
@@ -5012,7 +5006,6 @@ action:
                 • Escalation level: {{ final_escalation_level }}/4
                 • Should escalate: {{ should_escalate }}
           level: debug
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.dynamic"
 
   # Debug: Log presence validation details
   - if:
@@ -5087,7 +5080,6 @@ action:
 
             ✅ Room Presence Result: {{ room_presence_detected }}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.presence"
 
   # Debug: Log current conditions
   - if:
@@ -5120,7 +5112,6 @@ action:
             {% if dynamic_enabled %}    • Dynamic: Escalation Level {{ final_escalation_level }}/4, De-escalation Level {{ deescalation_level }}/3 (Check Interval: {{ effectiveness_check_mins }}min)
                 • Stall Check: distance={{ distance_from_target | round(1) }}≤0.8? time={{ time_in_current_mode | round(1) }}≥15min? trend={{ calculated_trend }} rate={{ temp_change_rate | round(2) }}°C/min{% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
   
   # Update effectiveness score helper
   - if:
@@ -5161,7 +5152,6 @@ action:
                 • cooling_high: {{ cooling_high_temp }}°C
                 • cooling_medium: {{ cooling_medium_temp }}°C
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - if:
       - condition: template
@@ -5201,7 +5191,6 @@ action:
 
             ⚡ Result: Base Escalation Level = {{ escalation_level }}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - if:
       - condition: template
@@ -5267,7 +5256,6 @@ action:
                 • ✅ In de-escalation range - reducing power!
                 {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.deescalation"
 
   - if:
       - condition: template
@@ -5329,7 +5317,6 @@ action:
                 • Stops escalating when temp progresses faster or reaches Level 4 (Fan 5 maximum)
                 {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.wrong_direction"
 
   # DEBUG: Dynamic target adjustment
   - if:
@@ -5372,7 +5359,6 @@ action:
                 • Target sent to AC: {{ adjusted_target }}°C ({{ "%.1f" | format(adjusted_target - target_temp) }}°C {% if adjusted_target > target_temp %}above{% else %}below{% endif %} user target)
                 • Once stable and escalation drops to 0: Returns to {{ target_temp }}°C
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.target_adjustment"
 
   - if:
       - condition: template
@@ -5394,7 +5380,6 @@ action:
                 • actual_ac_off: {{ actual_ac_state == 'off' }}
                 • HIGH cooling conditions: {% if last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   - if:
       - condition: template
@@ -5437,7 +5422,6 @@ action:
                 • MEDIUM cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_medium' %}{{ current_temp > target_temp and current_temp < cooling_high_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and (time_since_change > runtime_min or last_mode != 'cooling_medium') }} (start condition){% endif %}
                 • HIGH cooling conditions: {% if not enable_cooling %}DISABLED{% elif last_mode == 'cooling_high' %}{{ current_temp > target_temp }} (continue until target){% else %}{{ should_activate and enable_cooling and current_temp >= cooling_high_temp and actual_ac_state == 'off' }} (start condition){% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Manual Override Debug Logging - v3.3.0 Enhanced Detection
 
@@ -5482,7 +5466,6 @@ action:
                 • smart_presence_active: {{ smart_presence_active }}
                 • AC will: {% if smart_presence_active %}✅ STAY ON / ACTIVATE{% else %}❌ TURN OFF / STAY OFF{% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.presence_delay"
 
   # ADAPTIVE CONTROL REACTIVATION: Clear adaptive_off when room is occupied and heating/cooling needed
   - if:
@@ -5515,7 +5498,6 @@ action:
             
             🎯 Resuming normal Smart mode climate control
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
       
       # Clear adaptive_off mode - allow normal logic to proceed
       - service: input_text.set_value
@@ -5572,7 +5554,6 @@ action:
                 • override_time calculation: Not in Override mode or helper not available
                 {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
   # v3.11.0: Check if Override mode is active (automation paused)
   - if:
@@ -5602,7 +5583,6 @@ action:
                 ℹ️ Override will clear automatically after {{ adaptive_override_timeout }} hour(s)
                    or immediately if you change control mode
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.override_mode_block"
       # Exit immediately - don't process any choose blocks
       - stop: "Override mode active - respecting user's manual changes"
 
@@ -5629,7 +5609,6 @@ action:
                     • This prevents AC control when Override was just activated
                     • Stopping automation to respect user's manual changes
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.defensive_override_check"
           - stop: "Override mode active (helper state check) - respecting user's manual changes"
 
       # Handle Manual mode - True manual control with optional timeout
@@ -5665,7 +5644,6 @@ action:
                     • Switching back to Smart mode - automation will resume
                     • AC will continue running under normal automation control
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
               # Switch back to Smart mode (don't turn off AC)
               - condition: template
@@ -5710,7 +5688,6 @@ action:
                     • FULL CONTROL: Set any temp/fan remotely - NO automation interference
                     • Perfect for pre-conditioning rooms before arrival!
                   level: debug
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               - stop: "Manual mode active - user has complete control"
 
       # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
@@ -5734,7 +5711,6 @@ action:
                     • Time remaining: {{ (adaptive_override_timeout - ((as_timestamp(now()) - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A' }} hours
                     • AC will maintain user settings until timeout expires
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # STOP HERE - Respect user's manual changes
           - stop: "Manual override active - respecting user changes"
@@ -5825,7 +5801,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -5879,7 +5854,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
@@ -5892,14 +5866,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_high' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_high' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -5936,29 +5913,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -6179,10 +6157,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6202,7 +6181,6 @@ action:
                       • Tier Reason: HIGH tier = emergency response, no escalation beyond Level 5
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # v3.9.13: Wait for fan commands to complete (fan controllers can be slow)
           - delay:
@@ -6335,7 +6313,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -6389,7 +6366,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
@@ -6402,14 +6378,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_medium' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_medium' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -6446,29 +6425,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -6677,10 +6657,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6700,7 +6681,6 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -6828,7 +6808,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -6882,7 +6861,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
@@ -6895,14 +6873,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_low' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating_low' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -6939,29 +6920,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -7173,10 +7155,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7196,7 +7179,6 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -7332,7 +7314,6 @@ action:
                 {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -7386,7 +7367,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
@@ -7399,14 +7379,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_high' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_high' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -7443,29 +7426,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -7686,10 +7670,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7717,7 +7702,6 @@ action:
                       {% endif %}
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -7860,7 +7844,6 @@ action:
                 {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -7914,7 +7897,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           - service: input_text.set_value
@@ -7927,14 +7909,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_medium' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_medium' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -7971,29 +7956,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -8202,10 +8188,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8233,7 +8220,6 @@ action:
                       {% endif %}
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # v3.9.13: Wait + set temperature
           - delay:
@@ -8336,7 +8322,6 @@ action:
 
                 🌙 Bed occupied - maintaining comfort with quiet operation (v3.15.1: takeover mode only)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
           # v3.14.0: Always-on event logging
           - if:
@@ -8388,7 +8373,6 @@ action:
                     • trigger.id: {{ trigger.id if trigger.id is defined else 'N/A' }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.events"
 
           # Set helper to bed_comfort_eco mode
           - service: input_text.set_value
@@ -8399,14 +8383,17 @@ action:
             continue_on_error: true
 
           # Update timestamp only if mode is ACTUALLY changing
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'bed_comfort_eco' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'bed_comfort_eco' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # Climate control - maintain at USER target (not overshoot)
           - repeat:
@@ -8659,7 +8646,6 @@ action:
                     • actual_ac_state: {{ actual_ac_state }}
                     • should_activate: {{ should_activate }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
@@ -8747,7 +8733,6 @@ action:
                 {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           
           # v3.14.0: Always-on event logging (user-friendly + debug data)
@@ -8805,7 +8790,6 @@ action:
                     • trigger.id: {{ trigger.id }}
                     • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
 # v3.9.42 FIX: Update helper BEFORE turning on AC to prevent false manual override detection
           # When AC turns on, helper must already match to avoid race condition
@@ -8822,14 +8806,17 @@ action:
           # v3.11.15 FIX: Update helper_change timestamp BEFORE turning on AC
           # Without this, hardware delay protection fails (uses stale timestamp)
           # v3.13.5 FIX: Only update if mode is ACTUALLY changing (prevent false Override on periodic checks)
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_low' }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v3.16.12 FIX: Converted to if/then to not block sequence when in continue mode
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling_low' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.10.0: Dynamic HVAC mode selection respecting enable_heating/enable_cooling
           - repeat:
@@ -8866,29 +8853,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -8936,7 +8924,6 @@ action:
                           data:
                             message: "{{ debug_bed_eco_check }}"
                             level: warning
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}.bed_eco_debug"
 
                 - variables:
                     selected_fan_mode: >
@@ -9149,10 +9136,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9172,7 +9160,6 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # v3.9.13: Wait for fan commands
           - delay:
@@ -9260,7 +9247,6 @@ action:
                   {% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - repeat:
               for_each: "{{ climate_list }}"
@@ -9378,10 +9364,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9399,7 +9386,6 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_max_fan in available_fans else 'Best equivalent for maximum cooling' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # v3.9.13: Wait + set temperature
           - delay:
@@ -9445,7 +9431,6 @@ action:
                 • Was in mode: {{ last_mode }}
                 • Clearing stability mode to allow normal operation
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Don't set to "off" - set directly to cooling/heating (but respect Smart mode presence)
           - service: input_text.set_value
@@ -9545,17 +9530,19 @@ action:
                               {% set available = state_attr(current_entity, 'hvac_modes') | list %}
                               {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
 
-                        - condition: template
-                          value_template: "{{ debug_enabled }}"
-                        - service: system_log.write
-                          data:
-                            message: >
-                              🔍 SMART COOL MODE: {{ repeat.item }}
-                              • Available: {{ available_modes | join(', ') }}
-                              • Selected: {{ selected_hvac_mode }}
-                              • Reason: Best cooling mode for this AC unit
-                            level: debug
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+                        # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
+                        - if:
+                            - condition: template
+                              value_template: "{{ debug_enabled }}"
+                          then:
+                            - service: system_log.write
+                              data:
+                                message: >
+                                  🔍 SMART COOL MODE: {{ repeat.item }}
+                                  • Available: {{ available_modes | join(', ') }}
+                                  • Selected: {{ selected_hvac_mode }}
+                                  • Reason: Best cooling mode for this AC unit
+                                level: debug
 
                   # Capture expected values for enhanced manual override detection (v3.3.0)
                   - service: input_number.set_value
@@ -9633,7 +9620,6 @@ action:
                         • Target: {{ cooling_target_temp }}°C
                         • Mode: {{ 'High' if current_temp >= cooling_high_temp else 'Medium' }}
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               
               # Need heating
               - conditions:
@@ -9694,17 +9680,19 @@ action:
                               {% set available = state_attr(current_entity, 'hvac_modes') | list %}
                               {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
                         
-                        - condition: template
-                          value_template: "{{ debug_enabled }}"
-                        - service: system_log.write
-                          data:
-                            message: >
-                              🔍 SMART HEAT MODE: {{ repeat.item }}
-                              • Available: {{ available_modes | join(', ') }}
-                              • Selected: {{ selected_hvac_mode }}
-                              • Reason: Best heating mode for this AC unit
-                            level: debug
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
+                        # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
+                        - if:
+                            - condition: template
+                              value_template: "{{ debug_enabled }}"
+                          then:
+                            - service: system_log.write
+                              data:
+                                message: >
+                                  🔍 SMART HEAT MODE: {{ repeat.item }}
+                                  • Available: {{ available_modes | join(', ') }}
+                                  • Selected: {{ selected_hvac_mode }}
+                                  • Reason: Best heating mode for this AC unit
+                                level: debug
 
                   # Capture expected values for enhanced manual override detection (v3.3.0)
                   - service: input_number.set_value
@@ -9787,7 +9775,6 @@ action:
                         • Target: {{ heating_target_temp }}°C
                         • Mode: {{ 'High' if current_temp <= heating_low_temp else 'Medium' }}
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Pre-conditioning when approaching
       # v3.11.9 FIX: Only pre-condition when approaching from OUTSIDE, not when already home
@@ -9814,7 +9801,6 @@ action:
                 {% if proximity_sensor %}Distance: {{ states(proximity_sensor) }}m{% endif %}
                 • Temperature: {{ current_temp }}°C needs adjustment
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           # v3.9.48 FIX: Pre-conditioning now respects enable_heating/enable_cooling settings
@@ -9897,7 +9883,6 @@ action:
                 • Reason: Pre-conditioning target temperature (approaching home)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - variables:
               selected_fan_mode: >
@@ -10026,7 +10011,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -10064,29 +10048,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -10098,7 +10083,6 @@ action:
                       • Selected: {{ selected_hvac_mode }}
                       • Reason: Low cooling mode for gentle temperature control
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -10174,10 +10158,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -10194,7 +10179,6 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: Low fan speed for gentle cooling
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -10287,7 +10271,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - repeat:
               for_each: "{{ climate_list }}"
@@ -10325,29 +10308,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -10359,7 +10343,6 @@ action:
                       • Selected: {{ selected_hvac_mode }}
                       • Reason: Medium cooling mode for balanced temperature control
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -10436,10 +10419,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -10457,7 +10441,6 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: {{ 'Exact match' if desired_medium_fan in available_fans else 'Best equivalent for medium cooling' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -10549,7 +10532,6 @@ action:
 
                 Action: {{ 'Ultra-quiet fan only' if bed_comfort_mode == 'quiet' else 'Full ECO mode' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
           # v3.12.1 FIX: Update timestamp BEFORE changing AC settings
           # This prevents false manual override detection when bed comfort activates
@@ -10607,13 +10589,15 @@ action:
                           data:
                             fan_mode: "{{ quietest_fan }}"
 
-                        - condition: template
-                          value_template: "{{ debug_enabled }}"
-                        - service: system_log.write
-                          data:
-                            message: "🛏️ {{ room_name | upper }}: Set {{ repeat.item }} fan to {{ quietest_fan }} (ultra-quiet)"
-                            level: debug
-                            logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+                        # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
+                        - if:
+                            - condition: template
+                              value_template: "{{ debug_enabled }}"
+                          then:
+                            - service: system_log.write
+                              data:
+                                message: "🛏️ {{ room_name | upper }}: Set {{ repeat.item }} fan to {{ quietest_fan }} (ultra-quiet)"
+                                level: debug
 
               # ECO mode - Actively maintain temperature using external sensor
               # v3.12.0: Continuously monitor and adjust to keep temp at target
@@ -10707,7 +10691,6 @@ action:
 
                         Reason: Bed occupied - continuous temperature maintenance in ECO mode with dynamic fan escalation
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                   # v3.13.16: Set fan mode based on escalation level (start eco, escalate if needed)
                   - repeat:
@@ -10950,7 +10933,6 @@ action:
                     • Room Presence: {{ room_presence_detected }}
                     • Approaching Home: {{ approaching_home }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - choose:
               - conditions:
                   - condition: template
@@ -11034,7 +11016,6 @@ action:
                         Reason: Maintaining target temperature within comfort zone
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   # Set eco fan mode for maximum efficiency in comfort zone
                   - repeat:
@@ -11268,7 +11249,6 @@ action:
 
                     📋 Technical: ±{{ stability_tolerance }}°C tolerance, {{ stability_duration }}min requirement, {{ time_since_change | round(1) }}min since last change
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - choose:
               - conditions:
@@ -11319,7 +11299,6 @@ action:
                         Reason: Temperature equilibrium reached - AC job complete
                         Stable at: {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
               
               - conditions:
                   - condition: template
@@ -11431,7 +11410,6 @@ action:
                         Reason: Temperature stability eco mode (gentle maintenance after equilibrium)
                         Current: {{ current_temp | round(1) }}°C → Stable for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                   # Set eco fan mode for efficient stability eco mode
                   - repeat:
@@ -11538,7 +11516,6 @@ action:
                     • Time Since Last Presence: {{ presence_time | round(1) }} min
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Additional parent conditions debug logging
           - condition: template
@@ -11562,7 +11539,6 @@ action:
                     • timeout_met: {{ time_since_change >= adaptive_override_timeout }}
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Main condition evaluation and action logic
           - condition: or
@@ -11638,7 +11614,6 @@ action:
                       {% endif %}
                       • Action: Switching control mode helper to {{ adaptive_target_mode | title }}
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - service: input_select.select_option
                   target:
@@ -11653,7 +11628,6 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: OCCUPIED actions completed - control mode switched to {{ adaptive_target_mode | title }}"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -11684,7 +11658,6 @@ action:
                       {% endif %}
                       • Actions: Turn off {{ climate_list | length }} climate entities (NO LONGER switching to Manual mode)
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                 # CRITICAL: Runtime protection - ensure AC has run for minimum time before turning off
                 - condition: template
@@ -11703,7 +11676,6 @@ action:
                             data:
                               message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                               level: debug
-                              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
                       - condition: template
@@ -11756,7 +11728,6 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -11788,7 +11759,6 @@ action:
                       {% endif %}
                       • Action: Turning off {{ climate_list | length }} climate entities
                     level: info
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                 # CRITICAL: Runtime protection - ensure AC has run for minimum time before turning off
                 - condition: template
@@ -11806,7 +11776,6 @@ action:
                             data:
                               message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                               level: debug
-                              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
                       - condition: template
@@ -11850,7 +11819,6 @@ action:
                   data:
                     message: "✅ {{ room_name | upper }} ADAPTIVE CONTROL: MANUAL+VACANT actions completed - all {{ climate_list | length }} climate entities turned off, helper set to adaptive_off"
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                 
                 - condition: template
                   value_template: "{{ notification_service is defined and notification_service not in [none, ''] }}"
@@ -11918,7 +11886,6 @@ action:
                 • No valid presence timestamp available from helper: {{ presence_detected_helper }}
                 {% endif %}
               level: debug
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Manual Mode - Immediately clear automation states when detected
       - conditions:
@@ -11940,7 +11907,6 @@ action:
 
                     📋 Technical: Manual mode = instant automation disable
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - service: input_text.set_value
             target:
@@ -12010,7 +11976,6 @@ action:
 
                     📋 Technical: {{ time_since_change | round(1) }}min since last change
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - choose:
               - conditions:
@@ -12155,7 +12120,6 @@ action:
                         Reason: {{ 'Eco cooling (comfort max +' + eco_mode_setpoint_offset|string + '°C)' if current_temp > comfort_max_temp else 'Eco heating (comfort min -' + eco_mode_setpoint_offset|string + '°C)' if current_temp < comfort_min_temp else 'Direct target (within comfort zone)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
                   # Set eco fan mode for efficient smart room eco mode
                   - repeat:
@@ -12239,7 +12203,6 @@ action:
                         Reason: Smart mode maintain current temperature (room empty but still home)
                         Current: {{ current_temp | round(1) }}°C → Target: {{ target_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -12286,7 +12249,6 @@ action:
                     Nobody home detected
                     Time since last change: {{ time_since_change | round(1) }} min
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - choose:
               - conditions:
@@ -12416,7 +12378,6 @@ action:
                         Reason: {{ 'Eco cooling (target +' + eco_mode_setpoint_offset|string + '°C offset)' if current_temp > comfort_max_temp else 'Eco heating (target -' + eco_mode_setpoint_offset|string + '°C offset)' }}
                         Current: {{ current_temp | round(1) }}°C → Comfort range: {{ comfort_min_temp | round(1) }}-{{ comfort_max_temp | round(1) }}°C
                       level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
                   
                   # Set eco fan mode for efficient away eco mode
                   - repeat:
@@ -12552,7 +12513,6 @@ action:
                   {% endif %}
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -12563,7 +12523,6 @@ action:
                 Target: {{ cooling_target_temp }}°C
                 • Fan: Maximum
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode with auto preference and fallback
           - repeat:
@@ -12598,29 +12557,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -12662,7 +12622,6 @@ action:
                 • Reason: {{ 'Gradual adjustment (target ' + weather_adjusted_target|string + '°C, current-2°C = ' + (current_temp-2)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ weather_adjusted_target | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Update hysteresis tracking - we're now cooling
           - condition: template
@@ -12709,10 +12668,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -12837,7 +12797,6 @@ action:
                 Approaching Home: {{ approaching_home }}
                 Extreme High Threshold: {{ extreme_high }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode to auto for efficient medium cooling
           - repeat:
@@ -12865,29 +12824,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -12929,7 +12889,6 @@ action:
                 • Reason: {{ 'Gradual adjustment (target ' + cooling_target_temp|string + '°C, current-1°C = ' + (current_temp-1)|round(1)|string + '°C, chose minimum)' if gradual_enabled else 'Direct target temperature' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ cooling_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set auto/medium fan mode for efficient cooling
           - repeat:
@@ -12964,10 +12923,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -13127,7 +13087,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -13138,7 +13097,6 @@ action:
                 Target: {{ heating_target_temp }}°C
                 • Fan: Low/Minimum (efficient)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -13208,7 +13166,6 @@ action:
                 • Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set low fan mode with compatibility check
           - repeat:
@@ -13263,10 +13220,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -13283,7 +13241,6 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: Low fan speed for gentle heating
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -13420,7 +13377,6 @@ action:
                 Target: {{ heating_target_temp }}°C
                 • Fan: Auto/Medium (efficient)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set HVAC mode to auto for efficient medium heating
           - repeat:
@@ -13458,29 +13414,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -13511,7 +13468,6 @@ action:
                 • Reason: Direct target temperature (no gradual adjustment for heating)
                 Current: {{ current_temp | round(1) }}°C → Target: {{ heating_target_temp | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set auto/medium fan mode for efficient heating
           - repeat:
@@ -13546,10 +13502,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -13700,7 +13657,6 @@ action:
                     • mode_check: {{ last_mode != 'heating_high' }}
                     • FULL_CONDITION: {{ should_activate and current_temp <= heating_high_temp and (time_since_change > runtime_min or last_mode != 'heating_high') }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           - service: system_log.write
             data:
@@ -13743,7 +13699,6 @@ action:
                 {% endif %}
                 • Last Mode: {{ current_mode }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           - condition: template
             value_template: "{{ debug_enabled }}"
           - service: system_log.write
@@ -13754,7 +13709,6 @@ action:
                 Target: {{ heating_target_temp }}°C
                 • Fan: Maximum (emergency)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_text.set_value
@@ -13854,10 +13808,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -13874,7 +13829,6 @@ action:
                       • Selected: {{ (desired_max_fan if desired_max_fan in available_fans else ('5' if '5' in available_fans else ('high' if 'high' in available_fans else available_fans[-1]))) }}
                       • Reason: Maximum fan speed for emergency heating
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -14004,7 +13958,6 @@ action:
                 {% endif %}
                 Power Level: {{ 'MAXIMUM' if final_escalation_level == 4 else 'HIGH' if final_escalation_level == 3 else 'ELEVATED' if final_escalation_level == 2 else 'MODERATE' if final_escalation_level == 1 else 'NORMAL' }}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Force maximum cooling/heating mode
           - repeat:
@@ -14038,29 +13991,30 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if HVAC mode needs changing
-                # v3.13.7 FIX: Also send if AC physically off (handles Daikin stale state)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                - if:
+                    - condition: template
+                      value_template: >
+                        {{ within_hardware_delay or
+                           states(current_entity) != selected_hvac_mode or
+                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
+                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                  then:
+                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(current_entity) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          continue_on_error: true
 
-                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                - condition: template
-                  value_template: "{{ states(current_entity) == 'off' }}"
-                - service: climate.turn_on
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  continue_on_error: true
-
-                - service: climate.set_hvac_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    hvac_mode: "{{ selected_hvac_mode }}"
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -14106,7 +14060,6 @@ action:
                 • Reason: {{ 'Emergency cooling (trend ineffective)' if current_temp > comfort_max_temp else 'Emergency heating (trend ineffective)' if current_temp < comfort_min_temp else 'Emergency target (stalled temperature)' }}
                 Current: {{ current_temp | round(1) }}°C → Target: {{ (cooling_target_temp if current_temp > comfort_max_temp else heating_target_temp if current_temp < comfort_min_temp else target_temp) | round(1) }}°C
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           # Set graduated fan speed based on escalation level
           - repeat:
@@ -14216,10 +14169,11 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
                 - condition: template
                   value_template: >
                     {{ within_hardware_delay or
-                       state_attr(current_entity, 'fan_mode') != (selected_fan_mode | trim) }}
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -14236,7 +14190,6 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Power: {{ 'MAXIMUM' if final_escalation_level == 4 else 'HIGH' if final_escalation_level == 3 else 'ELEVATED' if final_escalation_level == 2 else 'MODERATE' if final_escalation_level == 1 else 'NORMAL' }}
                     level: debug
-                    logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
           
           - service: input_text.set_value
             target:
@@ -14304,7 +14257,6 @@ action:
                     • Action: Turning AC OFF (no presence after grace period)
                 {% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # v3.14.0: Always-on event logging for deactivation
       - if:
@@ -14351,7 +14303,6 @@ action:
                 • trigger.id: {{ trigger.id }}
                 • trigger.entity_id: {{ trigger.entity_id if trigger.entity_id is defined else 'N/A' }}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}.events"
 
       # Turn off the AC
       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
@@ -14433,7 +14384,6 @@ action:
                     • Runtime: {{ time_since_change | round(1) }}min (min: {{ runtime_min }}min)
                     • Action: Turning AC OFF (target achieved)
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
       # Turn off the AC
       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
@@ -14511,7 +14461,6 @@ action:
                 • Heating HIGH: {{ current_temp }} <= {{ heating_high_temp }} = {{ current_temp <= heating_high_temp }}
                 • Escalation: {{ should_escalate }}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # Adaptive Control Status Debug Log
   - if:
@@ -14556,7 +14505,6 @@ action:
             {% endif %}
             {% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # STATE SYNCHRONIZATION: Handle helper/AC mismatch (e.g., after HA restart)
   # v3.11.8 FIX: Expanded to catch heating/cooling mode mismatches, not just off/on mismatches
@@ -14682,7 +14630,6 @@ action:
                 🛠️ Action: {{ 'Updating helper to match AC operation' if should_be_running else 'Turning OFF AC (overshoot target reached)' }}
                 💡 Reason: {% if should_be_running %}Helper out of sync - AC running but helper says "off" (possible causes: HA restart, manual control, or helper update lag){% elif in_continue_mode_cooling or in_continue_mode_heating %}AC in continue mode - pursuing overshoot target{{ ' (cooling to ' + (target_temp - target_overshoot) | round(1) | string + '°C)' if in_continue_mode_cooling else ' (heating to ' + (target_temp + target_overshoot) | round(1) | string + '°C)' if in_continue_mode_heating }}{% else %}AC is ON but overshoot target reached - no further cooling/heating needed (possible causes: manual turn-on, another automation, or lingering AC state){% endif %}
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # If AC should be running, update helper to track it
       - if:
@@ -14726,7 +14673,6 @@ action:
                     📋 AC running correctly for current temp ({{ current_temp }}°C) - helper synced, will continue operation
                     {% if in_continue_mode_cooling %}🎯 Continue mode: Cooling to overshoot target {{ (target_temp - target_overshoot) | round(1) }}°C{% elif in_continue_mode_heating %}🎯 Continue mode: Heating to overshoot target {{ (target_temp + target_overshoot) | round(1) }}°C{% else %}💡 Helper was "off" but AC should be running - restored tracking{% endif %}
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # If AC should NOT be running (temp in comfort zone), turn it off
       - if:
@@ -14782,7 +14728,6 @@ action:
                     🎯 Overshoot target: {% if enable_cooling %}{{ (target_temp - target_overshoot) | round(1) }}°C (cooling){% elif enable_heating %}{{ (target_temp + target_overshoot) | round(1) }}°C (heating){% else %}{{ target_temp }}°C{% endif %}
                     💡 Helper was "off" but AC was running - turned off after reaching overshoot target
                   level: warning
-                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # v3.9.44 STATE SYNC REVERSE: Helper says AC should be running, but AC is OFF
   # This happens when automation turns off AC but helper doesn't update (rare edge case)
@@ -14816,7 +14761,6 @@ action:
 
                 ✅ Action: Syncing helper to "off" to match reality
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # Sync helper to match reality - AC is off
       - service: input_text.set_value
@@ -14838,7 +14782,6 @@ action:
                 ✅ {{ room_name | upper }} STATE SYNC REVERSE: Helper updated to "off"
                 📋 Helper now matches AC state - manual override cleared automatically
               level: warning
-              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
   # v3.1.6/v3.1.7 helper_change update REMOVED - caused false override re-triggers
   # The update ran even when choose block had no actions, causing override re-activation
@@ -14866,6 +14809,5 @@ action:
                 • Occupancy: {% if room_presence_detected %}Room occupied{% elif anyone_home %}Home but elsewhere{% elif approaching_home %}Approaching{% else %}Away{% endif %}
                 • Current Mode: {% if should_activate and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}{{ last_mode|title }}{% if dynamic_enabled and final_escalation_level > 0 %} - ESCALATING L{{ final_escalation_level }} 🔼{% elif dynamic_enabled and deescalation_level > 0 %} - DE-ESCALATING L{{ deescalation_level }} 🔽{% elif dynamic_enabled and current_effectiveness >= 80 %} - EFFECTIVE ({{ current_effectiveness }}%) ⚖️{% endif %}{% elif actual_ac_state == 'off' %}OFF ⚫{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}IDLE - COMFORT ZONE{% if dynamic_enabled and deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}) 🔽{% endif %} ✅{% elif should_activate %}MONITORING ⏸️{% else %}STANDBY{% if last_mode != 'off' %} - LAST: {{ last_mode|title }}{% endif %}{% endif %}
           level: warning
-          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') | regex_replace('[^a-z0-9_.]', '_') }}"
 
 mode: restart
