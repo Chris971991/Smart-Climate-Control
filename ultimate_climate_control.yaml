@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.33
+  name: Ultimate Smart Climate Control - v3.16.34
 
   description: |
-    **Ultimate Smart Climate Control v3.16.33**
+    **Ultimate Smart Climate Control v3.16.34**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -4241,7 +4241,12 @@ action:
         {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
         {% set has_valid_expectation = (expected_hvac not in ['unknown', 'unavailable', '', 'none']) %}
         {% set automation_expects_off = (has_valid_expectation and expected_hvac in ['off', 'Off', 'OFF']) %}
-        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off) %}
+        {# v3.16.34 FIX: Check if temperature target achieved - automation legitimately turning off #}
+        {# When overshoot target reached, AC SHOULD turn off - this is NOT manual override #}
+        {% set cooling_target_achieved = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= (target_temp - target_overshoot)) %}
+        {% set heating_target_achieved = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= (target_temp + target_overshoot)) %}
+        {% set target_achieved = (cooling_target_achieved or heating_target_achieved) %}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not target_achieved) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
@@ -4390,6 +4395,13 @@ action:
             ⏱️ Timing:
                 • Time Since Change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
                 • Within Hardware Delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
+
+            🌡️ Temperature Target Status (v3.16.34):
+                • Current Temp: {{ current_temp }}°C
+                • Target Temp: {{ target_temp }}°C
+                • Overshoot: {{ target_overshoot }}°C
+                • Cooling Target ({{ target_temp - target_overshoot }}°C): {{ 'ACHIEVED ✅' if (helper_last_mode_at_start in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= (target_temp - target_overshoot)) else 'Not reached' }}
+                • Heating Target ({{ target_temp + target_overshoot }}°C): {{ 'ACHIEVED ✅' if (helper_last_mode_at_start in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= (target_temp + target_overshoot)) else 'Not reached' }}
 
             🎯 Detection Results:
                 • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
@@ -12070,7 +12082,13 @@ action:
                               message: "🔴 Adaptive Control: Turning off climate entity {{ repeat.item }} ({{ repeat.index }}/{{ climate_list | length }})"
                               level: debug
 
-                      # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
+                      # v3.16.34 FIX: Turn off AC BEFORE updating helper_change
+                      # This ensures the AC actually turns off even if automation re-triggers quickly
+                      - service: climate.turn_off
+                        target:
+                          entity_id: "{{ repeat.item }}"
+
+                      # v3.11.13 FIX: Update helper_change AFTER turn_off
                       - condition: template
                         value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
                       - service: input_datetime.set_datetime
@@ -12098,12 +12116,7 @@ action:
                   data:
                     value: "adaptive_off"
 
-                - repeat:
-                    for_each: "{{ climate_list }}"
-                    sequence:
-                      - service: climate.turn_off
-                        target:
-                          entity_id: "{{ repeat.item }}"
+                # v3.16.34: Removed duplicate climate.turn_off repeat loop - AC already turned off above
 
                 # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                 - condition: template
