@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.17.0
+  name: Ultimate Smart Climate Control - v3.17.3
 
   description: |
-    **Ultimate Smart Climate Control v3.17.0**
+    **Ultimate Smart Climate Control v3.17.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,136 +59,17 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.17.0
+    ## 🆕 Latest Updates
 
-    **✨ NEW FEATURE: Bed Comfort Fan-Only Mode - Smart Power Savings**
-    - 🛏️ **NEW**: Automatic switch from cooling → fan_only when temperature stable or overshooting
-    - ⚡ **POWER SAVINGS**: ~85% reduction (compressor OFF, fan only) during stable periods
-    - 🎯 **TWO ACTIVATION SCENARIOS**:
-      - **Overshoot**: Room below target (e.g., 21.6°C when target is 23°C) → Switch to fan_only immediately
-      - **Stability**: Temperature stable at target for configured duration → Switch to fan_only
-    - 🔄 **AUTO RETURN**: Returns to cooling when temp rises above target + threshold
-    - ⚙️ **CONFIGURABLE**: Toggle on/off, stability duration (1-10 min), stability rate, return threshold, max overshoot
-    - 💰 **SAVINGS EXAMPLE**: 6 hours/night in fan_only = ~4 kWh saved = $0.80-$1.20/night
+    **v3.17.2 - Bed ECO Manual Override Protection Fix**
+    - 🐛 **FIXED**: Bed ECO return from fan_only → cooling no longer triggers false manual override
+    - 🛡️ Helper update moved outside repeat loop for proper timing
 
-    **How It Works:**
-    1. Bed ECO mode cools to overshoot (e.g., 21.75°C with -0.75°C overshoot)
-    2. Bed sensor detects occupancy → Activates bed ECO mode
-    3. Room naturally warms OR stabilizes
-    4. **NEW**: Switches to fan_only mode (compressor off, just air circulation)
-    5. Room warms to target OR stays stable with minimal power
-    6. If temp rises above 23.7°C → Returns to cooling automatically
+    **v3.17.1 - Race Condition False Manual Override Fix**
+    - 🐛 **FIXED**: Automation's own AC turn-on no longer triggers false manual override
+    - 🛡️ Proactive helper_change timestamp update prevents race condition
 
-    **Previous Update - v3.16.2**
-    - 🐛 **FIXED**: Manual override false triggering on adaptive/stability auto-off (60s grace period)
-
-    **Previous Update - v3.16.0**
-    - 🐛 **FIXED**: Presence confirmation delay timer accumulation bug (BLE_SMART partial validation)
-    - ⚠️ **REQUIRES**: New helper `input_boolean.climate_presence_validation_active_[room]` (Setup Wizard auto-creates)
-
-    **Previous Update - v3.15.2**
-    - 🐛 **FIXED**: Manual override now detects when you turn off AC via HA UI during bed ECO mode
-    - ✅ **NEW BEHAVIOR**: Press OFF button in HA → Manual override detected immediately → Control mode switches to Override
-    - 🎯 **RESULT**: Automation respects your manual control during bed ECO mode - no more fighting!
-
-    **Previous Update - v3.15.1**
-    - 🐛 **FIXED**: Bed ECO mode can ONLY take over from existing cooling modes (respects your cooling thresholds)
-    - 🚫 **PREVENTS**: AC from starting when getting into bed if room below cooling threshold
-
-    **v3.15.0 Feature:**
-    - ✨ **NEW**: Bed absence grace period (0-30 min) for bathroom trips
-
-    **✨ NEW FEATURE: Two-Tier Debug System**
-    - 🟢 **ALWAYS-ON EVENT LOGGING** (Recommended: Keep ON): User-friendly logs when AC activates/deactivates/override detected
-    - 🔧 **FULL DEBUG LOGGING** (Use only when troubleshooting): Verbose technical debugging for deep analysis
-
-    **What You'll See in Event Logs:**
-    ```
-    🟢 LIVING ROOM AC ACTIVATED
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    📊 USER INFO:
-    Mode: COOLING HIGH
-    Temperature: 26.5°C → Target: 22.5°C
-    Fan: Level 5
-    Reason: High cooling activation - Temperature 26.5°C triggered COOLING HIGH mode
-
-    🔍 DEBUG DATA (for troubleshooting):
-    [Technical variables, conditions, state info...]
-    ```
-
-    **Previous Update - v3.13.17**
-
-    **🐛 CRITICAL FIX: Race Condition in Temperature Stability Shutoff**
-    - ✅ **FIXED**: AC reaching target via temperature stability no longer triggers manual override!
-
-    **🐛 BUG FIXES: Bed Comfort ECO Mode Variable + Escalation Support**
-    - ✅ **FIXED**: Undefined `eco_fan_speed` variable (was reversed - should be `fan_speed_eco`)
-    - ✅ **ENHANCED**: Bed ECO mode now supports dynamic fan escalation (starts eco, escalates when needed)
-
-    **🐛 CRITICAL FIX: Continue Mode Not Respecting Presence + Escalation Temperature Not Applied**
-    - ✅ **FIXED**: AC now turns off when you leave room, even during continue mode (after grace period)
-    - 🔍 **ROOT CAUSE #1**: Presence check used `smart_presence_active` which short-circuits - now checks `room_presence_detected + minutes_since_presence >= timeout` directly
-    - ✅ **FIXED**: Escalated temperature (18°C) now actually sent to AC instead of staying at 23°C
-    - 🔍 **ROOT CAUSE #2**: LOW COOLING continue mode was MISSING the temperature command gatekeeper that all other sections have
-    - 🛠️ **SOLUTION**: Added command gatekeeper to allow escalated temperature commands through
-    - 🎯 **RESULT**: AC respects grace period AND escalation works correctly in continue mode
-
-    **🚀 MASSIVE PERFORMANCE UPGRADE: Command Gatekeeper System**
-    - ⚡ **90% REDUCTION IN COMMAND SPAM**: Commands only sent when AC state actually needs changing!
-    - 🎯 **INSTANT MANUAL OVERRIDE DETECTION**: Reduced hardware delay from 45s → 5s (safe now!)
-    - 🛡️ **SMART STATE TRACKING**: HVAC mode, fan speed, temperature, swing mode all compared before sending
-    - 🔥 **NO MORE FIGHTING USER COMMANDS**: Automation "breathes" between checks, allows manual changes to persist
-
-    **The Problem (FIXED):**
-    - Old behavior: Sent commands EVERY trigger (1-60+ times per hour) even when nothing changed
-    - Race condition: User turns AC OFF → Automation IMMEDIATELY turned it back ON (< 2 seconds!)
-    - Result: Manual override detection NEVER worked - automation fought you constantly
-
-    **The Solution:**
-    ```
-    Before sending ANY command:
-    - Check if HVAC mode needs changing (actual != desired)
-    - Check if fan mode needs changing (actual != desired)
-    - Check if temperature needs changing (|actual - desired| > 0.5°C)
-    - Check if swing mode needs changing (actual != desired)
-
-    Only send commands when state actually differs!
-    ```
-
-    **Results:**
-    - ✅ Command spam reduced from ~60/hour → ~5/hour (90% reduction!)
-    - ✅ Manual override detection works in 1-2 seconds (was 45+ seconds)
-    - ✅ AC stays OFF when you turn it off manually (no more fighting!)
-    - ✅ No performance impact - conditions are lightweight
-    - ✅ All 70+ climate service calls protected
-
-    **Previous Update - v3.12.9**
-
-    **🛏️ CRITICAL FIX: Bed Comfort Mode Priority Issue**
-    - ✅ **FIXED**: AC turns off when reaching overshoot target even with bed comfort mode enabled (QUIET/ECO)
-    - 🔍 **ROOT CAUSE**: Comfort Zone Eco/OFF logic evaluated BEFORE Bed Comfort Mode in choose block
-    - 🛠️ **SOLUTION**: Moved Bed Comfort Mode section to execute BEFORE Comfort Zone logic
-    - 🎯 **RESULT**: Bed comfort settings (QUIET/ECO) now take precedence when in bed!
-
-    📖 **Full changelog & features:** https://github.com/Chris971991/Smart-Climate-Control
-
-    ---
-
-    ## 🔗 Quick Links
-
-    🚀 [Setup Wizard Installation](https://github.com/Chris971991/Smart-Climate-Control#setup-wizard-installation-method-1-recommended)
-    📖 [Complete Documentation](https://github.com/Chris971991/Smart-Climate-Control/blob/main/README.md)
-    📋 [Configuration Guide](https://github.com/Chris971991/Smart-Climate-Control/blob/main/setup-new-room-guide.md)
-    🐛 [Report Issues](https://github.com/Chris971991/Smart-Climate-Control/issues)
-
-    ---
-
-    ## 📋 Latest Changes
-
-    **v3.14.1** - 🐛 CRITICAL FIX: Bed ECO mode fan selection + presence detection + event log clarity
-    **v3.14.0** - ✨ NEW: Two-tier debug system (always-on event logging + optional full debug)
-
-    [Full Changelog](https://github.com/Chris971991/Smart-Climate-Control/releases)
+    📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
     ---
 
@@ -5753,6 +5634,59 @@ action:
       # Exit immediately - don't process any choose blocks
       - stop: "Override mode active - respecting user's manual changes"
 
+  # v3.17.1 FIX: Proactive helper_change update to prevent race condition false overrides
+  # CRITICAL: Update helper_change timestamp BEFORE any climate commands are sent
+  # This prevents subsequent automation runs (triggered by climate state changes) from
+  # falsely detecting the automation's own actions as manual intervention.
+  #
+  # Race condition scenario (FIXED):
+  # 1. Run #1: Person trigger → Decide to turn on AC → Send climate command
+  # 2. AC state changes (off → heat_cool) within 0.2 seconds
+  # 3. Run #2: climate_state_change trigger → Calculate manual_change_detected
+  #    - Uses OLD helper_change timestamp (from before Run #1)
+  #    - time_since_change > 45 seconds → within_hardware_delay = FALSE
+  #    - Detects: last_mode="off", actual="on", not within delay
+  #    - RESULT: False positive Override mode activation!
+  #
+  # Solution: Update helper_change NOW if we're going to take action AND starting a new mode
+  # This ensures Run #2 will see fresh timestamp and recognize it's within hardware delay
+  # v3.17.3 FIX: Only update when NOT in continue mode (prevents runtime timer resets)
+  - if:
+      - condition: template
+        value_template: >
+          {{ should_activate and
+             helper_change not in [none, '', 'unavailable', 'unknown'] and
+             last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high', 'bed_comfort_eco'] }}
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ helper_change }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                🛡️ {{ room_name | upper }} RACE CONDITION PROTECTION
+
+                📊 Proactive Timestamp Update:
+                    • helper_change updated: {{ now() }}
+                    • Reason: Starting new mode (not continue mode)
+                    • Last Mode: {{ last_mode }}
+                    • Protection: Prevents false override detection from climate state change trigger
+
+                🔒 Protection Active:
+                    • Any climate state changes in next 45 seconds will be recognized as automation actions
+                    • Subsequent automation runs will see within_hardware_delay=true
+                    • False manual override detection prevented
+                    • Continue mode runtime tracking preserved
+              level: warning
+
   - choose:
       # v3.11.9 FIX: Defensive check - verify Override mode using actual helper state
       # This catches cases where Override was just activated in this same automation run.
@@ -8853,6 +8787,31 @@ action:
                   datetime: "{{ now() }}"
                 continue_on_error: true
 
+          # v3.17.2 FIX: Update expected HVAC mode BEFORE changing (manual override protection)
+          # Move this OUTSIDE the repeat loop to ensure it happens once before any climate commands
+          # This prevents false manual override detection when returning from fan_only to cooling
+          - variables:
+              selected_hvac_mode: >
+                {% set modes = state_attr(climate_list[0], 'hvac_modes') | list %}
+                {% if 'cool' in modes %}
+                  cool
+                {% elif 'Cool' in modes %}
+                  Cool
+                {% elif enable_heating and 'auto' in modes %}
+                  auto
+                {% elif enable_heating and 'Auto' in modes %}
+                  Auto
+                {% else %}
+                  off
+                {% endif %}
+
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "{{ selected_hvac_mode }}"
+            continue_on_error: true
+
           # Climate control - maintain at USER target (not overshoot)
           - repeat:
               for_each: "{{ climate_list }}"
@@ -8860,27 +8819,6 @@ action:
                 - variables:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                    selected_hvac_mode: >
-                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
-                      {% if 'cool' in modes %}
-                        cool
-                      {% elif 'Cool' in modes %}
-                        Cool
-                      {% elif enable_heating and 'auto' in modes %}
-                        auto
-                      {% elif enable_heating and 'Auto' in modes %}
-                        Auto
-                      {% else %}
-                        off
-                      {% endif %}
-
-                # Capture expected HVAC mode
-                - service: input_text.set_value
-                  target:
-                    entity_id: "{{ helper_expected_hvac }}"
-                  data:
-                    value: "{{ selected_hvac_mode }}"
-                  continue_on_error: true
 
                 # Command gatekeeper - only send if mode needs changing
                 - condition: template
