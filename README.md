@@ -61,7 +61,13 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Bed ECO Mode Support**: Manual override now works during bed comfort ECO mode (v3.15.2)
 - **Adaptive Timeout**: Override duration adjusts based on time of day (5min-2hrs)
 
-#### 🛏️ **Bed Comfort ECO Mode (NEW v3.14.2, Enhanced v3.15.0-v3.15.2)**
+#### 🛏️ **Bed Comfort ECO Mode with Fan-Only Power Savings (NEW v3.17.0)**
+- **⚡ NEW v3.17.0: Fan-Only Mode**: Automatic switch from cooling → fan_only when stable/overshooting
+  - **~85% Power Reduction**: Compressor OFF, fan only during stable periods
+  - **Two Activation Scenarios**: Overshoot (below target) OR Stability (at target)
+  - **Auto Return**: Returns to cooling when temp rises above threshold
+  - **Configurable**: Toggle on/off, stability duration (1-10 min), return threshold, max overshoot
+  - **Savings Example**: 6 hours/night in fan_only = ~4 kWh saved = $0.80-$1.20/night
 - **Intelligent Takeover**: Only activates when taking over from existing cooling modes (respects your thresholds!)
 - **Silent Operation**: Uses minimal fan speed (eco setting) for peaceful sleep
 - **Precise Maintenance**: Maintains at your exact target temperature (not overshoot)
@@ -69,7 +75,7 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Grace Period**: Configurable 0-30 min buffer for bathroom trips (v3.15.0)
 - **Smart Exit**: Returns to normal cooling when bed unoccupied beyond grace period
 - **Manual Override**: Respects user's manual control - won't fight you (v3.15.2)
-- **Perfect for Sleep**: Combines comfort, quiet operation, and energy efficiency
+- **Perfect for Sleep**: Combines comfort, quiet operation, and maximum energy efficiency
 
 #### 🎛️ **Core Features**
 - **Multi-Zone Control**: Manage 1 or multiple A/C units with synchronized operation

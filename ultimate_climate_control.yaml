@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.34
+  name: Ultimate Smart Climate Control - v3.17.0
 
   description: |
-    **Ultimate Smart Climate Control v3.16.34**
+    **Ultimate Smart Climate Control v3.17.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,21 +59,28 @@ blueprint:
 
     ---
 
-    ## 🆕 Latest Update - v3.16.2
+    ## 🆕 Latest Update - v3.17.0
 
-    **🐛 CRITICAL FIX: Manual Override False Triggering on Adaptive/Stability Auto-Off**
-    - 🎯 **FIXED**: Manual override no longer triggers when adaptive mode turns off AC after grace period expires!
-    - ❌ **OLD BEHAVIOR**: Grace period expires → Automation turns off AC → AC slow to respond → Manual override detected
-    - ✅ **NEW BEHAVIOR**: Gives 60 seconds for adaptive/stability/smart_off commands to complete before checking for manual changes
-    - 🔧 **ROOT CAUSE**: AC hardware takes 20-40 seconds to respond, automation checked again too soon → False positive
-    - 🎯 **RESULT**: Adaptive mode works correctly - no false override when leaving room after grace period
+    **✨ NEW FEATURE: Bed Comfort Fan-Only Mode - Smart Power Savings**
+    - 🛏️ **NEW**: Automatic switch from cooling → fan_only when temperature stable or overshooting
+    - ⚡ **POWER SAVINGS**: ~85% reduction (compressor OFF, fan only) during stable periods
+    - 🎯 **TWO ACTIVATION SCENARIOS**:
+      - **Overshoot**: Room below target (e.g., 21.6°C when target is 23°C) → Switch to fan_only immediately
+      - **Stability**: Temperature stable at target for configured duration → Switch to fan_only
+    - 🔄 **AUTO RETURN**: Returns to cooling when temp rises above target + threshold
+    - ⚙️ **CONFIGURABLE**: Toggle on/off, stability duration (1-10 min), stability rate, return threshold, max overshoot
+    - 💰 **SAVINGS EXAMPLE**: 6 hours/night in fan_only = ~4 kWh saved = $0.80-$1.20/night
 
-    **Example Scenario:**
-    - Before: Leave room → 10min grace period → Automation turns AC off → 21 seconds later → Override triggered (wrong!)
-    - After: Leave room → 10min grace period → Automation turns AC off → Waits 60 seconds → AC turns off correctly (correct!)
+    **How It Works:**
+    1. Bed ECO mode cools to overshoot (e.g., 21.75°C with -0.75°C overshoot)
+    2. Bed sensor detects occupancy → Activates bed ECO mode
+    3. Room naturally warms OR stabilizes
+    4. **NEW**: Switches to fan_only mode (compressor off, just air circulation)
+    5. Room warms to target OR stays stable with minimal power
+    6. If temp rises above 23.7°C → Returns to cooling automatically
 
-    **Previous Update - v3.16.1**
-    - 🐛 **FIXED**: Manual override false triggering when leaving home (both users away)
+    **Previous Update - v3.16.2**
+    - 🐛 **FIXED**: Manual override false triggering on adaptive/stability auto-off (60s grace period)
 
     **Previous Update - v3.16.0**
     - 🐛 **FIXED**: Presence confirmation delay timer accumulation bug (BLE_SMART partial validation)
@@ -1462,6 +1469,127 @@ blueprint:
               max: 30
               step: 1
               unit_of_measurement: minutes
+
+        bed_eco_fan_only_mode:
+          name: "Bed ECO Fan-Only Mode"
+          description: |
+            **Enable smart fan-only mode** when temperature stable at target.
+
+            **How it works:**
+            1. Bed ECO cools to target temperature (23°C)
+            2. Detects when temperature **stable** (change < 0.05°C/min for 3+ minutes)
+            3. Switches to **FAN_ONLY** to save power (~85% reduction)
+            4. Returns to cooling if temp rises >0.5°C above target
+
+            **Handles overshooting:** If room keeps cooling below target (e.g., 22.7°C),
+            still switches to fan_only when stable (AC too effective, wasting power).
+
+            **Power savings:** ~75-85% reduction over 8 hours sleep
+
+            **Compatibility:** Automatically disabled if AC doesn't support fan_only mode
+          default: "disabled"
+          selector:
+            select:
+              options:
+                - label: "Disabled - Always use cooling"
+                  value: "disabled"
+                - label: "Enabled - Switch to fan-only when stable"
+                  value: "enabled"
+
+        bed_eco_stability_minutes:
+          name: "Bed ECO Stability Duration"
+          description: |
+            **Minutes temperature must be stable** before switching to fan-only.
+
+            **What is "stable"?** Change rate < 0.05°C/min (configurable below)
+
+            • **1-2 minutes:** Quick switch (may cycle more frequently)
+            • **3-5 minutes:** Balanced (recommended) ⭐
+            • **5-10 minutes:** Conservative (very stable before switching)
+
+            **Recommended:** 3 minutes for optimal balance
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 10
+              step: 1
+              unit_of_measurement: minutes
+
+        bed_eco_stability_rate:
+          name: "Bed ECO Stability Rate Threshold"
+          description: |
+            **Maximum temperature change rate** to be considered "stable".
+
+            **Lower value = stricter stability requirement**
+
+            • **0.02°C/min:** Very strict (almost no change)
+            • **0.05°C/min:** Balanced (recommended) ⭐
+            • **0.10°C/min:** Relaxed (allows more variation)
+
+            **Example:** At 0.05°C/min, temp can change from 23.0 → 23.1°C over 2 minutes and still be "stable"
+
+            **Recommended:** 0.05°C/min for most scenarios
+          default: 0.05
+          selector:
+            number:
+              min: 0.02
+              max: 0.15
+              step: 0.01
+              unit_of_measurement: "°C/min"
+
+        bed_eco_return_threshold:
+          name: "Bed ECO Return Threshold"
+          description: |
+            **Temperature rise above target** to trigger return to cooling.
+
+            **When in fan-only mode:**
+            - Room naturally warms from fan-only operation
+            - When temp exceeds (target + threshold), return to cooling
+
+            • **0.2-0.3°C:** Tight control (more cooling cycles, less savings)
+            • **0.5°C:** Balanced (recommended) ⭐
+            • **0.7-1.0°C:** Relaxed (maximum savings, slight comfort trade-off)
+
+            **Example:** Target 23°C, threshold 0.5°C
+            - Fan-only while temp 23.0-23.5°C
+            - Return to cooling at 23.5°C
+
+            **Recommended:** 0.5°C for most users
+          default: 0.5
+          selector:
+            number:
+              min: 0.2
+              max: 1.5
+              step: 0.1
+              unit_of_measurement: "°C"
+
+        bed_eco_max_overshoot:
+          name: "Bed ECO Maximum Overshoot Tolerance"
+          description: |
+            **Maximum undershoot below target** before forcing return to cooling.
+
+            **Handles overshooting scenario:**
+            - Bed ECO cools to 23°C but keeps going to 22.5°C
+            - If temp stable at 22.5°C → Switch to fan_only (within tolerance)
+            - If temp stable at 21.5°C → Stay in cooling (too cold!)
+
+            • **0.5°C:** Strict (stay close to target)
+            • **1.0°C:** Balanced (recommended) ⭐
+            • **1.5-2.0°C:** Relaxed (allows significant undershoot)
+
+            **Example:** Target 23°C, overshoot 1.0°C
+            - Stable at 22.5°C → Switch to fan_only ✅
+            - Stable at 21.8°C → Stay in cooling ❌
+
+            **Recommended:** 1.0°C for most scenarios
+          default: 1.0
+          selector:
+            number:
+              min: 0.5
+              max: 2.5
+              step: 0.1
+              unit_of_measurement: "°C"
 
     # Scheduling Settings (Optional)
     scheduling_settings:
@@ -3031,6 +3159,12 @@ variables:
     {% else %}
       0
     {% endif %}
+  # Bed ECO fan-only mode (v3.17.0)
+  bed_eco_fan_only_mode: !input bed_eco_fan_only_mode
+  bed_eco_stability_minutes: !input bed_eco_stability_minutes
+  bed_eco_stability_rate: !input bed_eco_stability_rate
+  bed_eco_return_threshold: !input bed_eco_return_threshold
+  bed_eco_max_overshoot: !input bed_eco_max_overshoot
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
@@ -8604,8 +8738,11 @@ action:
                 {% elif actual_ac_state == 'off' %}
                   False  {# EXIT: AC is already off #}
                 {% else %}
-                  {{ should_activate and enable_cooling and bed_comfort_mode == 'eco' and current_temp >= (target_temp - 0.5) and (bed_active or minutes_since_bed_off < bed_absence_grace) }}
+                  {{ should_activate and enable_cooling and bed_comfort_mode == 'eco' and current_temp > (target_temp - 1.0) and (bed_active or minutes_since_bed_off < bed_absence_grace) }}
                 {% endif %}
+              {% elif current_mode == 'bed_comfort_fan_only' and current_temp > (target_temp + bed_eco_return_threshold) %}
+                {# RETURN FROM FAN-ONLY: Temperature rising - return to cooling #}
+                True  {# ACTIVATE: Temp exceeded threshold, return from fan_only to cooling #}
               {% else %}
                 {# Not in bed ECO - activate ONLY when taking over from existing cooling mode (LOW/MEDIUM/HIGH) #}
                 {# v3.15.1: Bed ECO is a TAKEOVER mode, never a STARTER mode - prevents AC from starting when room below threshold #}
@@ -8626,7 +8763,9 @@ action:
                     • Target: {{ target_temp }}°C (user comfort target)
                     • Distance: {{ distance_from_target }}°C
                     {% set current_mode = states(helper_mode) | default('off') %}
-                    {% if current_mode not in ['bed_comfort_eco'] %}
+                    {% if current_mode == 'bed_comfort_fan_only' %}
+                    • Returning from: FAN-ONLY MODE (temp rising above {{ (target_temp + bed_eco_return_threshold) | round(1) }}°C)
+                    {% elif current_mode not in ['bed_comfort_eco'] %}
                     • Takeover from: {{ current_mode | upper | replace('_', ' ') }}
                     {% endif %}
 
@@ -8930,7 +9069,7 @@ action:
             value_template: >
               {% set current_mode = states(helper_mode) | default('off') %}
               {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
-              {{ current_mode == 'bed_comfort_eco' and not bed_active and minutes_since_bed_off >= bed_absence_grace }}
+              {{ current_mode in ['bed_comfort_eco', 'bed_comfort_fan_only'] and not bed_active and minutes_since_bed_off >= bed_absence_grace }}
         sequence:
           # Reset helper to 'off' so other modes can evaluate properly
           - service: input_text.set_value
@@ -8965,6 +9104,177 @@ action:
                     • actual_ac_state: {{ actual_ac_state }}
                     • should_activate: {{ should_activate }}
               level: warning
+
+      # BED COMFORT FAN-ONLY MODE: Smart power-saving mode when temperature stable
+      # v3.17.0: Switches cooling→fan_only when stable, returns to cooling when temp rises
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set current_mode = states(helper_mode) | default('off') %}
+              {% set bed_active = bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}
+
+              {# Calculate temperature stability #}
+              {% set temp_history = states(helper_temp_history) | float(current_temp) %}
+              {% set temp_change = (current_temp - temp_history) | abs %}
+              {% set change_rate = (temp_change / effectiveness_check_mins) if effectiveness_check_mins > 0 else 0 %}
+              {% set is_stable = change_rate < bed_eco_stability_rate %}
+
+              {# Calculate stability duration #}
+              {% set stable_since = states(helper_temp_stable_since) %}
+              {% set minutes_stable = ((as_timestamp(now()) - as_timestamp(stable_since)) / 60) if stable_since not in ['unknown', 'unavailable', ''] else 0 %}
+
+              {# Temperature checks #}
+              {% set temp_below_target = current_temp < target_temp %}
+              {% set overshoot_amount = (target_temp - current_temp) if temp_below_target else 0 %}
+              {% set overshoot_acceptable = overshoot_amount <= bed_eco_max_overshoot %}
+              {% set temp_in_range = current_temp <= (target_temp + 0.3) %}
+
+              {% if current_mode == 'bed_comfort_fan_only' %}
+                {# CONTINUE MODE: Already in fan-only #}
+                {% if not bed_active and minutes_since_bed_off >= bed_absence_grace %}
+                  False  {# EXIT: Bed unoccupied beyond grace period #}
+                {% elif current_temp > (target_temp + bed_eco_return_threshold) %}
+                  False  {# EXIT: Temp rising too much - return to cooling #}
+                {% elif temp_below_target and overshoot_amount > bed_eco_max_overshoot %}
+                  False  {# EXIT: Overshot too far below target - return to cooling #}
+                {% else %}
+                  True  {# MAINTAIN: Continue fan-only #}
+                {% endif %}
+              {% else %}
+                {# ACTIVATION: Transition from bed_comfort_eco when stable OR when below target #}
+                {% set activate_stable = (is_stable and minutes_stable >= bed_eco_stability_minutes and temp_in_range) %}
+                {% set activate_overshoot = (temp_below_target and overshoot_acceptable) %}
+
+                {{ current_mode == 'bed_comfort_eco' and
+                   bed_active and
+                   bed_eco_fan_only_mode == 'enabled' and
+                   (activate_stable or activate_overshoot) }}
+              {% endif %}
+        sequence:
+          # === MANUAL OVERRIDE PROTECTION: Update helpers FIRST ===
+
+          # Step 1: Update timestamp (starts 60s hardware delay window)
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          # Step 2: Detect AC's fan_only mode variant
+          - variables:
+              available_modes: "{{ state_attr(climate_list[0], 'hvac_modes') | list }}"
+              selected_fan_only_mode: >
+                {% set modes = state_attr(climate_list[0], 'hvac_modes') | list %}
+                {% if 'fan_only' in modes %}
+                  fan_only
+                {% elif 'fan-only' in modes %}
+                  fan-only
+                {% elif 'Fan Only' in modes %}
+                  Fan Only
+                {% else %}
+                  cool
+                {% endif %}
+              supports_fan_only: "{{ selected_fan_only_mode in ['fan_only', 'fan-only', 'Fan Only'] }}"
+
+              # Calculate stability metrics for logging
+              temp_history: "{{ states(helper_temp_history) | float(current_temp) }}"
+              temp_change: "{{ (current_temp - temp_history) | abs }}"
+              change_rate: "{{ (temp_change / effectiveness_check_mins) if effectiveness_check_mins > 0 else 0 }}"
+              is_stable: "{{ change_rate < bed_eco_stability_rate }}"
+              stable_since: "{{ states(helper_temp_stable_since) }}"
+              minutes_stable: "{{ ((as_timestamp(now()) - as_timestamp(stable_since)) / 60) if stable_since not in ['unknown', 'unavailable', ''] else 0 }}"
+              temp_below_target: "{{ current_temp < target_temp }}"
+              overshoot_amount: "{{ (target_temp - current_temp) if current_temp < target_temp else 0 }}"
+              overshoot_acceptable: "{{ overshoot_amount <= bed_eco_max_overshoot }}"
+              temp_in_range: "{{ current_temp <= (target_temp + 0.3) }}"
+
+          # Step 3: Update expected HVAC mode BEFORE changing (critical for manual override protection)
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_hvac }}"
+            data:
+              value: "{{ selected_fan_only_mode }}"
+            continue_on_error: true
+
+          # Step 4: Update mode tracker
+          - service: input_text.set_value
+            target:
+              entity_id: !input helper_last_mode
+            data:
+              value: "bed_comfort_fan_only"
+            continue_on_error: true
+
+          # Step 5: Debug logging (before mode change)
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🛏️ {{ room_name | upper }} BED COMFORT → FAN-ONLY
+
+                    📊 Activation Reason:
+                        • Current: {{ current_temp }}°C (Target: {{ target_temp }}°C)
+                        {% set activate_stable = (is_stable and minutes_stable >= bed_eco_stability_minutes and temp_in_range) %}
+                        {% set activate_overshoot = (temp_below_target and overshoot_acceptable) %}
+                        {% if activate_overshoot %}
+                        ✅ OVERSHOOT SCENARIO: Room below target
+                        • Overshoot: {{ overshoot_amount | round(1) }}°C below target (max: {{ bed_eco_max_overshoot }}°C)
+                        • AC cooling too much - switching to fan_only to allow natural warming
+                        {% elif activate_stable %}
+                        ✅ STABILITY SCENARIO: Temperature stable at target
+                        • Change Rate: {{ change_rate | round(3) }}°C/min (threshold: {{ bed_eco_stability_rate }}°C/min)
+                        • Stable Duration: {{ minutes_stable | round(1) }} min (required: {{ bed_eco_stability_minutes }} min)
+                        {% endif %}
+
+                    ⚡ Power Savings Mode:
+                        • Switching: COOLING → {{ selected_fan_only_mode | upper }}
+                        {% if supports_fan_only %}
+                        • Expected Savings: ~85% power reduction
+                        • Will return to cooling if temp rises above {{ (target_temp + bed_eco_return_threshold) | round(1) }}°C
+                        {% else %}
+                        ⚠️ AC doesn't support fan_only mode - staying in cooling
+                        {% endif %}
+
+                    🛡️ Manual Override Protection:
+                        • helper_change updated: {{ now() }}
+                        • helper_expected_hvac: {{ selected_fan_only_mode }}
+                        • within_hardware_delay: True (60s protection active)
+                        ✅ Safe from false manual override detection
+                  level: warning
+
+          # === NOW SAFE TO CHANGE HVAC MODE (only if AC supports fan_only) ===
+
+          # Step 6: Switch to fan_only (if supported), otherwise stay in cooling
+          - if:
+              - condition: template
+                value_template: "{{ supports_fan_only }}"
+            then:
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        hvac_mode: "{{ selected_fan_only_mode }}"
+            else:
+              # Fallback: AC doesn't support fan_only, log warning
+              - if:
+                  - condition: template
+                    value_template: "{{ debug_enabled }}"
+                then:
+                  - service: system_log.write
+                    data:
+                      message: >
+                        ⚠️ {{ room_name | upper }} FAN-ONLY MODE NOT SUPPORTED
+
+                        AC doesn't support fan_only mode. Available modes: {{ available_modes | join(', ') }}
+
+                        Bed ECO will continue using cooling mode instead.
+                      level: warning
 
       # LOW COOLING: Smart hysteresis with direct helper reads
       - conditions:
