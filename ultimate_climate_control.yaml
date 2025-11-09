@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.16.15
+  name: Ultimate Smart Climate Control - v3.16.33
 
   description: |
-    **Ultimate Smart Climate Control v3.16.15**
+    **Ultimate Smart Climate Control v3.16.33**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3769,14 +3769,17 @@ action:
       # Detect stall or wrong direction
       # Wrong direction: temp moving opposite way (rising during cooling, falling during heating)
       # Stalling: temp moving right way but TOO slowly (slower than min_progress_rate)
+      # v3.16.26 FIX: Stalling detection broken - excluded flat 0.0°C/min case
+      # COOLING stalling: temp_change_rate between -min_progress_rate and 0 (inclusive of 0)
+      # HEATING stalling: temp_change_rate between 0 and +min_progress_rate (inclusive of 0)
       wrong_direction_detected: >
         {{
           (wrong_direction_enabled and wrong_direction_per_check > 0) and
           (
             (last_mode in ['cooling', 'cooling_low', 'cooling_medium', 'cooling_high'] and
-             (temp_change_rate > wrong_direction_min_rate or (temp_change_rate < 0 and temp_change_rate > -min_progress_rate))) or
+             (temp_change_rate > wrong_direction_min_rate or (temp_change_rate >= -min_progress_rate and temp_change_rate <= 0))) or
             (last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] and
-             (temp_change_rate < -wrong_direction_min_rate or (temp_change_rate > 0 and temp_change_rate < min_progress_rate)))
+             (temp_change_rate < -wrong_direction_min_rate or (temp_change_rate <= min_progress_rate and temp_change_rate >= 0)))
           )
         }}
 
@@ -4269,6 +4272,7 @@ action:
 
         {# Detect fan mode changes - only when AC should be off but is on #}
         {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
+        {# v3.16.17 FIX: Convert to string before comparison (handles integer fan modes from BRP069) #}
         {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
         {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') %}
         {% set is_fan_manual = (
@@ -4276,7 +4280,7 @@ action:
           not within_hardware_delay and
           expected_fan not in ['unknown', 'unavailable', '', 'none'] and
           actual_fan not in ['unknown', 'unavailable', '', 'none'] and
-          expected_fan | lower != actual_fan | lower
+          expected_fan | string | lower != actual_fan | string | lower
         ) %}
 
         {# Detect swing mode changes - only when AC should be off but is on #}
@@ -4310,19 +4314,6 @@ action:
         {{ result }}
 
       # v3.11.0: Override is now a control mode, no separate flag needed
-      # v3.12.5 DEBUG: Enhanced manual change detection debugging
-      debug_manual_detection: >
-        🔍 MANUAL OVERRIDE DEBUG:
-        • trigger.id: {{ trigger.id }}
-        • control_mode: {{ control_mode }}
-        • helper_last_mode_at_start: {{ helper_last_mode_at_start }}
-        • actual_ac_state: {{ actual_ac_state }}
-        • time_since_change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
-        • within_hardware_delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
-        • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
-        • is_manual_on: {{ (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
-        • manual_change_detected: {{ manual_change_detected }}
-
 
       should_activate: >
         {# v3.11.0: Override mode = automation paused, just like Manual mode #}
@@ -4370,7 +4361,14 @@ action:
     then:
       - service: system_log.write
         data:
-          message: "🔍 {{ room_name }} DEBUG: trigger={{ trigger.id }} | last_mode={{ states(helper_mode) }} | actual_ac={{ actual_ac_state }} | manual_detected={{ manual_change_detected }}"
+          message: >
+            🔍 {{ room_name | upper }} AUTOMATION FLOW DEBUG
+
+            📊 Trigger & State:
+                • Trigger ID: {{ trigger.id }}
+                • Last Mode: {{ states(helper_mode) }}
+                • Actual AC State: {{ actual_ac_state }}
+                • Manual Change Detected: {{ manual_change_detected }}
           level: warning
 
   # v3.12.5 DEBUG: Detailed manual override detection trace
@@ -4380,7 +4378,23 @@ action:
     then:
       - service: system_log.write
         data:
-          message: "{{ debug_manual_detection }}"
+          message: >
+            🔍 {{ room_name | upper }} MANUAL OVERRIDE DEBUG
+
+            📊 Trigger & Control:
+                • Trigger ID: {{ trigger.id }}
+                • Control Mode: {{ control_mode }}
+                • Last Mode at Start: {{ helper_last_mode_at_start }}
+                • Actual AC State: {{ actual_ac_state }}
+
+            ⏱️ Timing:
+                • Time Since Change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
+                • Within Hardware Delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
+
+            🎯 Detection Results:
+                • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
+                • is_manual_on: {{ (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
+                • manual_change_detected: {{ manual_change_detected }}
           level: warning
 
   # v3.12.5 DEBUG: Log should_activate value
@@ -4391,10 +4405,12 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name }} SHOULD_ACTIVATE CHECK:
-            • control_mode (variable): {{ control_mode }}
-            • control_mode_helper (actual): {{ states(control_mode_helper) }}
-            • should_activate: {{ should_activate }}
+            🔍 {{ room_name | upper }} SHOULD_ACTIVATE CHECK
+
+            📊 Control Mode Analysis:
+                • Control Mode (Variable): {{ control_mode }}
+                • Control Mode Helper (Actual): {{ states(control_mode_helper) }}
+                • Should Activate: {{ should_activate }}
           level: warning
 
   - condition: template
@@ -4526,14 +4542,19 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name }} OVERRIDE ACTIVATION CHECK:
-            • manual_change_detected: {{ manual_change_detected }}
-            • control_mode: {{ control_mode }}
-            • control_mode not in ['Manual', 'Override']: {{ control_mode not in ['Manual', 'Override'] }}
-            • adaptive_override_timeout: {{ adaptive_override_timeout }}
-            • control_mode_helper: {{ control_mode_helper }}
-            • control_mode_helper valid: {{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
-            • WILL ACTIVATE: {{ manual_change_detected and control_mode not in ['Manual', 'Override'] and adaptive_override_timeout > 0 and control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
+            🔍 {{ room_name | upper }} OVERRIDE ACTIVATION CHECK
+
+            📊 Override Conditions:
+                • Manual Change Detected: {{ manual_change_detected }}
+                • Control Mode: {{ control_mode }}
+                • Not Manual/Override Mode: {{ control_mode not in ['Manual', 'Override'] }}
+                • Adaptive Override Timeout: {{ adaptive_override_timeout }}
+
+            🛡️ Helper Validation:
+                • Control Mode Helper: {{ control_mode_helper }}
+                • Helper Valid: {{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
+
+            ✅ Will Activate Override: {{ manual_change_detected and control_mode not in ['Manual', 'Override'] and adaptive_override_timeout > 0 and control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
           level: warning
 
   - if:
@@ -5282,13 +5303,13 @@ action:
                 • Expected: Temperature FALLING at rate > {{ min_progress_rate }}°C/min
                 • Actual Rate: {{ temp_change_rate | round(3) }}°C/min
                 • Wrong Direction (rising): {{ temp_change_rate > wrong_direction_min_rate }} (rate > +{{ wrong_direction_min_rate }}°C/min)
-                • Stalling (cooling too slowly): {{ temp_change_rate < 0 and temp_change_rate > -min_progress_rate }} (rate between 0 and -{{ min_progress_rate }}°C/min)
+                • Stalling (cooling too slowly): {{ temp_change_rate >= -min_progress_rate and temp_change_rate <= 0 }} (rate between -{{ min_progress_rate }} and 0°C/min, inclusive)
                 {% elif last_mode in ['heating', 'heating_low', 'heating_medium', 'heating_high'] %}
                 • Mode: Heating
                 • Expected: Temperature RISING at rate > {{ min_progress_rate }}°C/min
                 • Actual Rate: {{ temp_change_rate | round(3) }}°C/min
                 • Wrong Direction (falling): {{ temp_change_rate < -wrong_direction_min_rate }} (rate < -{{ wrong_direction_min_rate }}°C/min)
-                • Stalling (heating too slowly): {{ temp_change_rate > 0 and temp_change_rate < min_progress_rate }} (rate between 0 and +{{ min_progress_rate }}°C/min)
+                • Stalling (heating too slowly): {{ temp_change_rate <= min_progress_rate and temp_change_rate >= 0 }} (rate between 0 and +{{ min_progress_rate }}°C/min, inclusive)
                 {% else %}
                 • Mode: {{ last_mode }} (not cooling/heating)
                 • Stall/Wrong Direction: Not Applicable
@@ -5326,14 +5347,14 @@ action:
       - service: system_log.write
         data:
           message: >
-            🎯 {{ room_name | upper }} DEBUG: Dynamic Target Adjustment
+            🎯 {{ room_name | upper }} DYNAMIC TARGET ADJUSTMENT
 
             🔧 Smart Escalation Boost Active:
-            • Feature Enabled: {{ enable_dynamic_target }}
-            • User Desired Temperature: {{ target_temp }}°C
-            • Final Escalation Level: {{ final_escalation_level }}
-            • Offset Per Level: {{ escalation_offset }}°C
-            • Total Adjustment: {{ (final_escalation_level * escalation_offset) | round(1) }}°C
+                • Feature Enabled: {{ enable_dynamic_target }}
+                • User Desired Temperature: {{ target_temp }}°C
+                • Final Escalation Level: {{ final_escalation_level }}
+                • Offset Per Level: {{ escalation_offset }}°C
+                • Total Adjustment: {{ (final_escalation_level * escalation_offset) | round(1) }}°C
 
             🌡️ Target Calculation:
                 • Current Mode: {{ last_mode }}
@@ -5773,30 +5794,84 @@ action:
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} HIGH HEATING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C almost at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
-                    ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 90 %}| 🔥 MAXIMUM INTENSITY{% elif effectiveness >= 70 %}| ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        {% if effectiveness >= 90 %}• Status: 🔥 MAXIMUM INTENSITY{% elif effectiveness >= 70 %}• Status: ⚡ HIGH EFFECTIVENESS ({{ effectiveness }}%){% else %}• Status: 🔧 STRUGGLING ({{ effectiveness }}% effective){% endif %}
+
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - CRUISING TO TARGET
-                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}{% if escalation > 0 %}
+                        • Status: 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %}
+                        • Status: 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - EMERGENCY MODE
-                    📊 CONTINUE MODE: Large gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C deficit!)
-                    ⚡ Full power until comfortable | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Deficit: {{ temp_gap_adjusted }}°C (LARGE GAP!)
+                        • Mode: Full power until comfortable
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+                        • Effectiveness: {{ effectiveness }}%
+
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 5.0 %}
                     🚨 {{ room_name | upper }} HIGH HEATING - EMERGENCY START
-                    🚀 START MODE: EXTREME cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C ({{ temp_gap_adjusted }}°C deficit!)
-                    🔥 Maximum heating power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (EXTREME COLD!)
+                        • Threshold: ≤{{ heating_high_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Deficit: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Status: Maximum heating power engaged
+
                   {% elif temp_gap >= 2.0 %}
                     🔥 {{ room_name | upper }} HIGH HEATING - RAPID WARM-UP
-                    🚀 START MODE: Cold {{ current_temp }}°C ≤ {{ heating_high_temp }}°C threshold
-                    ⚡ High-power heating → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (COLD)
+                        • Threshold: ≤{{ heating_high_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+
+                    ⚡ Performance:
+                        • Mode: High-power heating
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+
                   {% else %}
                     🔥 {{ room_name | upper }} HIGH HEATING - PRECISION MODE
-                    🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_high_temp }}°C
-                    🎯 Gentle approach to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C
+                        • Threshold: ≤{{ heating_high_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Gentle approach for fine-tuning
+
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -5820,13 +5895,14 @@ action:
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+                    {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                     • Mode: HEATING HIGH
-                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ (target_temp + target_overshoot) | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: High heating activation - Temperature {{ current_temp }}°C triggered HEATING HIGH mode
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -6157,16 +6233,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -6182,23 +6256,26 @@ action:
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
 
-          # v3.9.13: Wait for fan commands to complete (fan controllers can be slow)
-          - delay:
-              milliseconds: 2000
+                # v3.9.13: Wait for fan commands to complete (fan controllers can be slow)
+                - delay:
+                    milliseconds: 2000
 
-          # v3.9.13: NOW turn on AC with correct fan mode already set
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
+                # v3.9.13: NOW turn on AC with correct fan mode already set
+                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
+                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ adjusted_target }}"
 
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
@@ -6285,30 +6362,84 @@ action:
                 {% if current_mode == 'heating_medium' %}
                   {% if temp_gap <= 0.5 %}
                     🎯 {{ room_name | upper }} MEDIUM HEATING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
-                    ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 85 %}| 🔥 OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}| ⚡ GOOD EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        {% if effectiveness >= 85 %}• Status: 🔥 OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}• Status: ⚡ GOOD EFFECTIVENESS ({{ effectiveness }}%){% else %}• Status: 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
+
                   {% elif temp_gap <= 2.0 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STEADY PROGRESS
-                    📊 CONTINUE MODE: Heating {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}{% if escalation > 0 %}
+                        • Status: 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %}
+                        • Status: 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - SUSTAINED MODE
-                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
-                    ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • Mode: Balanced power until target
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+                        • Effectiveness: {{ effectiveness }}%
+
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 4.0 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - INTENSIVE START
-                    🚀 START MODE: Significant cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
-                    ⚡ Steady heating power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (SIGNIFICANT COLD)
+                        • Threshold: ≤{{ heating_medium_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Deficit: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Status: Steady heating power engaged
+
                   {% elif temp_gap >= 1.5 %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - STANDARD WARM-UP
-                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C threshold
-                    ⚙️ Balanced heating → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (MODERATE COLD)
+                        • Threshold: ≤{{ heating_medium_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+
+                    ⚡ Performance:
+                        • Mode: Balanced heating
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+
                   {% else %}
                     🔥 {{ room_name | upper }} MEDIUM HEATING - GENTLE MODE
-                    🚀 START MODE: Minor adjustment {{ current_temp }}°C ≤ {{ heating_medium_temp }}°C
-                    🎯 Comfort warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C
+                        • Threshold: ≤{{ heating_medium_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Comfort warming
+
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -6332,13 +6463,14 @@ action:
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+                    {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                     • Mode: HEATING MEDIUM
-                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ (target_temp + target_overshoot) | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: Medium heating activation - Temperature {{ current_temp }}°C triggered HEATING MEDIUM mode
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -6657,16 +6789,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -6681,6 +6811,27 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Level 4{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Level 5{% else %}Emergency - maximum escalation{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
+
+                # v3.9.13: Wait + set temperature
+                - delay:
+                    milliseconds: 2000
+
+                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
+                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -6693,21 +6844,6 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
-          # v3.9.13: Wait + set temperature
-          - delay:
-              milliseconds: 2000
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
@@ -6775,35 +6911,89 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
-                {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C' %}
+                {% set target_info = 'User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else 'User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
                     🎯 {{ room_name | upper }} LOW HEATING - PRECISION FINISH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining)
-                    ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 80 %}| 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}| ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}| 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        {% if effectiveness >= 80 %}• Status: 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}• Status: ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}• Status: 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
+
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
-                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}{% if escalation > 0 %}
+                        • Status: 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %}
+                        • Status: 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
-                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
-                    🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • Mode: Gentle power until comfort
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+                        • Effectiveness: {{ effectiveness }}%
+
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - CAUTIOUS START
-                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
-                    🌡️ Gentle heating approach | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (MODERATE COLD)
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Deficit: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Gentle heating approach
+
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
-                    🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (SLIGHT COLD)
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+
+                    ⚡ Performance:
+                        • Mode: Gentle warming
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
-                    🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
-                    🎯 Minimal warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Minimal warming for fine-tuning
+
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -6827,13 +7017,14 @@ action:
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+                    {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                     • Mode: HEATING LOW
-                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ (target_temp + target_overshoot) | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: Low heating activation - Temperature {{ current_temp }}°C triggered HEATING LOW mode
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -7155,16 +7346,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7179,6 +7368,27 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
                       • Available Fans: {{ available_fans | join(', ') }}
                     level: debug
+
+                # v3.9.13: Wait + set temperature
+                - delay:
+                    milliseconds: 2000
+
+                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
+                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -7191,21 +7401,6 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
-          # v3.9.13: Wait + set temperature
-          - delay:
-              milliseconds: 2000
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
@@ -7272,46 +7467,94 @@ action:
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
-                {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
+                {% set target_info = 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if distance <= 0.5 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - FINAL APPROACH 🎯
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C remaining){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective){% endif %}
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Remaining: {{ distance }}°C{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}{% if deescalation_level > 0 %} (DE-ESCALATED L{{ deescalation_level }}){% endif %}{% if deescalation_level > 0 %}
+                    • Effectiveness: {{ current_effectiveness }}%{% endif %}
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+
                   {% elif current_effectiveness < 40 and final_escalation_level > 0 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - STRUGGLING ⚠️
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATING L{{ final_escalation_level }} - only {{ current_effectiveness }}% effective)
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ minutes{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (ESCALATING L{{ final_escalation_level }})
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: Only {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 and eta_minutes > 20 %} - may need {{ eta_minutes }}+ min{% endif %}
+
                   {% elif final_escalation_level == 4 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - EMERGENCY MODE 🆘
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM ESCALATION - {{ current_effectiveness }}% effective)
-                ⚠️ System at maximum capacity - consider manual intervention
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (MAXIMUM ESCALATION)
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • ⚠️ System at maximum capacity - consider manual intervention
+
                   {% elif current_effectiveness >= 80 %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - CRUISING ✅
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (STABLE - {{ current_effectiveness }}% effective)
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (STABLE)
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - arriving in ~{{ eta_minutes }} min{% endif %}
+
                   {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - ACTIVE
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %} - {{ current_effectiveness }}% effective
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% elif deescalation_level > 0 %} (DE-ESCALATING L{{ deescalation_level }}){% endif %}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+
                   {% endif %}
                 {% else %}
                 ❄️ {{ room_name | upper }} HIGH COOLING - INITIATED 🚀
-                📊 {{ current_temp }}°C exceeds {{ cooling_high_temp }}°C threshold
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (FULL POWER)
-                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
-                {{ target_info }}{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C
+                    • Threshold: Exceeds {{ cooling_high_temp }}°C
+                    • Target: {{ adjusted_target }}°C
+                    • Distance: {{ distance_adjusted }}°C to cool{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }} (FULL POWER)
+
                 {% endif %}
               level: warning
 
@@ -7333,13 +7576,14 @@ action:
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+                    {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                     • Mode: COOLING HIGH
-                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ (target_temp - target_overshoot) | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: High cooling activation - Temperature {{ current_temp }}°C triggered COOLING HIGH mode
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -7670,16 +7914,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7702,6 +7944,27 @@ action:
                       {% endif %}
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
+
+                # v3.9.13: Wait + set temperature
+                - delay:
+                    milliseconds: 2000
+
+                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
+                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ adjusted_target }}"
+
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
           - if:
@@ -7714,21 +7977,6 @@ action:
                 data:
                   value: "{{ current_temp }}"
           # Always update mode helper to ensure state persistence despite rapid retriggering
-          # v3.9.13: Wait + set temperature
-          - delay:
-              milliseconds: 2000
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
 
           # v3.9.42: Mode helper now updated BEFORE AC commands (moved earlier to prevent race condition)
 
@@ -7796,52 +8044,108 @@ action:
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
-                {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
+                {% set target_info = 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if distance <= 0.3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - TARGET ACHIEVED 🏁
-                📊 {{ current_temp }}°C ≈ {{ adjusted_target }}°C (within {{ distance_adjusted }}°C){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
-                ✅ Success! Temperature stabilized
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C ≈ Target: {{ adjusted_target }}°C
+                    • Within: {{ distance_adjusted }}°C{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}{% if deescalation_level == 3 %} (ECO MODE - minimal power){% endif %}
+                    • ✅ Success! Temperature stabilized
+
                   {% elif deescalation_level == 3 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ECO MODE 🍃
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MAXIMUM DE-ESCALATION - {{ current_effectiveness }}% effective)
-                📈 Ultra-efficient mode - saving energy while maintaining comfort
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (MAXIMUM DE-ESCALATION)
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Status: Ultra-efficient mode - saving energy while maintaining comfort
+
                   {% elif current_effectiveness >= 85 and deescalation_level > 0 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - OPTIMAL EFFICIENCY 💚
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (DE-ESCALATED L{{ deescalation_level }} - {{ current_effectiveness }}% effective)
-                📈 Trend: {{ temp_change_rate }}°C/min - Perfect balance of power & efficiency
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (DE-ESCALATED L{{ deescalation_level }})
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min
+                    • Status: Perfect balance of power & efficiency
+
                   {% elif final_escalation_level >= 2 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - BOOSTED ⚡
-                📊 Current: {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go)
-                {{ target_info }}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATION L{{ final_escalation_level }} - {{ current_effectiveness }}% effective)
-                ⚠️ Increased fan power for faster cooling
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go
+                    • {{ target_info }}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (ESCALATION L{{ final_escalation_level }})
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • ⚠️ Increased fan power for faster cooling
+
                   {% elif current_effectiveness < 50 %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - UNDERPERFORMING ⚠️
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% endif %} - Only {{ current_effectiveness }}% effective
-                📈 Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}{% if final_escalation_level > 0 %} (ESCALATING L{{ final_escalation_level }}){% endif %}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: Only {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min - System struggling{% if eta_minutes > 15 %}, may take {{ eta_minutes }}+ min{% endif %}
+
                   {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS 📊
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+
                   {% endif %}
                 {% else %}
                 🌊 {{ room_name | upper }} MEDIUM COOLING - ENGAGED 🎯
-                📊 {{ current_temp }}°C in medium range ({{ cooling_medium_temp }}-{{ cooling_high_temp }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (MEDIUM INTENSITY)
-                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
-                {{ target_info }}{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C
+                    • Range: {{ cooling_medium_temp }}-{{ cooling_high_temp }}°C
+                    • Target: {{ adjusted_target }}°C
+                    • Distance: {{ distance_adjusted }}°C to cool{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }} (MEDIUM INTENSITY)
+
                 {% endif %}
               level: warning
 
@@ -7863,13 +8167,14 @@ action:
                 📊 USER INFO:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+                    {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                     • Mode: COOLING MEDIUM
-                    • Temperature: {{ current_temp }}°C → Target: {{ target_temp }}°C
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ (target_temp - target_overshoot) | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: Medium cooling activation - Temperature {{ current_temp }}°C triggered COOLING MEDIUM mode
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -8188,16 +8493,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -8221,21 +8524,25 @@ action:
                       • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - escalate to Fan 2{% elif final_escalation_level == 2 %}Poor effectiveness or distance - escalate to Fan 3{% elif final_escalation_level == 3 %}Strong escalation to Fan 4{% else %}Emergency - maximum escalation to Fan 5{% endif %}
                     level: debug
 
-          # v3.9.13: Wait + set temperature
-          - delay:
-              milliseconds: 2000
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
+                # v3.9.13: Wait + set temperature
+                - delay:
+                    milliseconds: 2000
+
+                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
+                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                - condition: template
+                  value_template: >
+                    {{ within_hardware_delay or
+                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
+                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ adjusted_target }}"
 
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
@@ -8685,7 +8992,7 @@ action:
                 {% set esc_display = 'L' ~ escalation_level if final_escalation_level > 0 else ('DE-L' ~ deescalation_level if deescalation_level > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
-                {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
+                {% set target_info = 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else 'User: ' ~ target_temp ~ '°C | Overshoot: -' ~ target_overshoot ~ '°C' %}
                 {% set last_mode_was_bed_eco = (states(helper_mode) | default('off')) == 'bed_comfort_eco' %}
 
                 {% if last_mode_was_bed_eco %}
@@ -8696,41 +9003,84 @@ action:
                 {% elif current_mode == 'cooling_low' %}
                   {% if distance <= 0.2 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PRECISION MODE 🎯
-                📊 {{ current_temp }}°C ≈ {{ overshoot_turnoff }}°C ({{ distance }}°C away){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE)
-                ✨ Maintaining perfect comfort with minimal energy
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C ≈ Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C away{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }} (GENTLE)
+                    • Status: Maintaining perfect comfort with minimal energy
                   {% elif current_effectiveness >= 90 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - PERFECT EFFICIENCY 💎
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
-                🌿 Ideal conditions - minimal power, maximum comfort
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Status: Ideal conditions - minimal power, maximum comfort
                   {% elif final_escalation_level > 0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - ASSISTED 📈
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (ESCALATED L{{ final_escalation_level }} for minor boost)
-                📊 Temporarily increased for quicker response
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }} (ESCALATED L{{ final_escalation_level }} for minor boost)
+                    • Fan: {{ current_fan }}
+                    • Status: Temporarily increased for quicker response
                   {% elif distance < 1.0 %}
                 🌬️ {{ room_name | upper }} LOW COOLING - FINE TUNING 🎚️
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C (just {{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
-                📈 Nearly there{% if eta_minutes < 5 %} - ~{{ eta_minutes }} min remaining{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: Just {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Status: Nearly there{% if eta_minutes < 5 %} - ~{{ eta_minutes }} min remaining{% endif %}
                   {% else %}
                 🌬️ {{ room_name | upper }} LOW COOLING - GENTLE PROGRESS 🍃
-                📊 {{ current_temp }}°C → {{ overshoot_turnoff }}°C ({{ distance }}°C to go){% if target_info %}
-                {{ target_info }}{% endif %}
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} - {{ current_effectiveness }}% effective
-                📈 Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C → Target: {{ overshoot_turnoff }}°C
+                    • Distance: {{ distance }}°C to go{% if target_info %}
+                    • {{ target_info }}{% endif %}
+
+                ⚡ Performance:
+                    • Escalation: {{ esc_display }}
+                    • Fan: {{ current_fan }}
+                    • Effectiveness: {{ current_effectiveness }}%
+                    • Trend: {{ temp_change_rate }}°C/min{% if eta_minutes < 999 %} - ETA ~{{ eta_minutes }} min{% endif %}
                   {% endif %}
                 {% else %}
                 🌬️ {{ room_name | upper }} LOW COOLING - INITIALIZED 🌱
-                📊 {{ current_temp }}°C slightly above comfort (≥{{ cooling_low_temp }}°C)
-                ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} (GENTLE START)
-                🎯 Target: {{ adjusted_target }}°C ({{ distance_adjusted }}°C to cool){% if target_info %}
-                {{ target_info }}{% endif %}
+
+                📊 Temperature Status:
+                    • Current: {{ current_temp }}°C
+                    • Threshold: ≥{{ cooling_low_temp }}°C
+                    • Status: Slightly above comfort zone
+
+                ⚡ Escalation & Fan:
+                    • Level: {{ esc_display }}
+                    • Fan Speed: {{ current_fan }} (GENTLE START)
+
+                🎯 Target Information:
+                    • AC Setpoint: {{ adjusted_target }}°C
+                    • Distance to Cool: {{ distance_adjusted }}°C{% if target_info %}
+                    • {{ target_info }}{% endif %}
                 {% endif %}
               level: warning
 
@@ -8750,6 +9100,7 @@ action:
                 {% set overshoot_target = target_temp - target_overshoot %}
                 {% set near_target = current_temp <= (target_temp + 0.5) and current_temp >= (overshoot_target - 0.5) %}
                 {% set bed_eco_active = bed_active and bed_comfort_mode == 'eco' and near_target %}
+                {% set in_continue_mode = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
                 ❄️ {{ room_name | upper }} AC ACTIVATED
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -8757,12 +9108,12 @@ action:
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
                     • Mode: COOLING LOW{% if bed_eco_active %} (Bed Comfort ECO){% endif %}
-                    • Temperature: {{ current_temp }}°C → {{ target_temp }}°C{% if bed_eco_active %} (bed comfort mode){% endif %}
+                    • Temperature: {{ current_temp }}°C → {% if in_continue_mode %}{{ overshoot_target | round(1) }}°C (overshoot){% else %}{{ target_temp }}°C (user target){% endif %}{% if bed_eco_active %} - bed comfort mode{% endif %}
                     • Fan: {{ state_attr(climate_list[0], 'fan_mode') | default('Auto') if climate_list | length > 0 else 'Auto' }}
 
                     • Reason: {% if bed_eco_active %}Bed comfort mode - maintaining user target with gentle adjustments{% else %}Low cooling activation - Temperature {{ current_temp }}°C triggered COOLING LOW mode{% endif %}
                     • Control Mode: {{ control_mode }}
-                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_sensors | length > 0 and room_sensors | selectattr('state', 'eq', 'on') | list | length > 0 %}Person in room{% else %}Not detected{% endif %}
+                    • Presence: {% if control_mode != 'Smart' %}Not applicable ({{ control_mode }} mode){% elif bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on') %}Person in bed{% elif room_presence_detected %}Detected ({{ minutes_with_presence | round(1) }}min){% else %}Not detected ({{ minutes_since_presence | round(1) }}min ago){% endif %}
 
                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                 🔍 DEBUG DATA (for troubleshooting):
@@ -8915,6 +9266,18 @@ action:
                       • BED ECO CONDITION MATCH: {{ (bed_sensor_manual is defined and bed_sensor_manual and is_state(bed_sensor_manual, 'on')) and bed_comfort_mode == 'eco' and (current_temp <= (target_temp + 0.5) and current_temp >= ((target_temp - target_overshoot) - 0.5)) }}
 
                 # TEMPORARY: Debug bed ECO fan selection (optional - doesn't block execution)
+                # v3.16.25 FIX: Only log bed ECO debug when bed comfort mode is actually active
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ debug_enabled and bed_comfort_mode == 'eco' }}"
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            message: "{{ debug_bed_eco_check }}"
+                            level: warning
+
+                # v3.16.18 DEBUG: Log escalation variables before fan selection
                 - choose:
                     - conditions:
                         - condition: template
@@ -8922,7 +9285,17 @@ action:
                       sequence:
                         - service: system_log.write
                           data:
-                            message: "{{ debug_bed_eco_check }}"
+                            message: >
+                              🔍 {{ room_name | upper }} FAN SELECTION - BEFORE CALCULATION
+
+                              📊 Entity & Escalation:
+                                  • Current Entity: {{ repeat.item }}
+                                  • Final Escalation Level: {{ final_escalation_level }}
+                                  • De-escalation Level: {{ deescalation_level }}
+
+                              🌬️ Available Fan Modes:
+                                  • From Variable: {{ available_fans | join(', ') }}
+                                  • From State Attr: {{ state_attr(repeat.item, 'fan_modes') | list | join(', ') }}
                             level: warning
 
                 - variables:
@@ -9125,6 +9498,31 @@ action:
                         {% endif %}
                       {% endif %}
 
+                # v3.16.18 DEBUG: Log calculated fan selection result
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            message: >
+                              🔍 {{ room_name | upper }} LOW COOL FAN SELECTION - RESULT
+
+                              🌬️ Fan Mode Selection:
+                                  • Selected Fan Mode: "{{ selected_fan_mode }}"
+                                  • Current Entity: {{ current_entity }}
+                                  • Current State Fan Mode: "{{ state_attr(current_entity, 'fan_mode') }}"
+
+                              🛡️ Command Gatekeeper:
+                                  • Current: "{{ state_attr(current_entity, 'fan_mode') | string }}"
+                                  • Desired: "{{ selected_fan_mode | string }}"
+                                  • Modes Different: {{ (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                                  • Within Hardware Delay: {{ within_hardware_delay }}
+
+                              ✅ Will Send Command: {{ within_hardware_delay or (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
+                            level: warning
+
                 # Capture expected values for enhanced manual override detection (v3.3.0)
                 - service: input_text.set_value
                   target:
@@ -9136,47 +9534,48 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
-                - condition: template
-                  value_template: "{{ debug_enabled }}"
-                - service: system_log.write
+                # v3.16.23 FIX: Wrap debug in choose block (bare condition was blocking execution!)
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ debug_enabled }}"
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            message: >
+                              🔍 LOW COOL ADAPTIVE FAN: {{ repeat.item }}
+                              • Escalation Level: {{ final_escalation_level }}/4
+                              • Fan Selection: {{ selected_fan_mode }}
+                              • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
+                              • Distance from Target: {{ distance_from_target | round(1) }}°C
+                              • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
+                              • Available Fans: {{ available_fans | join(', ') }}
+                            level: debug
+
+                # v3.9.13: Wait for fan commands
+                - delay:
+                    milliseconds: 2000
+
+                # v3.9.13: Set temperature with correct fan
+                # v3.13.14 FIX: Add missing command gatekeeper (present in all other sections)
+                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
+                # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
+                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
+                # v3.16.24 FIX: GATEKEEPER DISABLED - state desync blocking commands, always send temp command
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
                   data:
-                    message: >
-                      🔍 LOW COOL ADAPTIVE FAN: {{ repeat.item }}
-                      • Escalation Level: {{ final_escalation_level }}/4
-                      • Fan Selection: {{ selected_fan_mode }}
-                      • Effectiveness: {{ current_effectiveness }}% after {{ time_in_current_mode | round(1) }}min
-                      • Distance from Target: {{ distance_from_target | round(1) }}°C
-                      • Escalation Reason: {% if final_escalation_level == 0 %}Working well - no escalation needed{% elif final_escalation_level == 1 %}Moderate effectiveness - minor escalation{% elif final_escalation_level == 2 %}Poor effectiveness or distance - moderate escalation{% elif final_escalation_level == 3 %}Stalled progress - high escalation{% elif final_escalation_level == 4 %}Emergency - maximum escalation{% else %}Unknown level{% endif %}
-                      • Available Fans: {{ available_fans | join(', ') }}
-                    level: debug
-
-          # v3.9.13: Wait for fan commands
-          - delay:
-              milliseconds: 2000
-
-          # v3.9.13: Set temperature with correct fan
-          # v3.13.14 FIX: Add missing command gatekeeper (present in all other sections)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}
-          - service: climate.set_temperature
-            target:
-              entity_id: !input climate_entities
-            data:
-              temperature: "{{ adjusted_target }}"
+                    temperature: "{{ adjusted_target }}"
 
           # Update helper entities on every activation (needed for rapid triggers to maintain state)
           # Update temperature history BEFORE updating mode (captures initial temp for effectiveness calculation)
@@ -9364,16 +9763,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -10158,16 +10555,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -10419,16 +10814,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -12668,16 +13061,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -12923,16 +13314,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -13054,35 +13443,89 @@ action:
                 {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'L0') %}
                 {% set selected_fan = (final_escalation_level + 1) | string if final_escalation_level >= 0 else '1' %}
                 {% set current_fan = selected_fan %}
-                {% set target_info = '🎯 User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else '🎯 User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C' %}
+                {% set target_info = 'User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C | AC Setpoint: ' ~ adjusted_target ~ '°C' if adjusted_target != target_temp else 'User: ' ~ target_temp ~ '°C | Overshoot: +' ~ target_overshoot ~ '°C' %}
 
                 {% if current_mode == 'heating_low' %}
                   {% if temp_gap <= 0.3 %}
                     🎯 {{ room_name | upper }} LOW HEATING - PRECISION FINISH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C fine-tuning to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining)
-                    ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 80 %}| 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}| ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}| 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        {% if effectiveness >= 80 %}• Status: 🎯 PRECISE CONTROL{% elif effectiveness >= 60 %}• Status: ⚙️ GOOD EFFICIENCY ({{ effectiveness }}%){% else %}• Status: 🔧 FINE-TUNING ({{ effectiveness }}% effective){% endif %}
+
                   {% elif temp_gap <= 1.5 %}
                     🔥 {{ room_name | upper }} LOW HEATING - GENTLE APPROACH
-                    📊 CONTINUE MODE: Gradually warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}{% if escalation > 0 %}
+                        • Status: 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %}
+                        • Status: 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
+
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - PATIENT MODE
-                    📊 CONTINUE MODE: Steady warming {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat)
-                    🌡️ Gentle power until comfort | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C → Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+                        • Mode: Gentle power until comfort
+
+                    ⚡ Performance:
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+                        • Effectiveness: {{ effectiveness }}%
+
                   {% endif %}
                 {% else %}
                   {% if temp_gap >= 3.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - CAUTIOUS START
-                    🚀 START MODE: Moderate cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C ({{ temp_gap_adjusted }}°C deficit)
-                    🌡️ Gentle heating approach | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (MODERATE COLD)
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Deficit: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Gentle heating approach
+
                   {% elif temp_gap >= 1.0 %}
                     🔥 {{ room_name | upper }} LOW HEATING - COMFORT ADJUSTMENT
-                    🚀 START MODE: Slight cold {{ current_temp }}°C ≤ {{ heating_low_temp }}°C threshold
-                    ⚙️ Gentle warming → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to heat) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C (SLIGHT COLD)
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Distance: {{ temp_gap_adjusted }}°C to heat
+
+                    ⚡ Performance:
+                        • Mode: Gentle warming
+                        • Escalation: {{ esc_display }}
+                        • Fan: {{ current_fan }}
+
                   {% else %}
                     🔥 {{ room_name | upper }} LOW HEATING - MICRO-ADJUST
-                    🚀 START MODE: Fine-tuning {{ current_temp }}°C ≤ {{ heating_low_temp }}°C
-                    🎯 Minimal warming to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
+
+                    📊 Temperature Status:
+                        • Current: {{ current_temp }}°C
+                        • Threshold: ≤{{ heating_low_temp }}°C
+                        • Target: {{ adjusted_target }}°C
+                        • Remaining: {{ temp_gap_adjusted }}°C
+                        • ETA: ~{{ eta_minutes }} min
+
+                    ⚡ Performance:
+                        • Mode: Minimal warming for fine-tuning
+
                   {% endif %}
                 {% endif %}
                 • Last Mode: {{ current_mode }}
@@ -13220,16 +13663,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -13502,16 +13943,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
           
           # Set swing mode with compatibility check
           - repeat:
@@ -13808,16 +14247,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -14169,16 +14606,14 @@ action:
                 # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
                 # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
                 # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                # v3.16.4 FIX: Force string comparison to handle integer fan modes (Daikin BRP069)
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | trim) }}
+                # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
+                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
+                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
-                    fan_mode: "{{ selected_fan_mode | trim }}"
+                    fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
                 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -14797,12 +15232,23 @@ action:
           message: >
             ✅ {{ room_name | upper }} CLIMATE CONTROL: All Good
 
-            {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on' %}🔄 Status: AC running - {{ last_mode|title }} active
+            {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on' %}🔄 AC Status:
+                • Mode: {{ last_mode|title }} active
+                • Current Temperature: {{ current_temp }}°C
             {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
-            🎯 Targets: Comfort {{ target_temp }}°C{% if target_overshoot > 0 %} | Overshoot {{ (target_temp - target_overshoot) | round(1) }}°C ({{ (current_temp - (target_temp - target_overshoot)) | round(1) }}°C away){% endif %}
+            🎯 Cooling Targets:
+                • Comfort Temperature: {{ target_temp }}°C{% if target_overshoot > 0 %}
+                • Overshoot Target: {{ (target_temp - target_overshoot) | round(1) }}°C
+                • Distance to Target: {{ (current_temp - (target_temp - target_overshoot)) | round(1) }}°C away{% endif %}
             {% elif last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
-            🎯 Targets: Comfort {{ target_temp }}°C{% if target_overshoot > 0 %} | Overshoot {{ (target_temp + target_overshoot) | round(1) }}°C ({{ ((target_temp + target_overshoot) - current_temp) | round(1) }}°C away){% endif %}
-            {% endif %}{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp and actual_ac_state == 'off' %}🎯 Status: Temperature {{ current_temp }}°C is perfect - AC off{% else %}⏸️ Status: No action required right now{% endif %}
+            🎯 Heating Targets:
+                • Comfort Temperature: {{ target_temp }}°C{% if target_overshoot > 0 %}
+                • Overshoot Target: {{ (target_temp + target_overshoot) | round(1) }}°C
+                • Distance to Target: {{ ((target_temp + target_overshoot) - current_temp) | round(1) }}°C away{% endif %}
+            {% endif %}{% elif current_temp >= comfort_min_temp and current_temp <= comfort_max_temp and actual_ac_state == 'off' %}🎯 Status:
+                • Temperature: {{ current_temp }}°C is perfect
+                • AC State: Off{% else %}⏸️ Status:
+                • No action required right now{% endif %}
 
             📋 Technical Details:
                 • Temperature: {{ current_temp }}°C
