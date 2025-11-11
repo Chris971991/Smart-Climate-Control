@@ -61,13 +61,20 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Bed ECO Mode Support**: Manual override now works during bed comfort ECO mode (v3.15.2)
 - **Adaptive Timeout**: Override duration adjusts based on time of day (5min-2hrs)
 
-#### 🛏️ **Bed Comfort ECO Mode with Fan-Only Power Savings (NEW v3.17.0)**
-- **⚡ NEW v3.17.0: Fan-Only Mode**: Automatic switch from cooling → fan_only when stable/overshooting
-  - **~85% Power Reduction**: Compressor OFF, fan only during stable periods
-  - **Two Activation Scenarios**: Overshoot (below target) OR Stability (at target)
-  - **Auto Return**: Returns to cooling when temp rises above threshold
-  - **Configurable**: Toggle on/off, stability duration (1-10 min), return threshold, max overshoot
-  - **Savings Example**: 6 hours/night in fan_only = ~4 kWh saved = $0.80-$1.20/night
+#### ⚡ **Smart Fan-Only Mode for Maximum Power Savings (NEW v3.18.0)**
+- **~85% POWER REDUCTION**: Compressor OFF, fan circulates air only - saves massive energy!
+- **Two Activation Triggers**:
+  1. **Comfort Zone Edge Reached**: Immediately when target achieved (replaces OFF/ECO options)
+  2. **Temperature Stability**: After temp stable for configured duration (1-10 min)
+- **Bidirectional Support**: Works for BOTH cooling AND heating modes
+- **Smart Return Logic**: Automatically returns to cooling/heating when temp exits comfort zone
+- **Configurable Fan Speed**: Choose from Auto, Low/Quiet (⭐ recommended), Medium-Low, Medium, Medium-High, High
+- **AC Compatibility Check**: Automatically detects and uses fan_only, fan-only, Fan Only, or dry modes
+- **Safe Fallback**: Turns OFF if AC doesn't support fan-only mode (with notification)
+- **Manual Override Protected**: All state changes properly tracked - no false override detection
+- **Real-World Savings**: 6 hours/night in fan_only = ~4 kWh saved = $24-$37/month
+
+#### 🛏️ **Bed Comfort ECO Mode with Dynamic Escalation (v3.17.0)**
 - **Intelligent Takeover**: Only activates when taking over from existing cooling modes (respects your thresholds!)
 - **Silent Operation**: Uses minimal fan speed (eco setting) for peaceful sleep
 - **Precise Maintenance**: Maintains at your exact target temperature (not overshoot)
@@ -462,9 +469,25 @@ Ensure you have a weather integration configured:
 - **Away from Home**: Global away mode with eco/off options
 - **Approaching Home**: Pre-conditioning starts automatically
 
-#### **Energy Optimization**
-- **Comfort Zone**: AC turns off or eco mode (saves 40-60% energy)
-- **Temperature Stable**: Auto-off when equilibrium reached
+#### **Energy Optimization (NEW: Fan-Only Mode v3.18.0)**
+- **Comfort Zone Fan-Only**: AC switches to fan-only mode (saves ~85% energy vs compressor running)
+  - **Scenario**: Room at 23.8°C, target 23°C ± 1.5°C comfort zone
+  - **Action**: Reaches comfort zone edge (24.5°C) → switches to fan_only
+  - **Result**: Compressor OFF, fan circulates air to maintain comfort
+  - **Power**: 800W → 120W = 85% reduction
+  - **Exit**: When temp rises to 25.6°C (exits comfort zone) → returns to cooling
+- **Stability Fan-Only**: When temperature stable for configured duration
+  - **Scenario**: Room stable at 23°C for 3+ minutes (±0.3°C tolerance)
+  - **Action**: Switches from cooling → fan_only mode
+  - **Result**: Maintains temperature with just air circulation
+  - **Power**: Massive savings during stable periods
+- **Overshoot Fan-Only**: Immediate activation when overshoot reached
+  - **Scenario**: Cooling with -0.75°C overshoot, target 23°C
+  - **Target**: Cools to 22.25°C (target - overshoot)
+  - **Action**: Reaches 22.25°C → immediately switches to fan_only
+  - **Result**: Room naturally warms 22.25°C → 23°C with fan circulation only
+  - **Power**: Zero compressor usage during warming period
+- **Temperature Stable**: Auto-off when equilibrium reached (if fan-only not configured)
 - **Window Open**: Immediate shutdown with auto-resume
 - **Weather Compensation**: Adjusts thresholds based on outdoor temperature
 
@@ -522,15 +545,26 @@ The system automatically detects and uses your A/C unit's fan capabilities:
 
 ### Power Efficiency Settings
 
-#### Comfort Zone Operation
+#### Comfort Zone Operation (NEW: Fan-Only Mode v3.18.0)
+- **Fan-Only Mode** ⭐ **RECOMMENDED**: Compressor OFF, fan circulates (~85% savings, ~20-50W)
+  - **Best of both worlds**: Better than OFF (maintains comfort), cheaper than ECO
+  - **Immediate activation**: Switches as soon as comfort zone edge reached
+  - **Smart return**: Automatically returns to cooling/heating when needed
+  - **Example Power**: 120W fan vs 800W compressor = 85% reduction
 - **Eco Mode**: Maintains temperature with minimal power (~150-250W)
-- **Off Mode**: Complete shutdown for maximum savings (0W)
-- **Auto Selection**: Choose eco for comfort, off for maximum efficiency
+- **Off Mode**: Complete shutdown for maximum savings (0W, temp may drift)
 
-#### Temperature Stability Auto-Off
+#### Temperature Stability Auto-Off/Fan-Only (NEW v3.18.0)
+- **NEW: Fan-Only Option**: Switch to fan-only when temp stable instead of turning off
+  - **Two activation scenarios**:
+    1. **Overshoot reached**: Immediate switch when below/above target (cooling/heating)
+    2. **Stability detected**: Switch after temp stable for configured duration
+  - **Configurable stability**: 1-10 minutes of stability before activation
+  - **Configurable fan speed**: Auto, Low/Quiet, Medium-Low, Medium, Medium-High, High
+  - **Smart exit**: Returns to normal operation when temp exits comfort zone
 - **Automatic Detection**: Turns off when temperature equilibrium reached
 - **Configurable Tolerance**: ±0.1°C to ±5.0°C stability range
-- **Duration Setting**: 10-30 minutes of stable temperature required
+- **Duration Setting**: 1-30 minutes of stable temperature required
 - **Smart Logic**: Only activates within comfort zone boundaries
 
 #### Runtime Protection
@@ -628,18 +662,25 @@ Outside Temperature Compensation: Enabled (factor: 0.2)
 Window Sensors: [binary_sensor.patio_door]
 ```
 
-### Maximum Efficiency Setup
+### Maximum Efficiency Setup (NEW: Fan-Only Mode v3.18.0)
 ```yaml
-# Optimized for energy savings
+# Optimized for energy savings with fan-only mode
 Target Temperature: 24°C (summer) / 21°C (winter)
 Comfort Zone Width: ±3°C (wider tolerance)
-Eco Mode: Enabled
-Stability Auto-Off: Enabled (±0.3°C, 15min)
+Comfort Zone Action: FAN_ONLY ⭐ (replaces old Eco Mode setting)
+Fan-Only Fan Speed: Low / Quiet ⭐ (maximum efficiency)
+Stability Behavior: FAN_ONLY ⭐ (instead of OFF/ECO)
+Stability Duration: 3-5 minutes (balanced detection)
 Outside Temperature Compensation: Enabled
 Gradual Adjustment: Enabled
 Minimum Runtime: 20 minutes
 Away Mode: "eco" with 2°C offset
 Adaptive Control: Enabled
+
+# Power Savings Example:
+# Traditional: 8hrs × 800W compressor = 6.4 kWh/night
+# With Fan-Only: 2hrs × 800W + 6hrs × 120W = 2.32 kWh/night
+# Savings: 4.08 kWh/night = $24-$37/month @ $0.20-$0.30/kWh
 ```
 
 ### Smart Home Integration
@@ -747,6 +788,24 @@ Dynamic Adaptation: Enabled with all helpers
 - Check presence detection is working correctly
 - Ensure occupied/vacant delays are appropriate
 - Verify manual override timeout settings
+
+#### Fan-Only Mode Not Activating (NEW v3.18.0)
+```yaml
+# Debug log checks:
+- "AC supports fan_only: True/False"
+- "Switching to fan_only mode" or "Fallback: turning OFF"
+- "helper_last_mode" should show "stability_fan_only" or "comfort_fan_only"
+```
+
+**Solutions**:
+- **Check AC Compatibility**: Verify your AC supports fan_only, fan-only, Fan Only, or dry mode
+  - Go to Developer Tools → States → Search for your climate entity
+  - Look for "hvac_modes" attribute - should include one of these modes
+  - If not supported, automation will safely fall back to turning OFF
+- **Verify Settings**: Ensure Comfort Zone Action or Stability Behavior set to "FAN_ONLY"
+- **Check Temperature**: Fan-only only activates when in/near comfort zone
+- **Monitor Logs**: Look for "Switching to fan_only mode" confirmation message
+- **Test Manually**: Try setting AC to fan_only mode via HA UI first to confirm support
 
 ### Performance Optimization
 
