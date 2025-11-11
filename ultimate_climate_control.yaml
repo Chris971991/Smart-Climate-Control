@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.18.11
+  name: Ultimate Smart Climate Control - v3.18.12
 
   description: |
-    **Ultimate Smart Climate Control v3.18.11**
+    **Ultimate Smart Climate Control v3.18.12**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -61,17 +61,17 @@ blueprint:
 
     ## 🆕 Latest Updates
 
+    **v3.18.12 - CRITICAL Fan-Only Exit Fix (Manual Override False Positive)**
+    - 🐛 **FIXED**: Fan-only mode now properly transitions to cooling/heating when temp exits comfort zone
+    - 🔧 **FIXED**: Removed fan-only exclusion from activation blocks to allow immediate transition
+    - 🛡️ **PREVENTS**: Manual override false positive when exiting fan-only mode
+    - ✅ **WORKS**: Temperature hits 25°C → immediately activates cooling (no more override trigger)
+    - 📊 **UPDATED**: All 6 activation blocks now treat fan-only as valid previous mode
+
     **v3.18.11 - CRITICAL Fan-Only Mode HVAC Enforcement Fix**
     - 🐛 **ROOT CAUSE FIXED**: Fan-only MAINTAIN block now enforces HVAC mode + fan speed
     - 🔧 **FIXED**: Added `climate.set_hvac_mode` call to keep AC in fan_only mode (line 12541)
-    - 🛡️ **PREVENTS**: AC from switching back to cooling/heating mode during fan-only operation
-    - ✅ **COMPLETE SOLUTION**: Blocks fan-only mode interruption from ALL sources (activation + maintenance)
-    - 📊 **DEBUG ENHANCED**: Now shows current HVAC state in fan-only MAINTAIN logs
-
-    **v3.18.10 - Complete Fan-Only Mode Protection (Heating + Cooling)**
-    - 🐛 **FIXED**: ALL heating/cooling blocks now exclude fan-only modes completely
-    - 🔥 **HEATING FIXED**: HIGH (6014), MEDIUM (6595), LOW (7161) heating blocks
-    - ❄️ **COOLING FIXED**: HIGH (7728), MEDIUM (8318), LOW (9472) cooling blocks
+    - 🛡️ **PREVENTS**: AC from switching back to cooling/heating during fan-only operation
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -6011,8 +6011,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
-                {# v3.18.10 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {{ should_activate and enable_heating and current_temp <= heating_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -6591,9 +6591,9 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {# v3.18.10 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
-                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high', 'comfort_fan_only', 'stability_fan_only'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off', 'comfort_fan_only', 'stability_fan_only']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_medium_temp and current_temp > heating_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -7157,9 +7157,9 @@ action:
                 {% endif %}
               {% else %}
                 {# Not heating low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {# v3.18.10 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off']) %}
-                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {% set time_protection_met = (last_mode in ['heating_low', 'heating_medium', 'heating_high', 'comfort_fan_only', 'stability_fan_only'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['heating_low', 'heating_medium', 'heating_high', 'off', 'smart_off', 'comfort_fan_only', 'stability_fan_only']) %}
+                {{ should_activate and enable_heating and current_temp <= heating_low_temp and current_temp > heating_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -7729,8 +7729,8 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling high - start ONLY if threshold exceeded (escalation CANNOT start HIGH from OFF) #}
-                {# v3.18.9 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {{ should_activate and enable_cooling and current_temp >= cooling_high_temp and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -8318,9 +8318,9 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling medium - start ONLY if in medium range (escalation CANNOT start MEDIUM from OFF) #}
-                {# v3.18.9 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off']) %}
-                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'comfort_fan_only', 'stability_fan_only'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off', 'comfort_fan_only', 'stability_fan_only']) %}
+                {{ should_activate and enable_cooling and current_temp >= cooling_medium_temp and current_temp < cooling_high_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
           - condition: template
             value_template: >
@@ -9472,9 +9472,9 @@ action:
                 {% endif %}
               {% else %}
                 {# Not cooling low - start ONLY if in low range (escalation CANNOT start LOW from OFF) #}
-                {# v3.18.9 FIX: Don't activate if already in fan-only mode - let fan-only continue block handle it #}
-                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'bed_comfort_eco'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off', 'bed_comfort_eco']) %}
-                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) and last_mode not in ['comfort_fan_only', 'stability_fan_only'] }}
+                {# v3.18.12 FIX: REMOVED fan-only exclusion - allow activation when temp exits comfort zone #}
+                {% set time_protection_met = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] and time_in_current_mode > runtime_min) or ((last_mode == 'off' or actual_ac_state == 'off') and (not enforce_offtime or time_in_current_mode > offtime_min)) or (last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high', 'off', 'smart_off', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only']) %}
+                {{ should_activate and enable_cooling and current_temp >= cooling_low_temp and current_temp < cooling_medium_temp and time_protection_met and (control_mode != 'Smart' or smart_presence_active) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -12600,14 +12600,9 @@ action:
                             ⏱️ Fan-only duration: {{ time_in_current_mode | round(0) }} minutes
                           level: warning
 
-                  # Reset last_mode to allow normal cooling/heating logic to take over
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "off"
-
-                  # Let the main choose blocks handle re-activation with appropriate intensity
+                  # v3.18.12 FIX: Don't reset last_mode - just remove fan-only exclusion from cooling/heating blocks
+                  # The activation blocks will detect temperature threshold and activate appropriate tier
+                  # Resetting to "off" was causing manual override false positives
 
       # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached AND in comfort zone)
       - conditions:
