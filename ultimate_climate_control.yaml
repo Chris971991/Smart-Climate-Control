@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.18.12
+  name: Ultimate Smart Climate Control - v3.19.3
 
   description: |
-    **Ultimate Smart Climate Control v3.18.12**
+    **Ultimate Smart Climate Control v3.19.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -61,17 +61,18 @@ blueprint:
 
     ## 🆕 Latest Updates
 
-    **v3.18.12 - CRITICAL Fan-Only Exit Fix (Manual Override False Positive)**
-    - 🐛 **FIXED**: Fan-only mode now properly transitions to cooling/heating when temp exits comfort zone
-    - 🔧 **FIXED**: Removed fan-only exclusion from activation blocks to allow immediate transition
-    - 🛡️ **PREVENTS**: Manual override false positive when exiting fan-only mode
-    - ✅ **WORKS**: Temperature hits 25°C → immediately activates cooling (no more override trigger)
-    - 📊 **UPDATED**: All 6 activation blocks now treat fan-only as valid previous mode
+    **v3.19.2 - CRITICAL Smart Mode Presence & Overshoot Target Fixes**
+    - 🐛 **FIXED**: Smart mode now instantly detects re-entry when AC is already running (no 2-min delay)
+    - 🐛 **FIXED**: Comfort fan-only now respects overshoot target before activating
+    - 🔧 **FIXED**: Presence confirmation delay only applies when STARTING AC, not MAINTAINING
+    - 🔧 **FIXED**: Overshoot target (e.g., 22.5°C) must be reached before switching to fan-only
+    - 🛡️ **PREVENTS**: AC turning off when you re-enter room during fan-only mode
+    - 🛡️ **PREVENTS**: Premature fan-only activation before reaching overshoot target
 
-    **v3.18.11 - CRITICAL Fan-Only Mode HVAC Enforcement Fix**
-    - 🐛 **ROOT CAUSE FIXED**: Fan-only MAINTAIN block now enforces HVAC mode + fan speed
-    - 🔧 **FIXED**: Added `climate.set_hvac_mode` call to keep AC in fan_only mode (line 12541)
-    - 🛡️ **PREVENTS**: AC from switching back to cooling/heating during fan-only operation
+    **v3.19.1 - CRITICAL Fan-Only Power-On Fix (Daikin Integration)**
+    - 🐛 **FIXED**: Fan-only mode now actually turns on AC (was showing "on" but not physically running)
+    - 🔧 **FIXED**: Added climate.turn_on call to all 5 fan-only activation points
+    - 🛡️ **PREVENTS**: Dashboard showing fan_only but AC unit never physically powering on
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -3044,9 +3045,10 @@ variables:
       999
     {% endif %}
 
-  # v3.13.11: 10-second hardware delay window (Daikin reports state quickly)
+  # v3.13.11: 45-second hardware delay window (Daikin integration has 30-40s state reporting delay)
+  # v3.18.20 FIX: Increased to 45s to match manual override detection (was causing false positives)
   within_hardware_delay: >
-    {{ time_since_change < 10 }}
+    {{ time_since_change < 45 }}
 
   # Check actual AC state using hvac_action (compressor activity), not just HVAC mode
   # CRITICAL: An AC in "cool" mode at 18°C target with 28°C current = IDLE (not running)
@@ -3361,6 +3363,19 @@ action:
   # v3.11.0: Safety guard - don't run on automation reload/restart (no trigger exists)
   - condition: template
     value_template: "{{ trigger is defined and trigger.id is defined }}"
+
+  # v3.18.13: Sync override timeout helper with blueprint config on every run
+  # This ensures dashboard countdown shows correct value even if config changed
+  - if:
+      - condition: template
+        value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_number.set_value
+        target:
+          entity_id: !input helper_override_timeout
+        data:
+          value: !input adaptive_override_timeout
+        continue_on_error: true
 
   - if:
       - condition: template
@@ -4301,11 +4316,21 @@ action:
       
       smart_presence_active: >
         {% set effective_mode = control_mode if control_mode != 'Override' else (states(helper_mode_before_override) if helper_mode_before_override else 'Auto') %}
+        {# v3.19.2 FIX: Check if AC is running to allow instant re-entry confirmation #}
+        {% set ac_currently_running = namespace(value=false) %}
+        {% for entity in climate_list %}
+          {% if states(entity) not in ['off', 'unavailable', 'unknown'] %}
+            {% set ac_currently_running.value = true %}
+          {% endif %}
+        {% endfor %}
+        {# Only bypass delay if validation is TRUE right now (prevents dog/adjacent room false positives) #}
+        {% set can_bypass_delay = ac_currently_running.value and room_presence_detected %}
         {% if control_mode == 'Manual' %}
           false
         {% elif effective_mode == 'Smart' %}
           {# Smart mode with grace period for short absences (bathroom trips, etc.) #}
-          {% if room_presence_detected and minutes_with_presence >= presence_confirmation_delay %}
+          {# v3.19.2 FIX: Bypass delay if validation TRUE + AC running (instant re-entry) #}
+          {% if room_presence_detected and (minutes_with_presence >= presence_confirmation_delay or can_bypass_delay) %}
             true
           {% elif minutes_since_presence < presence_timeout %}
             {# Grace period applies when: #}
@@ -4331,7 +4356,7 @@ action:
             {# Check if AC is currently running (any climate entity in cooling/heating mode) #}
             {% set ac_currently_running = namespace(value=false) %}
             {% for entity in climate_list %}
-              {% if states(entity) in ['cool', 'heat', 'heat_cool', 'dry', 'fan_only'] %}
+              {% if states(entity) in ['cool', 'heat', 'heat_cool', 'dry'] %}
                 {% set ac_currently_running.value = true %}
               {% endif %}
             {% endfor %}
@@ -4434,7 +4459,7 @@ action:
         {% set cooling_target_achieved = (last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and current_temp <= (target_temp - target_overshoot)) %}
         {% set heating_target_achieved = (last_mode in ['heating_low', 'heating_medium', 'heating_high'] and current_temp >= (target_temp + target_overshoot)) %}
         {% set target_achieved = (cooling_target_achieved or heating_target_achieved) %}
-        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not target_achieved) %}
+        {% set is_manual_off = (last_mode in ['cooling', 'cooling_high', 'cooling_medium', 'cooling_low', 'heating', 'heating_high', 'heating_medium', 'heating_low', 'eco', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not target_achieved) %}
         {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
         {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
         {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
@@ -4446,7 +4471,7 @@ action:
         {# But it was incorrectly blocking "user turned AC on" detection within that same 60s window #}
         {# Result: User tries to turn AC on → Blocked for 60s → Automation immediately turns it back off #}
         {# Fix: Remove automation_turning_off from is_manual_on check - only use within_hardware_delay (45s) #}
-        {% set automation_expects_on = (has_valid_expectation and expected_hvac in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool']) %}
+        {% set automation_expects_on = (has_valid_expectation and expected_hvac in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool', 'fan_only', 'Fan_only', 'FAN_ONLY']) %}
         {% set automation_turning_off = (last_mode in ['adaptive_off', 'stability_off', 'stability_fan_only', 'comfort_fan_only', 'smart_off'] and time_since_change < 60) %}
         {% set is_manual_on = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on' and not within_hardware_delay and not automation_expects_on) %}
 
@@ -4537,12 +4562,12 @@ action:
           {% if not room_presence_detected and smart_behavior == 'off' and not extreme_temp_detected %}
             {# No presence detected and smart behavior is OFF = turn off/stay off #}
             false
-          {% elif room_presence_detected and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
-            {# v3.9.23 FIX: Presence detected NOW + AC already running = keep running during confirmation delay #}
-            {# This prevents AC from turning off during the presence_confirmation_delay period #}
+          {% elif smart_presence_active and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] %}
+            {# v3.18.13 FIX: Use smart_presence_active instead of room_presence_detected #}
+            {# Presence confirmed + AC already running = keep running #}
             true
           {% else %}
-            {# Either no presence or AC not running = require smart_presence_active confirmation #}
+            {# Either no confirmed presence or AC not running = require smart_presence_active #}
             {{ smart_presence_active }}
           {% endif %}
         {% else %}
@@ -5480,7 +5505,7 @@ action:
 
             ⚡ Result: De-escalation Level = {{ deescalation_level }}
 
-            🎯 Office Specific Settings:
+            🎯 {{ room_name | upper }} Specific Settings:
                 • Your de-escalation threshold: {{ deescalation_threshold }}°C (0.8°C = very aggressive)
                 • Current distance: {{ distance_from_target | round(1) }}°C
                 • Will de-escalate when: {{ distance_from_target | round(1) }}°C ≤ {{ deescalation_threshold }}°C
@@ -5698,7 +5723,19 @@ action:
 
             🎯 Final Decision:
                 • smart_presence_active: {{ smart_presence_active }}
-                • AC will: {% if smart_presence_active %}✅ STAY ON / ACTIVATE{% else %}❌ TURN OFF / STAY OFF{% endif %}
+                • actual_ac_state: {{ actual_ac_state }}
+                • time_in_current_mode: {{ time_in_current_mode | round(1) }}min
+                • runtime_min: {{ runtime_min }}min
+                • Runtime check: {{ time_in_current_mode < runtime_min }}
+                {% set presence_active = smart_presence_active | string | lower == 'true' %}
+                {% if not presence_active and actual_ac_state != 'off' and time_in_current_mode < runtime_min %}
+                • ⏱️ RUNTIME PROTECTION: AC will continue for {{ (runtime_min - time_in_current_mode) | round(1) }} more minutes
+                • AC will: ⏳ STAY ON (compressor protection) then ❌ TURN OFF when runtime met
+                {% elif presence_active %}
+                • AC will: ✅ STAY ON / ACTIVATE (presence confirmed)
+                {% else %}
+                • AC will: ❌ TURN OFF / STAY OFF (no presence)
+                {% endif %}
           level: warning
 
   # ADAPTIVE CONTROL REACTIVATION: Clear adaptive_off when room is occupied and heating/cooling needed
@@ -5706,7 +5743,7 @@ action:
       - condition: template
         value_template: "{{ last_mode == 'adaptive_off' and adaptive_enabled and control_mode == 'Smart' }}"
       - condition: template
-        value_template: "{{ room_presence_detected }}"
+        value_template: "{{ smart_presence_active }}"
       - condition: template
         value_template: >
           {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
@@ -9426,6 +9463,19 @@ action:
               - condition: template
                 value_template: "{{ supports_fan_only }}"
             then:
+              # v3.19.1 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(repeat.item) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          continue_on_error: true
+
               - repeat:
                   for_each: "{{ climate_list }}"
                   sequence:
@@ -10124,6 +10174,10 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 85 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
+                {% set distance_adjusted = temp_gap | abs | round(1) %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'None') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if temp_gap <= 0.5 %}
@@ -10885,6 +10939,10 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 70 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
+                {% set distance_adjusted = temp_gap | abs | round(1) %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'None') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
 
                 {% if current_mode == 'cooling_low' %}
                   {% if temp_gap <= 0.3 %}
@@ -11143,6 +11201,10 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
+                {% set distance_adjusted = temp_gap | abs | round(1) %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else 'None' %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
 
                 {% if current_mode == 'cooling_medium' %}
                   {% if temp_gap <= 0.5 %}
@@ -11810,11 +11872,20 @@ action:
       # Comfort zone - Eco mode or OFF mode (Power Saving)
       # When temperature is within acceptable range (e.g., 21-25°C with ±2°C tolerance)
       # OFF mode saves 40-60% more energy vs eco mode but allows temperature drift
+      # v3.19.2 FIX: Don't activate comfort zone actions until overshoot target is reached (if enabled)
       - conditions:
           - condition: template
             value_template: "{{ should_activate }}"
           - condition: template
-            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
+            value_template: >
+              {% set in_comfort_zone = current_temp >= comfort_min_temp and current_temp <= comfort_max_temp %}
+              {% set overshoot_reached = true %}
+              {% if target_overshoot > 0 and last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
+                {% set overshoot_reached = current_temp <= (target_temp - target_overshoot) %}
+              {% elif target_overshoot > 0 and last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
+                {% set overshoot_reached = current_temp >= (target_temp + target_overshoot) %}
+              {% endif %}
+              {{ in_comfort_zone and overshoot_reached }}
           - condition: template
             value_template: "{{ time_since_change > runtime_min }}"
         sequence:
@@ -12048,9 +12119,62 @@ action:
                       title: "{{ room_name }} Climate Control"
                       message: "Eco mode - Comfort zone ({{ current_temp }}°C)"
 
+              # v3.19.0: Debug logging when fan-only is blocked due to no prior cooling/heating
               - conditions:
                   - condition: template
                     value_template: "{{ comfort_zone_action == 'fan_only' }}"
+                  - condition: template
+                    value_template: >
+                      {{ last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high',
+                                           'heating_low', 'heating_medium', 'heating_high',
+                                           'bed_comfort_eco'] }}
+                sequence:
+                  - if:
+                      - condition: template
+                        value_template: "{{ debug_enabled }}"
+                    then:
+                      - service: system_log.write
+                        data:
+                          message: >
+                            🚫 {{ room_name | upper }} COMFORT FAN-ONLY BLOCKED
+
+                            📊 Reason: No prior cooling/heating mode detected
+                                • Current temp: {{ current_temp }}°C (in comfort zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C)
+                                • last_mode: {{ last_mode }}
+                                • AC state: {{ actual_ac_state }}
+                                • Expected: AC must have been actively cooling/heating before fan-only can activate
+
+                            💡 Fan-only mode only activates AFTER cooling/heating brings temperature to comfort zone.
+                               Currently falling back to OFF mode since AC was not previously running in active mode.
+                          level: warning
+
+                  # Fallback to OFF mode when fan-only blocked
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: !input helper_last_change
+                    data:
+                      datetime: "{{ now() }}"
+                    continue_on_error: true
+
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "off"
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
+                    continue_on_error: true
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ comfort_zone_action == 'fan_only' }}"
+                  - condition: template
+                    value_template: >
+                      {{ last_mode in ['cooling_low', 'cooling_medium', 'cooling_high',
+                                       'heating_low', 'heating_medium', 'heating_high',
+                                       'bed_comfort_eco'] }}
                 sequence:
                   # v3.18.0: Fan-only mode when comfort zone reached
 
@@ -12138,6 +12262,19 @@ action:
                       - condition: template
                         value_template: "{{ supports_fan_only }}"
                     then:
+                      # v3.19.1 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                      - repeat:
+                          for_each: "{{ climate_list }}"
+                          sequence:
+                            - if:
+                                - condition: template
+                                  value_template: "{{ states(repeat.item) == 'off' }}"
+                              then:
+                                - service: climate.turn_on
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  continue_on_error: true
+
                       # Set HVAC mode to fan_only
                       - repeat:
                           for_each: "{{ climate_list }}"
@@ -12407,6 +12544,19 @@ action:
               - condition: template
                 value_template: "{{ supports_fan_only }}"
             then:
+              # v3.19.1 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(repeat.item) == 'off' }}"
+                      then:
+                        - service: climate.turn_on
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          continue_on_error: true
+
               # Set HVAC mode to fan_only
               - repeat:
                   for_each: "{{ climate_list }}"
@@ -12504,6 +12654,8 @@ action:
             value_template: "{{ last_mode in ['stability_fan_only', 'comfort_fan_only'] }}"
           - condition: template
             value_template: "{{ control_mode in ['Smart', 'Auto'] }}"
+          - condition: template
+            value_template: "{{ control_mode != 'Smart' or smart_presence_active }}"
         sequence:
           # v3.18.7: MAINTAIN MODE - Enforce fan speed on every check (before exit check)
           - choose:
@@ -12534,6 +12686,19 @@ action:
                                 • Enforcing HVAC mode: fan_only
                                 • Enforcing fan speed: {{ selected_fan_only_fan_mode }}
                           level: warning
+
+                  # v3.19.1 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) == 'off' }}"
+                          then:
+                            - service: climate.turn_on
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              continue_on_error: true
 
                   # v3.18.11 FIX: Enforce BOTH fan speed AND HVAC mode (send every check to ensure it sticks)
                   - repeat:
@@ -12936,6 +13101,19 @@ action:
                       - condition: template
                         value_template: "{{ supports_fan_only }}"
                     then:
+                      # v3.19.1 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
+                      - repeat:
+                          for_each: "{{ climate_list }}"
+                          sequence:
+                            - if:
+                                - condition: template
+                                  value_template: "{{ states(repeat.item) == 'off' }}"
+                              then:
+                                - service: climate.turn_on
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  continue_on_error: true
+
                       # Set HVAC mode to fan_only
                       - repeat:
                           for_each: "{{ climate_list }}"
@@ -14041,6 +14219,10 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 85 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
+                {% set distance_adjusted = temp_gap | abs | round(1) %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'None') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
 
                 {% if current_mode == 'cooling_high' %}
                   {% if temp_gap <= 0.5 %}
@@ -15272,6 +15454,10 @@ action:
                 {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
                 {% set escalation = escalation_level if dynamic_enabled else 0 %}
                 {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
+                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
+                {% set distance_adjusted = temp_gap | abs | round(1) %}
+                {% set esc_display = 'L' ~ escalation if escalation > 0 else ('DE-L' ~ deescalation if deescalation > 0 else 'None') %}
+                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
 
                 {% if current_mode == 'heating_high' %}
                   {% if temp_gap <= 0.5 %}
@@ -16110,18 +16296,23 @@ action:
   # STATE SYNCHRONIZATION: Handle helper/AC mismatch (e.g., after HA restart)
   # v3.11.8 FIX: Expanded to catch heating/cooling mode mismatches, not just off/on mismatches
   # If helper says "off" but AC is running, OR helper says heating but AC is cooling (or vice versa)
+  # v3.18.17: SKIP state sync when AC is in fan_only or dry mode
+  # These modes are manual/user-controlled and should not be interfered with
   - if:
       - condition: template
         value_template: >
           {% set actual_hvac = states(climate_list[0]) | default('off') %}
+          {% set is_unsupported_mode = actual_hvac in ['fan_only', 'dry'] %}
           {% set helper_is_heating = last_mode in ['heating_low', 'heating_medium', 'heating_high'] %}
           {% set helper_is_cooling = last_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] %}
           {% set ac_is_heating = actual_hvac in ['heat'] %}
           {% set ac_is_cooling = actual_hvac in ['cool'] %}
           {{
-            (last_mode == 'off' and actual_ac_state == 'on') or
-            (helper_is_heating and ac_is_cooling) or
-            (helper_is_cooling and ac_is_heating)
+            not is_unsupported_mode and (
+              (last_mode == 'off' and actual_ac_state == 'on') or
+              (helper_is_heating and ac_is_cooling) or
+              (helper_is_cooling and ac_is_heating)
+            )
           }}
     then:
       # Determine what the AC is probably doing based on current temperature
@@ -16330,6 +16521,15 @@ action:
           - repeat:
               for_each: "{{ climate_list }}"
               sequence:
+                # v3.18.15 FIX: Explicitly set hvac_mode to off before turn_off
+                # Fan-only mode sometimes doesn't respond to turn_off alone
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  data:
+                    hvac_mode: "off"
+                  continue_on_error: true
+
                 - service: climate.turn_off
                   target:
                     entity_id: "{{ repeat.item }}"
@@ -16405,6 +16605,46 @@ action:
   # v3.1.6/v3.1.7 helper_change update REMOVED - caused false override re-triggers
   # The update ran even when choose block had no actions, causing override re-activation
   # Proper fix is in the manual detection logic itself (see manual_change_detected variable)
+
+  # v3.18.14: SMART MODE NO PRESENCE - Turn off AC when no confirmed presence
+  - if:
+      - condition: template
+        value_template: "{{ control_mode == 'Smart' and not smart_presence_active and actual_ac_state == 'on' }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ debug_enabled }}"
+        then:
+          - service: system_log.write
+            data:
+              message: >
+                ⏹️ {{ room_name | upper }} SMART MODE - TURNING OFF (NO PRESENCE)
+
+                📊 Status:
+                    • Last Mode: {{ last_mode }}
+                    • AC State: {{ actual_ac_state }}
+                    • Presence: None ({{ minutes_since_presence | round(0) }}min ago)
+                    • Action: Turning off AC
+              level: warning
+
+      - repeat:
+          for_each: "{{ climate_list }}"
+          sequence:
+            - service: climate.turn_off
+              target:
+                entity_id: "{{ repeat.item }}"
+
+      - service: input_text.set_value
+        target:
+          entity_id: !input helper_last_mode
+        data:
+          value: "smart_off"
+
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: !input helper_last_change
+        data:
+          datetime: "{{ now() }}"
 
   # Debug: No conditions matched
   - if:
