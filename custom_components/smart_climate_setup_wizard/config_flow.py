@@ -178,7 +178,7 @@ HELPER_DEFINITIONS = {
         "domain": "input_select",
         "name": "{room} Climate Control Mode",
         "icon": "mdi:tune",
-        "options": ["Auto", "Smart", "Manual"],
+        "options": ["Auto", "Smart", "Manual", "Override"],
         "initial": "Smart",
     },
 
