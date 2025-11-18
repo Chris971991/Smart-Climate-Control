@@ -74,14 +74,16 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Manual Override Protected**: All state changes properly tracked - no false override detection
 - **Real-World Savings**: 6 hours/night in fan_only = ~4 kWh saved = $24-$37/month
 
-#### 🛏️ **Bed Comfort ECO Mode with Dynamic Escalation (v3.17.0)**
+#### 🛏️ **Bed Comfort ECO Mode with Fan-Only Cycling (v3.19.9)**
 - **Intelligent Takeover**: Only activates when taking over from existing cooling modes (respects your thresholds!)
+- **Overshoot Cooling**: Cools to overshoot target (e.g., 22.25°C for 23°C target) for efficient operation
+- **Fan-Only Cycling**: Switches to fan-only mode after reaching target for ~85% power savings
+- **Smart Return**: Returns to cooling only when temp rises above threshold (configurable)
 - **Silent Operation**: Uses minimal fan speed (eco setting) for peaceful sleep
-- **Precise Maintenance**: Maintains at your exact target temperature (not overshoot)
 - **Dynamic Escalation**: Automatically increases fan if room not maintaining target
 - **Grace Period**: Configurable 0-30 min buffer for bathroom trips (v3.15.0)
 - **Smart Exit**: Returns to normal cooling when bed unoccupied beyond grace period
-- **Manual Override**: Respects user's manual control - won't fight you (v3.15.2)
+- **Manual Override**: Respects user's manual control - won't fight you (v3.19.9 fix)
 - **Perfect for Sleep**: Combines comfort, quiet operation, and maximum energy efficiency
 
 #### 🎛️ **Core Features**

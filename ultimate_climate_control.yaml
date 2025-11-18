@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v3.19.3
+  name: Ultimate Smart Climate Control - v3.19.28
 
   description: |
-    **Ultimate Smart Climate Control v3.19.3**
+    **Ultimate Smart Climate Control v3.19.28**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -61,18 +61,15 @@ blueprint:
 
     ## 🆕 Latest Updates
 
-    **v3.19.2 - CRITICAL Smart Mode Presence & Overshoot Target Fixes**
-    - 🐛 **FIXED**: Smart mode now instantly detects re-entry when AC is already running (no 2-min delay)
-    - 🐛 **FIXED**: Comfort fan-only now respects overshoot target before activating
-    - 🔧 **FIXED**: Presence confirmation delay only applies when STARTING AC, not MAINTAINING
-    - 🔧 **FIXED**: Overshoot target (e.g., 22.5°C) must be reached before switching to fan-only
-    - 🛡️ **PREVENTS**: AC turning off when you re-enter room during fan-only mode
-    - 🛡️ **PREVENTS**: Premature fan-only activation before reaching overshoot target
+    **v3.19.28 - CRITICAL: Bed ECO Mode Temperature Cycling & Gatekeeper Removal**
+    - 🐛 **ROOT CAUSE FIXED**: Bed ECO competing with cooling blocks causing 19-24°C setpoint ping-pong every 10-15 seconds
+    - 🔧 **FIXED**: Bed ECO now maintenance-only mode - activates AFTER overshoot achieved (no more skipping overshoot!)
+    - 🛡️ **REMOVED**: ALL gatekeeper logic (46 instances) - was blocking critical service calls and causing hvac_action='idle' false triggers
+    - ✅ **RESULT**: AC properly cools to overshoot (19°C) first, then bed ECO maintains at target (23°C) quietly - no more temperature cycling!
 
-    **v3.19.1 - CRITICAL Fan-Only Power-On Fix (Daikin Integration)**
-    - 🐛 **FIXED**: Fan-only mode now actually turns on AC (was showing "on" but not physically running)
-    - 🔧 **FIXED**: Added climate.turn_on call to all 5 fan-only activation points
-    - 🛡️ **PREVENTS**: Dashboard showing fan_only but AC unit never physically powering on
+    **v3.19.27 - Manual Override Detection When User Turns AC Off**
+    - 🐛 **FIXED**: Now checks helper_expected_hvac to distinguish automation turn-off vs user turn-off
+    - ✅ **RESULT**: Override mode activates when you manually turn off AC
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -3053,13 +3050,23 @@ variables:
   # Check actual AC state using hvac_action (compressor activity), not just HVAC mode
   # CRITICAL: An AC in "cool" mode at 18°C target with 28°C current = IDLE (not running)
   # We need to check if compressor is actually running, not just if mode is set
+  # v3.19.23 FIX: Prioritize entity state over hvac_action to prevent manual override detection failure
   actual_ac_state: >
     {% set ac_states = namespace(any_running=false) %}
     {% for entity in climate_list %}
+      {% set entity_state = states(entity) | default('off') %}
       {% set hvac_action = state_attr(entity, 'hvac_action') | default('off') %}
-      {% set hvac_mode = states(entity) | default('off') %}
-      {% if hvac_action in ['cooling', 'heating', 'drying', 'fan'] or hvac_mode not in ['off', 'unavailable', 'unknown'] %}
-        {% set ac_states.any_running = true %}
+
+      {# v3.19.23 CRITICAL FIX: Trust entity state FIRST - if state='off', AC is off regardless of hvac_action #}
+      {# Problem: User clicks OFF → state='off' immediately, but hvac_action lags 30-45s (Daikin delay) #}
+      {# Old logic: checked hvac_action first → false 'on' reading → manual override blocked → AC turns back on! #}
+      {# Solution: If entity_state='off', skip this entity entirely (it's truly off) #}
+      {% if entity_state not in ['off', 'unavailable', 'unknown'] %}
+        {# Entity state shows AC is on - confirm with hvac_action OR trust the state #}
+        {# Check hvac_action for actual compressor activity when entity is in cooling/heating mode #}
+        {% if hvac_action in ['cooling', 'heating', 'drying', 'fan'] or entity_state in ['cool', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'] %}
+          {% set ac_states.any_running = true %}
+        {% endif %}
       {% endif %}
     {% endfor %}
     {{ 'on' if ac_states.any_running else 'off' }}
@@ -4434,9 +4441,26 @@ action:
         {% if last_change_time and last_change_time not in ['unknown', 'unavailable', ''] %}
           {% set time_since_change = (as_timestamp(now()) - as_timestamp(last_change_time)) %}
         {% endif %}
-        {# v3.13.0: Reduced from 45s to 5s due to command gatekeeper - AC only changes when needed #}
-        {# v3.13.6 FIX: Increased to 45s - Daikin integration has 30-40s state reporting delay #}
-        {% set within_hardware_delay = (time_since_change < 45) %}
+        {# v3.13.6: 45s hardware delay - Daikin integration has 30-40s state reporting delay #}
+        {# v3.19.24 CRITICAL FIX: Bypass hardware delay when user just cleared Override mode #}
+        {# Problem: User clears Override → automation resumes → user tries to turn AC OFF within seconds #}
+        {# → hardware_delay blocks manual detection for 45s → automation keeps turning AC back ON! #}
+        {# Solution: If trigger is override_cleared_by_user, allow immediate manual override detection #}
+        {# This lets users manually control AC right after clearing Override without fighting automation #}
+        {# v3.19.26 ULTIMATE FIX: HA service calls are ASYNC! helper_last_change updates but doesn't commit to state machine instantly #}
+        {# Problem: Automation writes helper_last_change → 200ms delay → climate.turn_off → AC off (50ms) → climate_state_change fires #}
+        {# → NEW automation run starts, but helper write might not be in state machine yet → reads STALE value #}
+        {# → Sees last_change was 15 minutes ago → within_hardware_delay = False → FALSE OVERRIDE! #}
+        {# Solution: If climate_state_change trigger AND time_since_change < 2s, it's automation's own change - FORCE within_hardware_delay = True #}
+        {# v3.19.27 FIX: automation_just_acted was blocking MANUAL turn-off detection! #}
+        {# Problem: User turns AC off → climate_state_change fires → automation_just_acted = True → blocks override detection → AC turns back on! #}
+        {# Solution: Only use automation_just_acted when automation EXPECTS the AC to be off (helper_expected_hvac = 'off') #}
+        {# If expected_hvac is still 'cool'/'heat' but AC is off, USER turned it off manually! #}
+        {% set just_cleared_override = (trigger.id == 'override_cleared_by_user') %}
+        {% set expected_hvac_for_check = states(helper_expected_hvac) | default('unknown') %}
+        {% set automation_expects_off_now = (expected_hvac_for_check in ['off', 'Off', 'OFF']) %}
+        {% set automation_just_turned_off = (trigger.id == 'climate_state_change' and time_since_change < 2 and automation_expects_off_now) %}
+        {% set within_hardware_delay = ((time_since_change < 45 or automation_just_turned_off) and not just_cleared_override) %}
 
         {% if control_mode == 'Override' %}
           {# Don't detect if already in Override mode #}
@@ -4446,7 +4470,7 @@ action:
         {# v3.11.13 FIX: Add hardware delay protection to manual_off detection too #}
         {# Without this, automation turn-offs falsely trigger Override mode #}
         {# v3.12.4 FIX: Include simple 'cooling' and 'heating' modes (not just intensity variants) #}
-        {# v3.13.2 FIX: Check expected_hvac to prevent false positives when Command Gatekeeper blocks calls #}
+        {# v3.13.2 FIX: Check expected_hvac to prevent false positives #}
         {# If expected_hvac='off' AND it's valid (not unknown), automation INTENDED to turn off AC #}
         {# So actual_state='off' matching expected is NOT manual - it's automation working correctly #}
         {# v3.16.1 FIX: Removed should_activate check - causes undefined variable error (evaluated before should_activate calculated) #}
@@ -4585,7 +4609,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} AUTOMATION FLOW DEBUG
+            [1/18] 🔍 {{ room_name | upper }} AUTOMATION FLOW DEBUG
 
             📊 Trigger & State:
                 • Trigger ID: {{ trigger.id }}
@@ -4602,7 +4626,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} MANUAL OVERRIDE DEBUG
+            [2/18] 🔍 {{ room_name | upper }} MANUAL OVERRIDE DEBUG
 
             📊 Trigger & Control:
                 • Trigger ID: {{ trigger.id }}
@@ -4643,7 +4667,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} SHOULD_ACTIVATE CHECK
+            [3/18] 🔍 {{ room_name | upper }} SHOULD_ACTIVATE CHECK
 
             📊 Control Mode Analysis:
                 • Control Mode (Variable): {{ control_mode }}
@@ -4780,7 +4804,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} OVERRIDE ACTIVATION CHECK
+            [4/18] 🔍 {{ room_name | upper }} OVERRIDE ACTIVATION CHECK
 
             📊 Override Conditions:
                 • Manual Change Detected: {{ manual_change_detected }}
@@ -5248,7 +5272,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} DYNAMIC ESCALATION TIMING DEBUG
+            [5/18] 🔍 {{ room_name | upper }} DYNAMIC ESCALATION TIMING DEBUG
 
             📊 User Configuration:
                 • Effectiveness Check Interval: {{ effectiveness_check_mins }} minutes
@@ -5274,7 +5298,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} PRESENCE VALIDATION DEBUG
+            [6/18] 🔍 {{ room_name | upper }} PRESENCE VALIDATION DEBUG
             
             📊 Sensor Analysis:
             {% set validation_mode = presence_validation | default('any') | lower %}
@@ -5348,7 +5372,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            📊 {{ room_name | upper }} CLIMATE CONTROL STATUS
+            [7/18] 📊 {{ room_name | upper }} CLIMATE CONTROL STATUS
             
             🌡️ Current Conditions:
                 • Temperature: {{ current_temp }}°C {% if calculated_trend == 'rising' %}↗️ Rising{% elif calculated_trend == 'falling' %}↘️ Falling{% else %}➡️ Stable{% endif %}
@@ -5401,7 +5425,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} DEBUG Part 1: Basic conditions
+            [8/18] 🔍 {{ room_name | upper }} CORE VARIABLES & STATE
 
             📊 Core Variables:
                 • last_mode (internal): "{{ last_mode }}"
@@ -5419,7 +5443,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} ESCALATION DEBUG
+            [9/18] 🔍 {{ room_name | upper }} ESCALATION DEBUG
 
             📊 Escalation Conditions:
                 • distance_from_target: {{ distance_from_target | round(1) }}°C
@@ -5458,7 +5482,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔽 {{ room_name | upper }} DE-ESCALATION DEBUG
+            [10/18] 🔽 {{ room_name | upper }} DE-ESCALATION DEBUG
 
             📊 De-escalation Conditions:
                 • distance_from_target: {{ distance_from_target | round(1) }}°C
@@ -5523,7 +5547,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} STALL & WRONG-DIRECTION ESCALATION DEBUG
+            [11/18] 🔍 {{ room_name | upper }} STALL & WRONG-DIRECTION ESCALATION DEBUG
 
             📊 Feature Status:
                 • Stall & Wrong-Direction Escalation Enabled: {{ wrong_direction_enabled }}
@@ -5585,7 +5609,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🎯 {{ room_name | upper }} DYNAMIC TARGET ADJUSTMENT
+            [12/18] 🎯 {{ room_name | upper }} DYNAMIC TARGET ADJUSTMENT
 
             🔧 Smart Escalation Boost Active:
                 • Feature Enabled: {{ enable_dynamic_target }}
@@ -5626,7 +5650,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} DEBUG Part 2: Cooling checks
+            [13/18] 🔍 {{ room_name | upper }} TEMPERATURE & TIMING LOGIC
 
             🌡️ Temperature Logic:
                 • last_transition: "{{ last_transition }}"
@@ -5647,7 +5671,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} DEBUG Part 3: Heating & Cooling checks
+            [14/18] 🔍 {{ room_name | upper }} HEATING & COOLING THRESHOLD EVALUATION
 
             🔥 Heating Logic:
                 • heating_low: {{ heating_low_temp }}°C
@@ -5692,7 +5716,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            👤 {{ room_name | upper }} PRESENCE CONFIRMATION DEBUG
+            [15/18] 👤 {{ room_name | upper }} PRESENCE CONFIRMATION DEBUG
 
             ⏱️ Delay Configuration:
                 • presence_confirmation_delay: {{ presence_confirmation_delay }} minutes
@@ -5799,7 +5823,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} PRE-CONDITION EVALUATION DEBUG
+            [16/18] 🔍 {{ room_name | upper }} PRE-CONDITION EVALUATION DEBUG
 
             📊 Variable States (at condition check time):
                 • control_mode: {{ control_mode }}
@@ -6278,30 +6302,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -6519,12 +6534,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6550,16 +6560,7 @@ action:
                     milliseconds: 2000
 
                 # v3.9.13: NOW turn on AC with correct fan mode already set
-                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -6859,30 +6860,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -7088,12 +7080,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7118,16 +7105,7 @@ action:
                 - delay:
                     milliseconds: 2000
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7426,30 +7404,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -7658,12 +7627,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7688,16 +7652,7 @@ action:
                 - delay:
                     milliseconds: 2000
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -7998,30 +7953,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -8239,12 +8185,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8277,16 +8218,7 @@ action:
                 - delay:
                     milliseconds: 2000
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8602,30 +8534,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -8831,12 +8754,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8869,16 +8787,7 @@ action:
                 - delay:
                     milliseconds: 2000
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                # v3.13.8 FIX: Removed gatekeeper - always send temperature (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - adjusted_target) | abs > 0.5 or
-                       (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -8951,9 +8860,10 @@ action:
                 {# RETURN FROM FAN-ONLY: Temperature rising - return to cooling #}
                 True  {# ACTIVATE: Temp exceeded threshold, return from fan_only to cooling #}
               {% else %}
-                {# Not in bed ECO - activate ONLY when taking over from existing cooling mode (LOW/MEDIUM/HIGH) #}
-                {# v3.15.1: Bed ECO is a TAKEOVER mode, never a STARTER mode - prevents AC from starting when room below threshold #}
-                {{ should_activate and enable_cooling and bed_active and bed_comfort_mode == 'eco' and in_maintenance_range and current_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and (control_mode != 'Smart' or room_presence_detected) }}
+                {# v3.19.28: Bed ECO is MAINTENANCE mode - only activates AFTER overshoot target achieved #}
+                {# Prevents competing with cooling blocks and temperature cycling (19-24°C setpoint ping-pong) #}
+                {% set overshoot_achieved = current_temp <= (target_temp - target_overshoot + 0.5) %}
+                {{ should_activate and enable_cooling and bed_active and bed_comfort_mode == 'eco' and overshoot_achieved and current_mode in ['cooling_low', 'cooling_medium', 'cooling_high'] and (control_mode != 'Smart' or room_presence_detected) }}
               {% endif %}
         sequence:
           - service: system_log.write
@@ -9093,14 +9003,6 @@ action:
                     current_entity: "{{ repeat.item }}"
                     available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
 
-                # Command gatekeeper - only send if mode needs changing
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       states(current_entity) != selected_hvac_mode or
-                       state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                       (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
-
                 # Turn on AC if off
                 - condition: template
                   value_template: "{{ states(current_entity) == 'off' }}"
@@ -9198,12 +9100,6 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # Command gatekeeper - only send if fan needs changing
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'fan_mode') | default('unknown') | lower != selected_fan_mode | lower) }}
-
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -9216,12 +9112,6 @@ action:
               sequence:
                 - variables:
                     current_entity: "{{ repeat.item }}"
-
-                # Command gatekeeper - only send if temperature needs changing
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'temperature') | float(0) - target_temp) | abs > 0.5 }}
 
                 - service: climate.set_temperature
                   target:
@@ -9259,12 +9149,6 @@ action:
                   data:
                     value: "{{ selected_swing_mode }}"
                   continue_on_error: true
-
-                # Command gatekeeper - only send if swing needs changing
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       (state_attr(current_entity, 'swing_mode') | default('unknown') | lower != selected_swing_mode | lower) }}
 
                 - service: climate.set_swing_mode
                   target:
@@ -9751,30 +9635,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -10060,14 +9935,6 @@ action:
                                   • Selected Fan Mode: "{{ selected_fan_mode }}"
                                   • Current Entity: {{ current_entity }}
                                   • Current State Fan Mode: "{{ state_attr(current_entity, 'fan_mode') }}"
-
-                              🛡️ Command Gatekeeper:
-                                  • Current: "{{ state_attr(current_entity, 'fan_mode') | string }}"
-                                  • Desired: "{{ selected_fan_mode | string }}"
-                                  • Modes Different: {{ (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
-                                  • Within Hardware Delay: {{ within_hardware_delay }}
-
-                              ✅ Will Send Command: {{ within_hardware_delay or (state_attr(current_entity, 'fan_mode') | string) != (selected_fan_mode | string) }}
                             level: warning
 
                 # Capture expected values for enhanced manual override detection (v3.3.0)
@@ -10078,12 +9945,7 @@ action:
                     value: "{{ selected_fan_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -10113,11 +9975,7 @@ action:
                     milliseconds: 2000
 
                 # v3.9.13: Set temperature with correct fan
-                # v3.13.14 FIX: Add missing command gatekeeper (present in all other sections)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.19 CRITICAL FIX: Moved inside repeat loop to use current_entity and selected_fan_mode
-                # v3.16.20 CRITICAL FIX: Check BOTH temp AND fan - Daikin integration sends all params
-                # v3.16.24 FIX: GATEKEEPER DISABLED - state desync blocking commands, always send temp command
                 - service: climate.set_temperature
                   target:
                     entity_id: "{{ current_entity }}"
@@ -10323,12 +10181,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -10545,12 +10398,6 @@ action:
                             value: "{{ selected_fan_mode }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'fan_mode') != selected_fan_mode }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -10662,12 +10509,6 @@ action:
                       value: "{{ heating_target_temp }}"
                     continue_on_error: true
 
-                  # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                  # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                  - condition: template
-                    value_template: >
-                      {{ within_hardware_delay or
-                         (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -10822,12 +10663,6 @@ action:
               value: "{{ weather_adjusted_target }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - weather_adjusted_target) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -10872,12 +10707,6 @@ action:
               value: "{{ selected_fan_mode }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 state_attr(climate_list[0], 'fan_mode') != (selected_fan_mode | trim) }}
           - service: climate.set_fan_mode
             target:
               entity_id: !input climate_entities
@@ -11012,30 +10841,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -11056,12 +10876,6 @@ action:
               value: "{{ cooling_target_temp }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - cooling_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -11119,12 +10933,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -11274,30 +11083,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -11318,12 +11118,6 @@ action:
               value: "{{ cooling_target_temp }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - cooling_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -11382,12 +11176,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -11541,12 +11330,6 @@ action:
                                 {{ fans[0] if fans else 'Auto' }}
                               {% endif %}
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(repeat.item, 'fan_mode') != quietest_fan }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ repeat.item }}"
@@ -11791,12 +11574,6 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'fan_mode') != expected_fan_mode }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -11848,12 +11625,6 @@ action:
                             value: "{{ selected_swing_mode | trim }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'swing_mode') != selected_swing_mode }}
                         - service: climate.set_swing_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -12033,12 +11804,6 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'fan_mode') != expected_fan_mode }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -12127,7 +11892,7 @@ action:
                     value_template: >
                       {{ last_mode not in ['cooling_low', 'cooling_medium', 'cooling_high',
                                            'heating_low', 'heating_medium', 'heating_high',
-                                           'bed_comfort_eco'] }}
+                                           'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] }}
                 sequence:
                   - if:
                       - condition: template
@@ -12162,6 +11927,10 @@ action:
                     data:
                       value: "off"
 
+                  # v3.19.25 FIX: Add delay to prevent false override detection (same as line 12419)
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
@@ -12174,7 +11943,7 @@ action:
                     value_template: >
                       {{ last_mode in ['cooling_low', 'cooling_medium', 'cooling_high',
                                        'heating_low', 'heating_medium', 'heating_high',
-                                       'bed_comfort_eco'] }}
+                                       'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] }}
                 sequence:
                   # v3.18.0: Fan-only mode when comfort zone reached
 
@@ -12398,6 +12167,13 @@ action:
                   entity_id: !input helper_last_mode
                 data:
                   value: "off"
+
+              # v3.19.25 FIX: Add tiny delay to ensure helper updates propagate through HA state machine
+              # Problem: climate.turn_off completes fast → climate_state_change fires → new automation run
+              # reads helpers BEFORE state machine updates → gets stale values → false override detection!
+              # Solution: 200ms delay ensures helpers are committed before AC state changes
+              - delay:
+                  milliseconds: 200
 
               - service: climate.turn_off
                 target:
@@ -12656,6 +12432,11 @@ action:
             value_template: "{{ control_mode in ['Smart', 'Auto'] }}"
           - condition: template
             value_template: "{{ control_mode != 'Smart' or smart_presence_active }}"
+          # v3.19.22 FIX: CRITICAL - Only run fan-only block when temp WITHIN comfort zone
+          # This prevents infinite loop when temp exits comfort zone
+          # When temp exits, this block won't match, allowing cooling/heating blocks to activate
+          - condition: template
+            value_template: "{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}"
         sequence:
           # v3.18.7: MAINTAIN MODE - Enforce fan speed on every check (before exit check)
           - choose:
@@ -12730,44 +12511,16 @@ action:
                           value: "{{ selected_fan_only_fan_mode }}"
                         continue_on_error: true
 
-              # EXIT: Temperature exited comfort zone, return to cooling/heating
-              - conditions:
-                  - condition: template
-                    value_template: "{{ time_since_change >= runtime_min }}"
-                  - condition: template
-                    value_template: >
-                      {% set exited_comfort = (current_temp < comfort_min_temp or current_temp > comfort_max_temp) %}
-                      {{ exited_comfort }}
-                sequence:
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_enabled }}"
-                    then:
-                      - service: system_log.write
-                        data:
-                          message: >
-                            🔄 {{ room_name | upper }} FAN-ONLY → RETURN TO COOLING/HEATING
-
-                            📊 Temperature Status:
-                                • Current: {{ current_temp | round(1) }}°C
-                                • Comfort zone: {{ comfort_min_temp }}-{{ comfort_max_temp }}°C
-                                • Exited comfort zone: {{ current_temp < comfort_min_temp or current_temp > comfort_max_temp }}
-
-                            🌡️ Next Action:
-                                {% if current_temp > comfort_max_temp %}
-                                • Temperature too high ({{ current_temp | round(1) }}°C > {{ comfort_max_temp }}°C)
-                                • Returning to COOLING mode
-                                {% elif current_temp < comfort_min_temp %}
-                                • Temperature too low ({{ current_temp | round(1) }}°C < {{ comfort_min_temp }}°C)
-                                • Returning to HEATING mode
-                                {% endif %}
-
-                            ⏱️ Fan-only duration: {{ time_in_current_mode | round(0) }} minutes
-                          level: warning
-
-                  # v3.18.12 FIX: Don't reset last_mode - just remove fan-only exclusion from cooling/heating blocks
-                  # The activation blocks will detect temperature threshold and activate appropriate tier
-                  # Resetting to "off" was causing manual override false positives
+              # v3.19.22: REMOVED EXIT sub-block - no longer needed
+              # The parent condition now requires temp WITHIN comfort zone (line 12663)
+              # When temp exits comfort zone, this entire fan-only block won't match
+              # This allows cooling/heating activation blocks to run naturally without manual override false positives
+              #
+              # HISTORY:
+              # v3.18.12 removed last_mode reset from EXIT block to prevent manual override false positives
+              # But EXIT block only logged message - never actually transitioned to cooling/heating
+              # Result: Infinite loop of logging "FAN-ONLY → RETURN TO COOLING/HEATING" with no action
+              # v3.19.22 fixes this by preventing fan-only block from matching when temp exits comfort zone
 
       # Temperature Stability Auto-Off (Auto/Smart Mode - temperature equilibrium reached AND in comfort zone)
       - conditions:
@@ -12851,6 +12604,12 @@ action:
                       entity_id: !input helper_last_mode
                     data:
                       value: "stability_off"
+
+                  # v3.19.25 FIX: Add delay to prevent false override detection (same as lines 12179, 12423)
+                  # Problem: stability_off is included in is_manual_on check (line 4489)
+                  # Solution: 200ms delay ensures helper update commits before AC state changes
+                  - delay:
+                      milliseconds: 200
 
                   - service: climate.turn_off
                     target:
@@ -12955,12 +12714,6 @@ action:
                       value: "{{ expected_temp }}"
                     continue_on_error: true
 
-                  # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                  # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                  - condition: template
-                    value_template: >
-                      {{ within_hardware_delay or
-                         (state_attr(climate_list[0], 'temperature') | float(0) - expected_temp) | abs > 0.5 }}
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -13836,12 +13589,6 @@ action:
                       value: "{{ expected_temp }}"
                     continue_on_error: true
 
-                  # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                  # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                  - condition: template
-                    value_template: >
-                      {{ within_hardware_delay or
-                         (state_attr(climate_list[0], 'temperature') | float(0) - expected_temp) | abs > 0.5 }}
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -13901,12 +13648,6 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'fan_mode') != expected_fan_mode }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -14088,13 +13829,6 @@ action:
                         {% endif %}
                     continue_on_error: true
 
-                  # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-                  # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                  - condition: template
-                    value_template: >
-                      {% set desired_temp = (cooling_target_temp + eco_mode_setpoint_offset) if current_temp > comfort_max_temp else (heating_target_temp - eco_mode_setpoint_offset) %}
-                      {{ within_hardware_delay or
-                         (state_attr(climate_list[0], 'temperature') | float(0) - desired_temp) | abs > 0.5 }}
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -14151,12 +13885,6 @@ action:
                             value: "{{ selected_fan_mode }}"
                           continue_on_error: true
 
-                        # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                        # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                        - condition: template
-                          value_template: >
-                            {{ within_hardware_delay or
-                               state_attr(current_entity, 'fan_mode') != selected_fan_mode }}
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
@@ -14298,30 +14026,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -14336,13 +14055,6 @@ action:
                 {% endif %}
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {% set desired_temp = ([weather_adjusted_target, current_temp - 2] | min) if gradual_enabled else weather_adjusted_target %}
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - desired_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -14406,12 +14118,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -14462,12 +14169,6 @@ action:
                     value: "{{ selected_swing_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       state_attr(current_entity, 'swing_mode') != (selected_swing_mode | trim) }}
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -14563,30 +14264,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -14601,13 +14293,6 @@ action:
                 {% endif %}
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {% set desired_temp = ([cooling_target_temp, current_temp - 1] | min) if gradual_enabled else cooling_target_temp %}
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - desired_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -14659,12 +14344,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -14715,12 +14395,6 @@ action:
                     value: "{{ selected_swing_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       state_attr(current_entity, 'swing_mode') != (selected_swing_mode | trim) }}
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -14936,12 +14610,6 @@ action:
               value: "{{ heating_target_temp }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15008,12 +14676,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15075,12 +14738,6 @@ action:
                     value: "{{ selected_swing_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       state_attr(current_entity, 'swing_mode') != (selected_swing_mode | trim) }}
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15092,12 +14749,6 @@ action:
               milliseconds: 2000
 
           # v3.9.13: Set temperature with correct fan/swing
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15203,30 +14854,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -15236,12 +14878,6 @@ action:
               value: "{{ heating_target_temp }}"
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15288,12 +14924,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15344,12 +14975,6 @@ action:
                     value: "{{ selected_swing_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       state_attr(current_entity, 'swing_mode') != (selected_swing_mode | trim) }}
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15361,12 +14986,6 @@ action:
               milliseconds: 2000
 
           # v3.9.13: Set temperature with correct fan/swing
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15596,12 +15215,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15663,12 +15277,6 @@ action:
                     value: "{{ selected_swing_mode | trim }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if swing mode needs changing
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-                - condition: template
-                  value_template: >
-                    {{ within_hardware_delay or
-                       state_attr(current_entity, 'swing_mode') != (selected_swing_mode | trim) }}
                 - service: climate.set_swing_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -15680,12 +15288,6 @@ action:
               milliseconds: 2000
 
           # v3.9.13: Set temperature with correct fan/swing
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15780,30 +15382,21 @@ action:
                     value: "{{ selected_hvac_mode }}"
                   continue_on_error: true
 
-                # v3.16.13 FIX: Converted to if/then to not block sequence when HVAC mode already correct
+                # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                 - if:
                     - condition: template
-                      value_template: >
-                        {{ within_hardware_delay or
-                           states(current_entity) != selected_hvac_mode or
-                           state_attr(current_entity, 'hvac_action') in ['off', 'idle'] or
-                           (states(current_entity) == 'off' and selected_hvac_mode != 'off') }}
+                      value_template: "{{ states(current_entity) == 'off' }}"
                   then:
-                    # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
-                    - if:
-                        - condition: template
-                          value_template: "{{ states(current_entity) == 'off' }}"
-                      then:
-                        - service: climate.turn_on
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          continue_on_error: true
-
-                    - service: climate.set_hvac_mode
+                    - service: climate.turn_on
                       target:
                         entity_id: "{{ current_entity }}"
-                      data:
-                        hvac_mode: "{{ selected_hvac_mode }}"
+                      continue_on_error: true
+
+                - service: climate.set_hvac_mode
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    hvac_mode: "{{ selected_hvac_mode }}"
           
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
@@ -15820,13 +15413,6 @@ action:
                 {% endif %}
             continue_on_error: true
 
-          # v3.13.0: COMMAND GATEKEEPER - Only send if temperature needs changing (0.5°C tolerance)
-          # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
-          - condition: template
-            value_template: >
-              {% set desired_temp = cooling_target_temp if current_temp > comfort_max_temp else (heating_target_temp if current_temp < comfort_min_temp else target_temp) %}
-              {{ within_hardware_delay or
-                 (state_attr(climate_list[0], 'temperature') | float(0) - desired_temp) | abs > 0.5 }}
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
@@ -15955,12 +15541,7 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
-                # v3.13.0: COMMAND GATEKEEPER - Only send if fan mode needs changing
-                # v3.13.8 FIX: Removed gatekeeper - always send fan mode (Daikin needs all commands)
-                # v3.13.11: Smart gatekeeper - Always send within hardware delay, then only if different
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
-                # v3.16.21 FIX: GATEKEEPER COMPLETELY DISABLED (user directive: state desync causing false blocks)
-                # Always send fan mode command - let temperature gatekeeper control when commands are sent
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
@@ -16257,7 +15838,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            🔍 {{ room_name | upper }} ADAPTIVE CONTROL: Status Check
+            [17/18] 🔍 {{ room_name | upper }} ADAPTIVE CONTROL: Status Check
 
             📊 Current Status:
                 • Adaptive Enabled: {{ adaptive_enabled }}
@@ -16654,7 +16235,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            ✅ {{ room_name | upper }} CLIMATE CONTROL: All Good
+            [18/18] ✅ {{ room_name | upper }} CLIMATE CONTROL: All Good
 
             {% if last_mode in ['cooling_low', 'cooling_medium', 'cooling_high', 'heating_low', 'heating_medium', 'heating_high'] and actual_ac_state == 'on' %}🔄 AC Status:
                 • Mode: {{ last_mode|title }} active
