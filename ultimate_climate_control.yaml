@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v4.0.3
+  name: Ultimate Smart Climate Control - v4.2.1
 
   description: |
-    **Ultimate Smart Climate Control v4.0.3**
+    **Ultimate Smart Climate Control v4.2.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -61,21 +61,17 @@ blueprint:
 
     ## 🆕 Latest Updates
 
-    **v4.0.0 - MAJOR: Simplified 2-Mode Architecture (Tier System Removed)**
-    - 🔥 **BREAKING CHANGE**: Removed 3-tier system (HIGH/MEDIUM/LOW) → Unified cooling/heating modes
-    - 🚀 **70% CODE REDUCTION**: 6 tier choose blocks → 2 unified blocks (~4,200 lines removed)
-    - ⚡ **FASTER RESPONSE**: No runtime barriers between tier switches - escalation adjusts immediately every run
-    - 🎯 **CLEARER LOGS**: Shows escalation level (L0-L4) instead of arbitrary tier names
-    - 🧹 **SIMPLER CONFIG**: No tier threshold inputs needed - just set target temp + comfort width
-    - ✅ **SAME FEATURES**: Dynamic escalation unchanged (Fan 1→5 based on distance + effectiveness)
-    - 📊 **ENHANCED LOGGING**: Shows WHY escalation level chosen + performance metrics
+    **v4.2.1 - State Verification & Retry System**
+    - 🚀 **NEW**: Service call verification - compares expected vs actual AC state
+    - 🚀 **NEW**: Automatic retry with 500ms delay when state mismatch detected
+    - 🛡️ **IMPROVED**: Continue mode escalation checks both expected AND actual state
+    - 🛡️ **IMPROVED**: Stability reset, pre-conditioning paths with state verification
+    - ✅ **RESULT**: Failed service calls are automatically retried and corrected
 
-    **v4.0.3 - CRITICAL: Smart Mode Presence Timer Stale State Fix**
-    - 🐛 **FIXED**: Stale presence timer bypassing confirmation delay on re-entry after long absence
-    - 🔧 **FIXED**: Timer now resets to sentinel value (1970-01-01) when presence lost
-    - 🛡️ **FIXED**: Added timestamp validation to reject stale/sentinel values (< year 2000)
-    - ✅ **FIXED**: Corrected grace period comparison operator (< → >) for proper timeout logic
-    - 🎯 **RESULT**: AC no longer activates immediately when entering room after being gone for hours
+    **v4.2.0 - Robust Manual Override Detection System**
+    - 🚀 **NEW**: Context-based detection - uses HA's context.user_id/parent_id
+    - 🚀 **NEW**: Configurable hardware_response_delay (5-120s)
+    - 🐛 **FIX**: Multi-entity detection, input_number service call fix
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -307,6 +303,69 @@ blueprint:
       selector:
         entity:
           domain: input_text
+
+    # Manual Override Detection Settings
+    manual_override_settings:
+      name: "Manual Override Detection Settings"
+      icon: mdi:hand-back-right
+      collapsed: true
+      input:
+        enable_manual_override_detection:
+          name: Enable Manual Override Detection
+          description: |
+            **Detect when you manually change AC settings** and temporarily pause automation.
+
+            **How it works:**
+            When you change temperature, fan speed, or turn AC on/off via HA app, dashboard,
+            or physical remote, automation detects this and enters **Override mode**.
+
+            **Override mode:**
+            • Pauses temperature/fan adjustments for the configured timeout
+            • Respects your manual settings
+            • Automatically returns to previous mode after timeout
+
+            **When to disable:**
+            • If you have other automations controlling the same AC
+            • If you're getting false override detections
+            • For testing purposes
+
+            **Recommended:** Keep enabled for normal use.
+          default: true
+          selector:
+            boolean:
+
+        hardware_response_delay:
+          name: AC Hardware Response Delay (seconds)
+          description: |
+            **How long to wait for AC hardware to report state changes.**
+
+            When automation sends a command to the AC, the hardware takes time to:
+            1. Process the command
+            2. Report the new state back to Home Assistant
+
+            **During this delay, state changes are assumed to be from automation** (not manual).
+            After this delay, any changes are treated as potential manual overrides.
+
+            **Brand-specific recommendations:**
+            • **Daikin (BRP069)**: 30-45 seconds (slow state reporting)
+            • **Mitsubishi**: 10-15 seconds
+            • **LG**: 10-20 seconds
+            • **Generic IR**: 5-10 seconds
+
+            **Symptoms of wrong value:**
+            • **Too short**: False manual override detection (automation fights itself)
+            • **Too long**: Real manual changes not detected quickly
+
+            **Note:** v4.2.0 uses context-based detection as primary method, so this delay
+            only affects physical remote changes. HA UI/app changes are detected immediately.
+          default: 10
+          selector:
+            number:
+              min: 5
+              max: 120
+              step: 5
+              unit_of_measurement: seconds
+              mode: slider
 
     # Debugging & Logging Settings
     debugging_settings:
@@ -2915,6 +2974,10 @@ variables:
   helper_effectiveness: !input helper_effectiveness_score
   last_mode: "{{ states(helper_mode) | default('off') }}"
 
+  # v4.2.0: Manual Override Detection settings
+  enable_manual_override_detection: !input enable_manual_override_detection
+  hardware_response_delay: !input hardware_response_delay
+
   # v3.13.9: Hardware delay for manual override detection and state sync
   # Time since last helper change (used for hardware delay calculation)
   time_since_change: >
@@ -2924,10 +2987,9 @@ variables:
       999
     {% endif %}
 
-  # v3.13.11: 45-second hardware delay window (Daikin integration has 30-40s state reporting delay)
-  # v3.18.20 FIX: Increased to 45s to match manual override detection (was causing false positives)
-  within_hardware_delay: >
-    {{ time_since_change < 45 }}
+  # v3.13.11: Hardware delay window for physical remote detection fallback
+  # v4.2.0: Now uses configurable hardware_response_delay
+  within_hardware_delay: "{{ time_since_change < hardware_response_delay }}"
 
   # Check actual AC state using hvac_action (compressor activity), not just HVAC mode
   # CRITICAL: An AC in "cool" mode at 18°C target with 28°C current = IDLE (not running)
@@ -3173,6 +3235,7 @@ variables:
 
   ac_minimum_temp: !input ac_minimum_temp
   ac_maximum_temp: !input ac_maximum_temp
+
   # Adaptive Control Mode variables
   adaptive_enabled: !input enable_adaptive_control
   adaptive_occupied_delay: !input adaptive_occupied_delay
@@ -4169,13 +4232,8 @@ action:
           {% if presence_time_val not in ['unknown', 'unavailable', '', None] %}
             {% set presence_timestamp = as_timestamp(presence_time_val) %}
             {% if presence_timestamp %}
-              {# v4.0.3 FIX: Sentinel/stale timestamps treated as "no recent presence" #}
-              {% set sentinel_threshold = as_timestamp('2000-01-01 00:00:00') %}
-              {% if presence_timestamp < sentinel_threshold %}
-                999  {# Sentinel value = no valid presence history #}
-              {% else %}
-                {{ ((as_timestamp(now()) - presence_timestamp) / 60) | round(0) | abs }}
-              {% endif %}
+              {# v4.0.4: Calculate minutes since presence was last detected (for grace period) #}
+              {{ ((as_timestamp(now()) - presence_timestamp) / 60) | round(0) | abs }}
             {% else %}
               999
             {% endif %}
@@ -4186,18 +4244,33 @@ action:
 
       minutes_with_presence: >
         {% if room_presence_detected %}
+          {# v4.1.0 BULLETPROOF FIX: Trust timer when validation helper actively tracking #}
+          {% set has_validation = presence_validation_helper not in [none, '', 'unavailable', 'unknown'] %}
+          {% set validation_is_on = is_state(presence_validation_helper, 'on') if has_validation else false %}
+
           {% set presence_time_val = states(presence_detected_helper) if presence_detected_helper else 'unknown' %}
           {% if presence_time_val not in ['unknown', 'unavailable', '', None] %}
             {% set presence_timestamp = as_timestamp(presence_time_val) %}
             {% if presence_timestamp %}
-              {# v4.0.3 FIX: Reject sentinel/stale timestamps (< year 2000) to prevent confirmation delay bypass #}
-              {% set sentinel_threshold = as_timestamp('2000-01-01 00:00:00') %}
-              {% if presence_timestamp < sentinel_threshold %}
-                0  {# Timer was reset or invalid, no presence history #}
+              {% set minutes = ((as_timestamp(now()) - presence_timestamp) / 60) | round(1) %}
+
+              {# When validation ON, timer is fresh (set at OFF→ON transition) - trust it completely #}
+              {% if has_validation and validation_is_on %}
+                {% if minutes < 0 %}
+                  0  {# Future timestamp - clock skew #}
+                {% else %}
+                  {{ minutes }}  {# Trust timer completely - no 2-hour limit #}
+                {% endif %}
+
+              {# Legacy mode or validation OFF: apply 2-hour safety threshold #}
               {% else %}
-                {% set minutes = ((as_timestamp(now()) - presence_timestamp) / 60) | round(1) %}
-                {# Additional safety: Cap at 24 hours to prevent overflow #}
-                {{ [minutes, 1440] | min }}
+                {% if minutes > 120 %}
+                  0  {# Stale timestamp in legacy mode (> 2 hours old) #}
+                {% elif minutes < 0 %}
+                  0  {# Future timestamp (invalid) #}
+                {% else %}
+                  {{ minutes }}  {# Valid recent timestamp #}
+                {% endif %}
               {% endif %}
             {% else %}
               0
@@ -4241,7 +4314,7 @@ action:
           {# v3.19.2 FIX: Bypass delay if validation TRUE + AC running (instant re-entry) #}
           {% if room_presence_detected and (minutes_with_presence >= presence_confirmation_delay or can_bypass_delay) %}
             true
-          {% elif minutes_since_presence < presence_timeout %}
+          {% elif not room_presence_detected and minutes_since_presence < presence_timeout %}
             {# Grace period applies when: #}
             {# 1. Instant activation (no confirmation delay) - always applies #}
             {# 2. Had prior confirmed presence - left after AC was already running #}
@@ -4250,18 +4323,27 @@ action:
             {# v3.11.8 FIX (Option C): Split logic based on AC state #}
             {# - AC OFF: Don't START it when BLE shows you in different room #}
             {# - AC ON: Keep it running (grace period works normally) #}
-            {% set ble_in_different_room = namespace(value=false) %}
+            {# v4.0.4 FIX: Multi-person BLE detection - check if ANYONE is in this room #}
+            {% set ble_sensors = namespace(in_room=[], different_room=[], unknown=[]) %}
             {% if room_ble_name %}
               {% for sensor in room_sensors %}
                 {% if sensor.startswith('sensor.') and '_ble_area' in sensor %}
                   {% set current_ble_state = states(sensor) | lower %}
-                  {% if current_ble_state not in ['unknown', 'unavailable', '', room_ble_name | lower] %}
-                    {# BLE is showing a specific different room (not unknown, not this room) #}
-                    {% set ble_in_different_room.value = true %}
+                  {% if current_ble_state == room_ble_name | lower %}
+                    {# BLE sensor shows THIS room #}
+                    {% set ble_sensors.in_room = ble_sensors.in_room + [sensor] %}
+                  {% elif current_ble_state not in ['unknown', 'unavailable', ''] %}
+                    {# BLE sensor shows a specific DIFFERENT room #}
+                    {% set ble_sensors.different_room = ble_sensors.different_room + [sensor] %}
+                  {% else %}
+                    {# BLE sensor state is unknown/unavailable #}
+                    {% set ble_sensors.unknown = ble_sensors.unknown + [sensor] %}
                   {% endif %}
                 {% endif %}
               {% endfor %}
             {% endif %}
+            {# ALL BLE sensors in different rooms = nobody here (ignore unknown states) #}
+            {% set all_ble_in_different_room = (ble_sensors.in_room | length == 0) and (ble_sensors.different_room | length > 0) %}
             {# Check if AC is currently running (any climate entity in cooling/heating mode) #}
             {% set ac_currently_running = namespace(value=false) %}
             {% for entity in climate_list %}
@@ -4269,8 +4351,8 @@ action:
                 {% set ac_currently_running.value = true %}
               {% endif %}
             {% endfor %}
-            {% if ble_in_different_room.value and not ac_currently_running.value %}
-              {# BLE shows different room AND AC is OFF - don't START it via grace period #}
+            {% if all_ble_in_different_room and not ac_currently_running.value %}
+              {# ALL BLE sensors show different rooms AND AC is OFF - don't START it via grace period #}
               false
             {% else %}
               {# Either BLE ok, OR AC already running (preserve grace period functionality) #}
@@ -4326,6 +4408,10 @@ action:
       # v3.7.6 FIX: Removed unnecessary 15-second buffer - flag system handles persistence
       # v3.8.9 FIX: Skip detection if not periodic_check OR if automation just made changes
       manual_change_detected: >
+        {# v4.2.0: Check if manual override detection is enabled #}
+        {% if not enable_manual_override_detection %}
+          false
+        {% else %}
         {# v3.11.0: SIMPLIFIED - Removed ALL grace periods that were causing race conditions #}
         {# v3.11.3 FIX: Added AC hardware off-cycle grace period (30-45 seconds) #}
         {# v3.11.5 FIX: Exclude climate_state_change to prevent false positives when automation turns AC on/off #}
@@ -4360,11 +4446,31 @@ action:
         {# Problem: User turns AC off → climate_state_change fires → automation_just_acted = True → blocks override detection → AC turns back on! #}
         {# Solution: Only use automation_just_acted when automation EXPECTS the AC to be off (helper_expected_hvac = 'off') #}
         {# If expected_hvac is still 'cool'/'heat' but AC is off, USER turned it off manually! #}
+        {# v4.1.1 ULTIMATE FIX: Helper synchronization issue resolved #}
+        {# Problem: helper_mode updated to 'cooling', then condition "last_mode != 'cooling'" prevented helper_last_change update #}
+        {# → Next run reads stale helper_last_change (320s old) → time_since_change huge → FALSE OVERRIDE! #}
+        {# Solution: Fixed cooling/heating sections to use helper_last_mode_at_start instead of last_mode in conditions #}
+        {# Now helper_last_change ALWAYS updates when entering cooling/heating mode #}
         {% set just_cleared_override = (trigger.id == 'override_cleared_by_user') %}
-        {% set expected_hvac_for_check = states(helper_expected_hvac) | default('unknown') %}
-        {% set automation_expects_off_now = (expected_hvac_for_check in ['off', 'Off', 'OFF']) %}
-        {% set automation_just_turned_off = (trigger.id == 'climate_state_change' and time_since_change < 2 and automation_expects_off_now) %}
-        {% set within_hardware_delay = ((time_since_change < 45 or automation_just_turned_off) and not just_cleared_override) %}
+
+        {# v4.2.0 MAJOR IMPROVEMENT: Context-based detection as primary method #}
+        {# Home Assistant tracks context.user_id for UI/app changes and context.parent_id for automation changes #}
+        {# This is MORE RELIABLE than timing-based detection because it's deterministic #}
+        {% set context = trigger.to_state.context if trigger.to_state is defined and trigger.to_state.context is defined else none %}
+        {% set context_user_id = context.user_id if context and context.user_id is defined else none %}
+        {% set context_parent_id = context.parent_id if context and context.parent_id is defined else none %}
+
+        {# Primary detection: If change has user_id, it's definitely from HA UI/app #}
+        {% set is_ha_ui_change = (context_user_id is not none and trigger.id == 'climate_state_change') %}
+
+        {# Secondary detection: If change has parent_id, it's from an automation (could be us or another) #}
+        {# If no parent_id and no user_id, it's from physical remote/external source - use timing fallback #}
+        {% set is_automation_change = (context_parent_id is not none) %}
+        {% set needs_timing_fallback = (not is_ha_ui_change and not is_automation_change and trigger.id == 'climate_state_change') %}
+
+        {# v4.2.0: Use configurable hardware_response_delay #}
+        {# Only needed for fallback path (physical remote changes) #}
+        {% set within_hardware_delay = ((time_since_change < hardware_response_delay) and not just_cleared_override and not is_ha_ui_change) %}
 
         {% if control_mode == 'Override' %}
           {# Don't detect if already in Override mode #}
@@ -4390,82 +4496,101 @@ action:
         {# v4.0.2 FIX: Exclude AC unavailable/disconnected state from manual override detection #}
         {# Problem: Living Room AC randomly disconnects → state='unavailable' → treated as 'off' → triggers false manual override #}
         {# Solution: Check any_ac_unavailable variable - if AC is disconnected, DON'T trigger manual override #}
-        {% set is_manual_off = (last_mode in ['cooling', 'heating', 'eco', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not target_achieved and not any_ac_unavailable) %}
-        {# v3.11.3 FIX: Don't detect manual_on if within AC hardware off-cycle delay (30-45 sec) #}
-        {# v3.12.3 FIX: Check all off variants (adaptive_off, stability_off, smart_off, etc.) #}
-        {# v3.13.2 FIX: Check expected_hvac - if automation expects cooling/heating, actual_state='on' is NOT manual #}
-        {# v3.16.2 FIX: Exclude adaptive/stability/smart_off when AC still turning off (slow hardware response) #}
-        {# Problem: Adaptive mode turns AC off → AC slow to respond → Automation checks again → Sees AC still on → False override! #}
-        {# Solution: If last_mode is an automation-triggered off mode, give extra time before assuming manual intervention #}
+
+        {# v4.2.0: Context-based detection with timing fallback #}
+        {# Priority 1: If HA UI change detected, it's definitely manual (no delay needed) #}
+        {# Priority 2: If automation change detected, it's NOT manual (skip detection) #}
+        {# Priority 3: Physical remote/unknown source - use timing fallback #}
+
+        {# Define mode lists for clarity and maintainability #}
+        {% set active_modes = ['cooling', 'heating', 'eco', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] %}
+        {% set off_modes = ['off', 'adaptive_off', 'stability_off', 'smart_off'] %}
+
+        {# Detect manual OFF #}
+        {% if is_automation_change %}
+          {% set is_manual_off = false %}
+        {% elif is_ha_ui_change %}
+          {# HA UI change - detect immediately without hardware delay #}
+          {% set is_manual_off = (last_mode in active_modes and actual_state == 'off' and not automation_expects_off and not target_achieved and not any_ac_unavailable) %}
+        {% else %}
+          {# Physical remote/unknown - use timing fallback #}
+          {% set is_manual_off = (last_mode in active_modes and actual_state == 'off' and not within_hardware_delay and not automation_expects_off and not target_achieved and not any_ac_unavailable) %}
+        {% endif %}
+
         {# v3.16.35 CRITICAL FIX: automation_turning_off should NOT block is_manual_on detection #}
-        {# The 60s grace period was added to prevent false "AC still on" detection when automation turns off AC #}
-        {# But it was incorrectly blocking "user turned AC on" detection within that same 60s window #}
-        {# Result: User tries to turn AC on → Blocked for 60s → Automation immediately turns it back off #}
-        {# Fix: Remove automation_turning_off from is_manual_on check - only use within_hardware_delay (45s) #}
         {% set automation_expects_on = (has_valid_expectation and expected_hvac in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool', 'fan_only', 'Fan_only', 'FAN_ONLY']) %}
         {% set automation_turning_off = (last_mode in ['adaptive_off', 'stability_off', 'stability_fan_only', 'comfort_fan_only', 'smart_off'] and time_since_change < 60) %}
-        {% set is_manual_on = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on' and not within_hardware_delay and not automation_expects_on) %}
+
+        {# Detect manual ON #}
+        {% if is_automation_change %}
+          {% set is_manual_on = false %}
+        {% elif is_ha_ui_change %}
+          {# HA UI change - detect immediately without hardware delay #}
+          {% set is_manual_on = (last_mode in off_modes and actual_state == 'on' and not automation_expects_on) %}
+        {% else %}
+          {# Physical remote/unknown - use timing fallback #}
+          {% set is_manual_on = (last_mode in off_modes and actual_state == 'on' and not within_hardware_delay and not automation_expects_on) %}
+        {% endif %}
 
         {# v3.9.35 FIX: Only check temp/fan/swing/HVAC changes when AC should be OFF
            When automation is actively controlling AC (last_mode != 'off'), don't compare expected values
            because automation constantly changes them (escalation, de-escalation, etc.) #}
         {# v3.12.3 FIX: Check all off variants for detailed change detection #}
-        {% set check_detailed_changes = (last_mode in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_state == 'on') %}
+        {% set check_detailed_changes = (last_mode in off_modes and actual_state == 'on') %}
 
-        {# Detect temperature changes - only when AC should be off but is on #}
-        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
+        {# v4.2.0 FIX: Check ALL climate entities, not just climate_list[0] #}
+        {# Problem: Multi-AC setups - manual change to AC #2 wasn't detected #}
+        {# Solution: Check each entity and detect if ANY differs from expected #}
         {% set expected_temp = states(helper_expected_temp) | float(0) %}
-        {% set actual_temp = state_attr(climate_list[0], 'temperature') | float(0) %}
-        {% set is_temp_manual = (
-          check_detailed_changes and
-          not within_hardware_delay and
-          expected_temp > 0 and
-          actual_temp > 0 and
-          (actual_temp - expected_temp) | abs > 0.5
-        ) %}
-
-        {# Detect fan mode changes - only when AC should be off but is on #}
-        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
-        {# v3.16.17 FIX: Convert to string before comparison (handles integer fan modes from BRP069) #}
         {% set expected_fan = states(helper_expected_fan) | default('unknown') %}
-        {% set actual_fan = state_attr(climate_list[0], 'fan_mode') | default('unknown') %}
-        {% set is_fan_manual = (
-          check_detailed_changes and
-          not within_hardware_delay and
-          expected_fan not in ['unknown', 'unavailable', '', 'none'] and
-          actual_fan not in ['unknown', 'unavailable', '', 'none'] and
-          expected_fan | string | lower != actual_fan | string | lower
-        ) %}
-
-        {# Detect swing mode changes - only when AC should be off but is on #}
-        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
         {% set expected_swing = states(helper_expected_swing) | default('unknown') %}
-        {% set actual_swing = state_attr(climate_list[0], 'swing_mode') | default('unknown') %}
-        {% set is_swing_manual = (
-          check_detailed_changes and
-          not within_hardware_delay and
-          expected_swing not in ['unknown', 'unavailable', '', 'none'] and
-          actual_swing not in ['unknown', 'unavailable', '', 'none'] and
-          expected_swing | lower != actual_swing | lower
-        ) %}
+        {% set expected_hvac_check = states(helper_expected_hvac) | default('unknown') %}
+        {% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify', 'off': 'off'} %}
 
-        {# Detect HVAC mode changes - only when AC should be off but is on #}
-        {# v3.13.18 FIX: Add hardware delay protection to ALL detailed checks #}
-        {% set expected_hvac = states(helper_expected_hvac) | default('unknown') %}
-        {% set actual_hvac = states(climate_list[0]) | default('unknown') %}
-        {% set hvac_map = {'cool': 'cooling', 'heat': 'heating', 'heat_cool': 'auto', 'fan_only': 'fan', 'dry': 'dehumidify'} %}
-        {% set is_hvac_manual = (
-          check_detailed_changes and
-          not within_hardware_delay and
-          expected_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
-          actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and
-          hvac_map.get(expected_hvac, expected_hvac) != hvac_map.get(actual_hvac, actual_hvac)
-        ) %}
+        {# Check all entities for manual changes - skip if automation change detected #}
+        {% set ns = namespace(temp_manual=false, fan_manual=false, swing_manual=false, hvac_manual=false) %}
+        {% if not is_automation_change %}
+          {% for entity in climate_list %}
+            {% set actual_temp = state_attr(entity, 'temperature') | float(0) %}
+            {% set actual_fan = state_attr(entity, 'fan_mode') | default('unknown') %}
+            {% set actual_swing = state_attr(entity, 'swing_mode') | default('unknown') %}
+            {% set actual_hvac = states(entity) | default('unknown') %}
 
-        {# v3.11.0: Simple detection - no grace periods! #}
+            {# v4.2.0: For HA UI changes, detect immediately; for physical remote, use timing fallback #}
+            {% set skip_timing = is_ha_ui_change %}
+
+            {# Detect temperature changes - only when AC should be off but is on #}
+            {% if check_detailed_changes and (skip_timing or not within_hardware_delay) and expected_temp > 0 and actual_temp > 0 and (actual_temp - expected_temp) | abs > 0.5 %}
+              {% set ns.temp_manual = true %}
+            {% endif %}
+
+            {# Detect fan mode changes #}
+            {% if check_detailed_changes and (skip_timing or not within_hardware_delay) and expected_fan not in ['unknown', 'unavailable', '', 'none'] and actual_fan not in ['unknown', 'unavailable', '', 'none'] and expected_fan | string | lower != actual_fan | string | lower %}
+              {% set ns.fan_manual = true %}
+            {% endif %}
+
+            {# Detect swing mode changes #}
+            {% if check_detailed_changes and (skip_timing or not within_hardware_delay) and expected_swing not in ['unknown', 'unavailable', '', 'none'] and actual_swing not in ['unknown', 'unavailable', '', 'none'] and expected_swing | lower != actual_swing | lower %}
+              {% set ns.swing_manual = true %}
+            {% endif %}
+
+            {# Detect HVAC mode changes #}
+            {% if check_detailed_changes and (skip_timing or not within_hardware_delay) and expected_hvac_check not in ['unknown', 'unavailable', '', 'none', 'off'] and actual_hvac not in ['unknown', 'unavailable', '', 'none', 'off'] and hvac_map.get(expected_hvac_check, expected_hvac_check) != hvac_map.get(actual_hvac, actual_hvac) %}
+              {% set ns.hvac_manual = true %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+
+        {% set is_temp_manual = ns.temp_manual %}
+        {% set is_fan_manual = ns.fan_manual %}
+        {% set is_swing_manual = ns.swing_manual %}
+        {% set is_hvac_manual = ns.hvac_manual %}
+
+        {# v4.2.0: Combine all detection methods #}
           {% set result = is_manual_off or is_manual_on or is_temp_manual or is_fan_manual or is_swing_manual or is_hvac_manual %}
         {% endif %}
         {{ result }}
+        {% endif %}
 
       # v3.11.0: Override is now a control mode, no separate flag needed
 
@@ -4526,6 +4651,7 @@ action:
           level: warning
 
   # v3.12.5 DEBUG: Detailed manual override detection trace
+  # v4.2.0: Added context-based detection logging
   - if:
       - condition: template
         value_template: "{{ debug_enabled }}"
@@ -4541,33 +4667,19 @@ action:
                 • Last Mode at Start: {{ helper_last_mode_at_start }}
                 • Actual AC State: {{ actual_ac_state }}
 
-            ⏱️ Timing:
-                • Time Since Change: {{ (as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) not in ['unknown', 'unavailable', ''] else 999 }} seconds
-                • Within Hardware Delay: {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false }}
+            ⏱️ Timing Detection:
+                • Time Since Change: {{ time_since_change | round(1) }} seconds
+                • Hardware Response Delay: {{ hardware_response_delay }} seconds
 
-            🌡️ Temperature Target Status (v3.16.34):
+            🌡️ Temperature Target Status:
                 • Current Temp: {{ current_temp }}°C
                 • Target Temp: {{ target_temp }}°C
                 • Overshoot: {{ target_overshoot }}°C
-                • Cooling Target ({{ target_temp - target_overshoot }}°C): {{ 'ACHIEVED ✅' if (helper_last_mode_at_start == 'cooling' and current_temp <= (target_temp - target_overshoot)) else 'Not reached' }}
-                • Heating Target ({{ target_temp + target_overshoot }}°C): {{ 'ACHIEVED ✅' if (helper_last_mode_at_start == 'heating' and current_temp >= (target_temp + target_overshoot)) else 'Not reached' }}
-
-            🎯 is_manual_on Detailed Breakdown:
-                • last_mode in ['off','adaptive_off','stability_off','smart_off']: {{ helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] }}
-                • actual_state == 'on': {{ actual_ac_state == 'on' }}
-                • not within_hardware_delay: {{ not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false) }}
-                • expected_hvac value: {{ states(helper_expected_hvac) | default('NONE') }}
-                • automation_expects_on: {{ (states(helper_expected_hvac) | default('unknown') not in ['unknown', 'unavailable', '', 'none'] and states(helper_expected_hvac) in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool']) }}
-                • not automation_expects_on: {{ not (states(helper_expected_hvac) | default('unknown') not in ['unknown', 'unavailable', '', 'none'] and states(helper_expected_hvac) in ['cool', 'Cool', 'heat', 'Heat', 'auto', 'Auto', 'heat_cool', 'Heat/Cool']) }}
-
-            🔌 AC Availability Check (v4.0.2):
-                • any_ac_unavailable: {{ any_ac_unavailable }}
-                • AC entity states: {% for entity in climate_list %}{{ entity }}={{ states(entity) }}{% if not loop.last %}, {% endif %}{% endfor %}
 
             🎯 Detection Results:
-                • is_manual_off: {{ (helper_last_mode_at_start in ['cooling', 'heating', 'eco', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] and actual_ac_state == 'off' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false) and not any_ac_unavailable) }}
-                • is_manual_on: {{ (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45 if states(helper_change) not in ['unknown', 'unavailable', ''] else false)) }}
                 • manual_change_detected: {{ manual_change_detected }}
+                • Override enabled: {{ enable_manual_override_detection }}
+                • any_ac_unavailable: {{ any_ac_unavailable }}
           level: warning
 
   # v3.12.5 DEBUG: Log should_activate value
@@ -4663,9 +4775,10 @@ action:
             target:
               entity_id: "{{ presence_detected_helper }}"
             data:
-              # v4.0.3 FIX: Use sentinel value (Unix epoch) to clearly mark "no presence history"
-              # This prevents stale timestamps from bypassing confirmation delay on re-entry
-              datetime: "1970-01-01 00:00:00"
+              # v4.0.4 FIX: Set to NOW when presence lost (allows grace period to work)
+              # Grace period counts minutes_since_presence from this timestamp
+              # Sentinel value set later if user stays gone beyond threshold
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
             continue_on_error: true
 
   # LEGACY FALLBACK: For automations created before v3.16.0 without presence_validation_helper
@@ -4801,7 +4914,7 @@ action:
       - service: system_log.write
         data:
           message: >
-            {% set within_hw_delay = ((as_timestamp(now()) - as_timestamp(states(helper_change))) < 45) if states(helper_change) not in ['unknown', 'unavailable', ''] else false %}
+            {% set within_hw_delay = ((as_timestamp(now()) - as_timestamp(states(helper_change))) < hardware_response_delay) if states(helper_change) not in ['unknown', 'unavailable', ''] else false %}
             {% set is_manual_off = (helper_last_mode_at_start in ['cooling', 'heating', 'eco', 'bed_comfort_eco', 'comfort_fan_only', 'stability_fan_only'] and actual_ac_state == 'off' and not within_hw_delay) %}
             {% set is_manual_on = (helper_last_mode_at_start in ['off', 'adaptive_off', 'stability_off', 'smart_off'] and actual_ac_state == 'on' and not within_hw_delay) %}
             {% set expected_temp = states(helper_expected_temp) | float(0) %}
@@ -4838,7 +4951,7 @@ action:
                     • Actual Swing: {{ state_attr(climate_list[0], 'swing_mode') | default('unknown') if climate_list | length > 0 else 'unknown' }}
             {% endif %}
 
-            Time Since Last Change: {{ time_since_change | round(1) }}s (outside {{ 45 if time_since_change >= 45 else time_since_change }}s hardware delay)
+            Time Since Last Change: {{ time_since_change | round(1) }}s (outside {{ hardware_response_delay }}s hardware delay)
             Control Mode: {{ control_mode }} → Override Mode
             Override Duration: {{ adaptive_override_timeout }}h (adaptive based on time of day)
 
@@ -6028,17 +6141,22 @@ action:
               prev_expected_fan: "{{ states(helper_expected_fan) if helper_expected_fan not in [none, '', 'unavailable', 'unknown'] else '' }}"
               prev_expected_temp: "{{ states(helper_expected_temp) | float(0) if helper_expected_temp not in [none, '', 'unavailable', 'unknown'] else 0 }}"
 
+              # v4.2.0: Also get actual AC state to catch failed service calls
+              actual_ac_fan: "{{ state_attr(climate_list[0], 'fan_mode') | default('') if climate_list | length > 0 else '' }}"
+              actual_ac_temp: "{{ state_attr(climate_list[0], 'temperature') | float(0) if climate_list | length > 0 else 0 }}"
+              actual_ac_hvac: "{{ states(climate_list[0]) if climate_list | length > 0 else '' }}"
+
               # Detect if this is a mode transition (OFF → COOLING or other mode → COOLING)
               is_mode_transition: "{{ last_mode != 'cooling' }}"
 
-              # Detect if escalation/fan has changed
-              has_fan_changed: "{{ selected_fan_mode != prev_expected_fan }}"
+              # Detect if escalation/fan has changed (check both expected AND actual)
+              has_fan_changed: "{{ selected_fan_mode != prev_expected_fan or (selected_fan_mode | string | lower != actual_ac_fan | string | lower) }}"
 
-              # Detect if HVAC mode changed
-              has_hvac_changed: "{{ selected_hvac_mode != prev_expected_hvac }}"
+              # Detect if HVAC mode changed (check both expected AND actual)
+              has_hvac_changed: "{{ selected_hvac_mode != prev_expected_hvac or (selected_hvac_mode | string | lower != actual_ac_hvac | string | lower) }}"
 
-              # Detect if target temp changed (account for rounding)
-              has_temp_changed: "{{ (adjusted_target - prev_expected_temp) | abs > 0.1 }}"
+              # Detect if target temp changed (check both expected AND actual)
+              has_temp_changed: "{{ (adjusted_target - prev_expected_temp) | abs > 0.1 or (adjusted_target - actual_ac_temp) | abs > 0.1 }}"
 
               # Overall change detection
               needs_service_call: "{{ is_mode_transition or has_fan_changed or has_hvac_changed or has_temp_changed }}"
@@ -6051,11 +6169,11 @@ action:
               message: >
                 🔍 {{ room_name | upper }} STATE CHANGE DETECTION:
 
-                📊 Current vs Previous:
+                📊 Expected vs Actual AC State:
+                    • Fan: want={{ selected_fan_mode }}, expected={{ prev_expected_fan }}, actual={{ actual_ac_fan }} (changed: {{ has_fan_changed }})
+                    • HVAC: want={{ selected_hvac_mode }}, expected={{ prev_expected_hvac }}, actual={{ actual_ac_hvac }} (changed: {{ has_hvac_changed }})
+                    • Temp: want={{ adjusted_target }}°C, expected={{ prev_expected_temp }}°C, actual={{ actual_ac_temp }}°C (changed: {{ has_temp_changed }})
                     • Mode transition: {{ is_mode_transition }} ({{ last_mode }} → cooling)
-                    • Fan: {{ selected_fan_mode }} vs {{ prev_expected_fan }} (changed: {{ has_fan_changed }})
-                    • HVAC: {{ selected_hvac_mode }} vs {{ prev_expected_hvac }} (changed: {{ has_hvac_changed }})
-                    • Temp: {{ adjusted_target }}°C vs {{ prev_expected_temp }}°C (changed: {{ has_temp_changed }})
 
                 ✅ Needs service call: {{ needs_service_call }}
               level: warning
@@ -6072,73 +6190,10 @@ action:
                 data:
                   value: "cooling"
 
-          # ONLY send climate service calls if something has changed
-          - if:
-              - condition: template
-                value_template: "{{ needs_service_call }}"
-            then:
-              - repeat:
-                  for_each: "{{ climate_list }}"
-                  sequence:
-                    - variables:
-                        current_entity: "{{ repeat.item }}"
-
-                    - service: climate.set_temperature
-                      target:
-                        entity_id: "{{ current_entity }}"
-                      data:
-                        temperature: "{{ adjusted_target }}"
-                        hvac_mode: "{{ selected_hvac_mode }}"
-
-                    - service: climate.set_fan_mode
-                      target:
-                        entity_id: "{{ current_entity }}"
-                      data:
-                        fan_mode: "{{ selected_fan_mode }}"
-
-                    - if:
-                        - condition: template
-                          value_template: "{{ selected_swing_mode != 'none' }}"
-                      then:
-                        - service: climate.set_swing_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            swing_mode: "{{ selected_swing_mode }}"
-
-          # Update remaining helper entities
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and last_mode != 'cooling' }}"
-            then:
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_change }}"
-                data:
-                  datetime: "{{ now() }}"
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_mode_start_time not in [none, '', 'unavailable', 'unknown'] and last_mode != 'cooling' }}"
-            then:
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_mode_start_time }}"
-                data:
-                  datetime: "{{ now() }}"
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] and last_mode != 'cooling' }}"
-            then:
-              - service: input_number.set_value
-                target:
-                  entity_id: "{{ helper_temp_history }}"
-                data:
-                  value: "{{ current_temp }}"
-
-          # Update expected state helpers for change detection
+          # v4.1.2 CRITICAL FIX: Update expected state helpers BEFORE climate service calls
+          # Problem: Climate state change triggers new automation run BEFORE expected helpers are updated
+          # → New run sees stale helper_expected_hvac='off' → automation_expects_on=false → FALSE OVERRIDE!
+          # Solution: Update expected helpers first so any triggered automation run sees correct values
           - if:
               - condition: template
                 value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -6165,12 +6220,123 @@ action:
               - condition: template
                 value_template: "{{ helper_expected_temp not in [none, '', 'unavailable', 'unknown'] }}"
             then:
-              - service: input_text.set_value
+              # v4.2.0 FIX: Use input_number.set_value (helper_expected_temp is input_number, not input_text)
+              - service: input_number.set_value
                 target:
                   entity_id: "{{ helper_expected_temp }}"
                 data:
                   value: "{{ adjusted_target }}"
                 continue_on_error: true
+
+          # ONLY send climate service calls if something has changed
+          - if:
+              - condition: template
+                value_template: "{{ needs_service_call }}"
+            then:
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - variables:
+                        current_entity: "{{ repeat.item }}"
+
+                    # v4.2.1: 200ms propagation delay before temperature service call
+                    - delay:
+                        milliseconds: 200
+
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        temperature: "{{ adjusted_target }}"
+                        hvac_mode: "{{ selected_hvac_mode }}"
+
+                    # v4.2.1: Verify temperature was set correctly, retry if not
+                    - delay:
+                        milliseconds: 500
+                    - if:
+                        - condition: template
+                          value_template: "{{ state_attr(current_entity, 'temperature') | float(0) != adjusted_target | float(0) }}"
+                      then:
+                        - service: climate.set_temperature
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            temperature: "{{ adjusted_target }}"
+                            hvac_mode: "{{ selected_hvac_mode }}"
+                          continue_on_error: true
+
+                    # v4.2.1: 200ms propagation delay before fan service call
+                    - delay:
+                        milliseconds: 200
+
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode }}"
+
+                    # v4.2.1: Verify fan mode was set correctly, retry if not
+                    - delay:
+                        milliseconds: 500
+                    - if:
+                        - condition: template
+                          value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                      then:
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ selected_fan_mode }}"
+                          continue_on_error: true
+
+                    - if:
+                        - condition: template
+                          value_template: "{{ selected_swing_mode != 'none' }}"
+                      then:
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: "{{ selected_swing_mode }}"
+
+          # Update remaining helper entities
+          # v4.1.1 FIX: Use helper_last_mode_at_start instead of last_mode
+          # Problem: helper_mode already updated to 'cooling' above, so last_mode = 'cooling'
+          # → Condition "last_mode != 'cooling'" = FALSE → helper_last_change NOT updated!
+          # → Next automation run sees stale helper_last_change → FALSE OVERRIDE!
+          # Solution: Check against the ORIGINAL last_mode from automation start
+
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_change }}"
+                data:
+                  datetime: "{{ now() }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode_start_time not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_mode_start_time }}"
+                data:
+                  datetime: "{{ now() }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'cooling' }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_temp_history }}"
+                data:
+                  value: "{{ current_temp }}"
+
+          # Expected state helpers already updated BEFORE climate service calls (v4.1.2 fix)
 
       # =====================================
       # UNIFIED HEATING MODE (v4.0.0)
@@ -6326,17 +6492,22 @@ action:
               prev_expected_fan: "{{ states(helper_expected_fan) if helper_expected_fan not in [none, '', 'unavailable', 'unknown'] else '' }}"
               prev_expected_temp: "{{ states(helper_expected_temp) | float(0) if helper_expected_temp not in [none, '', 'unavailable', 'unknown'] else 0 }}"
 
+              # v4.2.0: Also get actual AC state to catch failed service calls
+              actual_ac_fan: "{{ state_attr(climate_list[0], 'fan_mode') | default('') if climate_list | length > 0 else '' }}"
+              actual_ac_temp: "{{ state_attr(climate_list[0], 'temperature') | float(0) if climate_list | length > 0 else 0 }}"
+              actual_ac_hvac: "{{ states(climate_list[0]) if climate_list | length > 0 else '' }}"
+
               # Detect if this is a mode transition (OFF → HEATING or other mode → HEATING)
               is_mode_transition: "{{ last_mode != 'heating' }}"
 
-              # Detect if escalation/fan has changed
-              has_fan_changed: "{{ selected_fan_mode != prev_expected_fan }}"
+              # Detect if escalation/fan has changed (check both expected AND actual)
+              has_fan_changed: "{{ selected_fan_mode != prev_expected_fan or (selected_fan_mode | string | lower != actual_ac_fan | string | lower) }}"
 
-              # Detect if HVAC mode changed
-              has_hvac_changed: "{{ selected_hvac_mode != prev_expected_hvac }}"
+              # Detect if HVAC mode changed (check both expected AND actual)
+              has_hvac_changed: "{{ selected_hvac_mode != prev_expected_hvac or (selected_hvac_mode | string | lower != actual_ac_hvac | string | lower) }}"
 
-              # Detect if target temp changed (account for rounding)
-              has_temp_changed: "{{ (adjusted_target - prev_expected_temp) | abs > 0.1 }}"
+              # Detect if target temp changed (check both expected AND actual)
+              has_temp_changed: "{{ (adjusted_target - prev_expected_temp) | abs > 0.1 or (adjusted_target - actual_ac_temp) | abs > 0.1 }}"
 
               # Overall change detection
               needs_service_call: "{{ is_mode_transition or has_fan_changed or has_hvac_changed or has_temp_changed }}"
@@ -6349,11 +6520,11 @@ action:
               message: >
                 🔍 {{ room_name | upper }} STATE CHANGE DETECTION:
 
-                📊 Current vs Previous:
+                📊 Expected vs Actual AC State:
+                    • Fan: want={{ selected_fan_mode }}, expected={{ prev_expected_fan }}, actual={{ actual_ac_fan }} (changed: {{ has_fan_changed }})
+                    • HVAC: want={{ selected_hvac_mode }}, expected={{ prev_expected_hvac }}, actual={{ actual_ac_hvac }} (changed: {{ has_hvac_changed }})
+                    • Temp: want={{ adjusted_target }}°C, expected={{ prev_expected_temp }}°C, actual={{ actual_ac_temp }}°C (changed: {{ has_temp_changed }})
                     • Mode transition: {{ is_mode_transition }} ({{ last_mode }} → heating)
-                    • Fan: {{ selected_fan_mode }} vs {{ prev_expected_fan }} (changed: {{ has_fan_changed }})
-                    • HVAC: {{ selected_hvac_mode }} vs {{ prev_expected_hvac }} (changed: {{ has_hvac_changed }})
-                    • Temp: {{ adjusted_target }}°C vs {{ prev_expected_temp }}°C (changed: {{ has_temp_changed }})
 
                 ✅ Needs service call: {{ needs_service_call }}
               level: warning
@@ -6370,73 +6541,10 @@ action:
                 data:
                   value: "heating"
 
-          # ONLY send climate service calls if something has changed
-          - if:
-              - condition: template
-                value_template: "{{ needs_service_call }}"
-            then:
-              - repeat:
-                  for_each: "{{ climate_list }}"
-                  sequence:
-                    - variables:
-                        current_entity: "{{ repeat.item }}"
-
-                    - service: climate.set_temperature
-                      target:
-                        entity_id: "{{ current_entity }}"
-                      data:
-                        temperature: "{{ adjusted_target }}"
-                        hvac_mode: "{{ selected_hvac_mode }}"
-
-                    - service: climate.set_fan_mode
-                      target:
-                        entity_id: "{{ current_entity }}"
-                      data:
-                        fan_mode: "{{ selected_fan_mode }}"
-
-                    - if:
-                        - condition: template
-                          value_template: "{{ selected_swing_mode != 'none' }}"
-                      then:
-                        - service: climate.set_swing_mode
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            swing_mode: "{{ selected_swing_mode }}"
-
-          # Update remaining helper entities
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and last_mode != 'heating' }}"
-            then:
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_change }}"
-                data:
-                  datetime: "{{ now() }}"
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_mode_start_time not in [none, '', 'unavailable', 'unknown'] and last_mode != 'heating' }}"
-            then:
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_mode_start_time }}"
-                data:
-                  datetime: "{{ now() }}"
-
-          - if:
-              - condition: template
-                value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] and last_mode != 'heating' }}"
-            then:
-              - service: input_number.set_value
-                target:
-                  entity_id: "{{ helper_temp_history }}"
-                data:
-                  value: "{{ current_temp }}"
-
-          # Update expected state helpers for change detection
+          # v4.1.2 CRITICAL FIX: Update expected state helpers BEFORE climate service calls
+          # Problem: Climate state change triggers new automation run BEFORE expected helpers are updated
+          # → New run sees stale helper_expected_hvac='off' → automation_expects_on=false → FALSE OVERRIDE!
+          # Solution: Update expected helpers first so any triggered automation run sees correct values
           - if:
               - condition: template
                 value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -6463,12 +6571,119 @@ action:
               - condition: template
                 value_template: "{{ helper_expected_temp not in [none, '', 'unavailable', 'unknown'] }}"
             then:
-              - service: input_text.set_value
+              # v4.2.0 FIX: Use input_number.set_value (helper_expected_temp is input_number, not input_text)
+              - service: input_number.set_value
                 target:
                   entity_id: "{{ helper_expected_temp }}"
                 data:
                   value: "{{ adjusted_target }}"
                 continue_on_error: true
+
+          # ONLY send climate service calls if something has changed
+          - if:
+              - condition: template
+                value_template: "{{ needs_service_call }}"
+            then:
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - variables:
+                        current_entity: "{{ repeat.item }}"
+
+                    # v4.2.1: 200ms propagation delay before temperature service call
+                    - delay:
+                        milliseconds: 200
+
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        temperature: "{{ adjusted_target }}"
+                        hvac_mode: "{{ selected_hvac_mode }}"
+
+                    # v4.2.1: Verify temperature was set correctly, retry if not
+                    - delay:
+                        milliseconds: 500
+                    - if:
+                        - condition: template
+                          value_template: "{{ state_attr(current_entity, 'temperature') | float(0) != adjusted_target | float(0) }}"
+                      then:
+                        - service: climate.set_temperature
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            temperature: "{{ adjusted_target }}"
+                            hvac_mode: "{{ selected_hvac_mode }}"
+                          continue_on_error: true
+
+                    # v4.2.1: 200ms propagation delay before fan service call
+                    - delay:
+                        milliseconds: 200
+
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode }}"
+
+                    # v4.2.1: Verify fan mode was set correctly, retry if not
+                    - delay:
+                        milliseconds: 500
+                    - if:
+                        - condition: template
+                          value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                      then:
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ selected_fan_mode }}"
+                          continue_on_error: true
+
+                    - if:
+                        - condition: template
+                          value_template: "{{ selected_swing_mode != 'none' }}"
+                      then:
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: "{{ selected_swing_mode }}"
+
+          # Update remaining helper entities
+
+          # v4.1.1 FIX: Use helper_last_mode_at_start instead of last_mode (same fix as cooling section)
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_change }}"
+                data:
+                  datetime: "{{ now() }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode_start_time not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating' }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_mode_start_time }}"
+                data:
+                  datetime: "{{ now() }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] and helper_last_mode_at_start != 'heating' }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_temp_history }}"
+                data:
+                  value: "{{ current_temp }}"
+
+          # Expected state helpers already updated BEFORE climate service calls (v4.1.2 fix)
 
       # CRITICAL: Clear stability mode when temperature exits comfort zone
       # This MUST be the FIRST condition to prevent getting stuck
@@ -6563,13 +6778,40 @@ action:
                                 off
                               {% endif %}
 
-                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        # v4.2.1 FIX: Update ALL helpers BEFORE service calls to prevent manual override false positives
+                        # The 500ms verification delay can trigger new automation runs that read stale helpers
+
+                        # 1. Update helper_change FIRST (timestamps the automation action)
+                        - if:
+                            - condition: template
+                              value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                          then:
+                            - service: input_datetime.set_datetime
+                              target:
+                                entity_id: "{{ helper_change }}"
+                              data:
+                                datetime: "{{ now() }}"
+                              continue_on_error: true
+
+                        # 2. Update helper_last_mode BEFORE service calls
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_mode }}"
+                          data:
+                            value: "cooling"
+                          continue_on_error: true
+
+                        # 3. Capture expected values for enhanced manual override detection (v3.3.0)
                         - service: input_text.set_value
                           target:
                             entity_id: "{{ helper_expected_hvac }}"
                           data:
                             value: "{{ selected_hvac_mode }}"
                           continue_on_error: true
+
+                        # 4. Delay for helper propagation before service calls
+                        - delay:
+                            milliseconds: 200
 
                         # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                         - condition: template
@@ -6587,6 +6829,20 @@ action:
                               {% set available = state_attr(current_entity, 'hvac_modes') | list %}
                               {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
 
+                        # v4.2.1: Verify HVAC mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(current_entity) | lower != selected_hvac_mode | lower }}"
+                          then:
+                            - service: climate.set_hvac_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                hvac_mode: "{{ selected_hvac_mode }}"
+                              continue_on_error: true
+
                         # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
                         - if:
                             - condition: template
@@ -6598,6 +6854,7 @@ action:
                                   🔍 SMART COOL MODE: {{ repeat.item }}
                                   • Available: {{ available_modes | join(', ') }}
                                   • Selected: {{ selected_hvac_mode }}
+                                  • Actual: {{ states(current_entity) }}
                                   • Reason: Best cooling mode for this AC unit
                                 level: debug
 
@@ -6642,17 +6899,32 @@ action:
                             value: "{{ selected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: Delay for helper propagation before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ selected_fan_mode }}"
 
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "cooling"
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | lower != selected_fan_mode | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ selected_fan_mode }}"
+                              continue_on_error: true
+
+                  # v4.2.1: helper_last_mode already updated BEFORE service calls (line ~6722)
+                  # This ensures new automation runs from climate_state_change see correct mode
 
                   # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                   - condition: template
@@ -6706,13 +6978,39 @@ action:
                                 off
                               {% endif %}
 
-                        # Capture expected values for enhanced manual override detection (v3.3.0)
+                        # v4.2.1 FIX: Update ALL helpers BEFORE service calls to prevent manual override false positives
+
+                        # 1. Update helper_change FIRST (timestamps the automation action)
+                        - if:
+                            - condition: template
+                              value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                          then:
+                            - service: input_datetime.set_datetime
+                              target:
+                                entity_id: "{{ helper_change }}"
+                              data:
+                                datetime: "{{ now() }}"
+                              continue_on_error: true
+
+                        # 2. Update helper_last_mode BEFORE service calls
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_mode }}"
+                          data:
+                            value: "heating"
+                          continue_on_error: true
+
+                        # 3. Capture expected values for enhanced manual override detection (v3.3.0)
                         - service: input_text.set_value
                           target:
                             entity_id: "{{ helper_expected_hvac }}"
                           data:
                             value: "{{ selected_hvac_mode }}"
                           continue_on_error: true
+
+                        # 4. Delay for helper propagation before service calls
+                        - delay:
+                            milliseconds: 200
 
                         # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
                         - condition: template
@@ -6729,7 +7027,21 @@ action:
                             hvac_mode: >
                               {% set available = state_attr(current_entity, 'hvac_modes') | list %}
                               {{ selected_hvac_mode if selected_hvac_mode in available else (available[0] if available else 'off') }}
-                        
+
+                        # v4.2.1: Verify HVAC mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(current_entity) | lower != selected_hvac_mode | lower }}"
+                          then:
+                            - service: climate.set_hvac_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                hvac_mode: "{{ selected_hvac_mode }}"
+                              continue_on_error: true
+
                         # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
                         - if:
                             - condition: template
@@ -6741,6 +7053,7 @@ action:
                                   🔍 SMART HEAT MODE: {{ repeat.item }}
                                   • Available: {{ available_modes | join(', ') }}
                                   • Selected: {{ selected_hvac_mode }}
+                                  • Actual: {{ states(current_entity) }}
                                   • Reason: Best heating mode for this AC unit
                                 level: debug
 
@@ -6752,12 +7065,30 @@ action:
                       value: "{{ heating_target_temp }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ heating_target_temp }}"
-                  
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - if:
+                      - condition: template
+                        value_template: "{{ state_attr(climate_list[0], 'temperature') | float(0) != heating_target_temp | float(0) }}"
+                    then:
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: !input climate_entities
+                        data:
+                          temperature: "{{ heating_target_temp }}"
+                        continue_on_error: true
+
                   - repeat:
                       for_each: "{{ climate_list }}"
                       sequence:
@@ -6790,17 +7121,31 @@ action:
                             value: "{{ selected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: Delay for helper propagation before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ selected_fan_mode | trim }}"
-                  
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "heating"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | lower != selected_fan_mode | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ selected_fan_mode | trim }}"
+                              continue_on_error: true
+
+                  # v4.2.1: helper_last_mode already updated BEFORE service calls (line ~6922)
 
                   # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
                   - condition: template
@@ -6845,7 +7190,29 @@ action:
                 • Temperature: {{ current_temp }}°C needs adjustment
               level: warning
 
-          # Capture expected values for enhanced manual override detection (v3.3.0)
+          # v4.2.1 FIX: Update ALL helpers BEFORE service calls to prevent manual override false positives
+
+          # 1. Update helper_change FIRST (timestamps the automation action)
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_change }}"
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
+          # 2. Update helper_last_mode BEFORE service calls
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_mode }}"
+            data:
+              value: "pre_conditioning"
+            continue_on_error: true
+
+          # 3. Capture expected values for enhanced manual override detection (v3.3.0)
           # v3.9.48 FIX: Pre-conditioning now respects enable_heating/enable_cooling settings
           - service: input_text.set_value
             target:
@@ -6867,6 +7234,10 @@ action:
                 {% endif %}
             continue_on_error: true
 
+          # 4. Delay for helper propagation before service calls
+          - delay:
+              milliseconds: 200
+
           # v3.13.10 FIX: Turn on AC power if it's off (Daikin requires explicit pow=1)
           - repeat:
               for_each: "{{ climate_list }}"
@@ -6878,11 +7249,8 @@ action:
                     entity_id: "{{ repeat.item }}"
                   continue_on_error: true
 
-          - service: climate.set_hvac_mode
-            target:
-              entity_id: !input climate_entities
-            data:
-              hvac_mode: >
+          - variables:
+              precond_hvac_mode: >
                 {% if current_temp > comfort_max_temp and enable_cooling %}
                   cool
                 {% elif current_temp < comfort_min_temp and enable_heating %}
@@ -6897,6 +7265,29 @@ action:
                   off
                 {% endif %}
 
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input climate_entities
+            data:
+              hvac_mode: "{{ precond_hvac_mode }}"
+
+          # v4.2.1: Verify HVAC mode was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ states(repeat.item) | lower != precond_hvac_mode | trim | lower }}"
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        hvac_mode: "{{ precond_hvac_mode | trim }}"
+                      continue_on_error: true
+
           # Capture expected values for enhanced manual override detection (v3.3.0)
           - service: input_number.set_value
             target:
@@ -6905,11 +7296,32 @@ action:
               value: "{{ weather_adjusted_target }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before temperature service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ weather_adjusted_target }}"
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - weather_adjusted_target) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ weather_adjusted_target }}"
+                      continue_on_error: true
 
           - service: system_log.write
             data:
@@ -6949,15 +7361,36 @@ action:
               value: "{{ selected_fan_mode }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before fan service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_fan_mode
             target:
               entity_id: !input climate_entities
             data:
               fan_mode: "{{ selected_fan_mode | trim }}"
-          
+
+          # v4.2.1: Verify fan mode was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ state_attr(repeat.item, 'fan_mode') | lower != selected_fan_mode | trim | lower }}"
+                  then:
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode | trim }}"
+                      continue_on_error: true
+
           - condition: template
             value_template: "{{ enable_notifications }}"
-          
+
           - service: !input notification_service
             data:
               title: "Climate Pre-conditioning"
@@ -7098,6 +7531,20 @@ action:
                   data:
                     hvac_mode: "{{ selected_hvac_mode }}"
 
+                # v4.2.1: Verify HVAC mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ states(current_entity) | lower != selected_hvac_mode | trim | lower }}"
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode | trim }}"
+                      continue_on_error: true
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7106,6 +7553,7 @@ action:
                       🔍 SMART LOW COOL MODE: {{ repeat.item }}
                       • Available: {{ available_modes | join(', ') }}
                       • Selected: {{ selected_hvac_mode }}
+                      • Actual: {{ states(current_entity) }}
                       • Reason: Low cooling mode for gentle temperature control
                     level: debug
 
@@ -7117,12 +7565,30 @@ action:
               value: "{{ cooling_target_temp }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before temperature service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
             continue_on_error: true
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - if:
+              - condition: template
+                value_template: "{{ state_attr(climate_list[0], 'temperature') | float(0) != cooling_target_temp | float(0) }}"
+            then:
+              - service: climate.set_temperature
+                target:
+                  entity_id: !input climate_entities
+                data:
+                  temperature: "{{ cooling_target_temp }}"
+                continue_on_error: true
 
           # Use low fan speed for gentle cooling
           - repeat:
@@ -7174,12 +7640,30 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before fan service call
+                - delay:
+                    milliseconds: 200
+
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+
+                # v4.2.1: Verify fan mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                  then:
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+                      continue_on_error: true
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7189,9 +7673,10 @@ action:
                       🔍 SMART LOW FAN: {{ repeat.item }}
                       • Available: {{ available_fans | join(', ') }}
                       • Selected: {{ selected_fan_mode }}
+                      • Actual: {{ state_attr(current_entity, 'fan_mode') }}
                       • Reason: Low fan speed for gentle cooling
                     level: debug
-          
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -7326,6 +7811,20 @@ action:
                   data:
                     hvac_mode: "{{ selected_hvac_mode }}"
 
+                # v4.2.1: Verify HVAC mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ states(current_entity) | lower != selected_hvac_mode | trim | lower }}"
+                  then:
+                    - service: climate.set_hvac_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        hvac_mode: "{{ selected_hvac_mode | trim }}"
+                      continue_on_error: true
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -7334,6 +7833,7 @@ action:
                       🔍 SMART MEDIUM COOL MODE: {{ repeat.item }}
                       • Available: {{ available_modes | join(', ') }}
                       • Selected: {{ selected_hvac_mode }}
+                      • Actual: {{ states(current_entity) }}
                       • Reason: Medium cooling mode for balanced temperature control
                     level: debug
 
@@ -7345,12 +7845,33 @@ action:
               value: "{{ cooling_target_temp }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before temperature service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ cooling_target_temp }}"
             continue_on_error: true
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - cooling_target_temp) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ cooling_target_temp }}"
+                      continue_on_error: true
 
           # Use medium fan speed for balanced cooling
           - repeat:
@@ -7403,12 +7924,30 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before fan service call
+                - delay:
+                    milliseconds: 200
+
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+
+                # v4.2.1: Verify fan mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                  then:
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+                      continue_on_error: true
 
                 - condition: template
                   value_template: "{{ debug_enabled }}"
@@ -7419,9 +7958,10 @@ action:
                       • Desired: {{ desired_medium_fan }}
                       • Available: {{ available_fans | join(', ') }}
                       • Selected: {{ selected_fan_mode }}
+                      • Actual: {{ state_attr(current_entity, 'fan_mode') }}
                       • Reason: {{ 'Exact match' if desired_medium_fan in available_fans else 'Best equivalent for medium cooling' }}
                     level: debug
-          
+
           - service: input_text.set_value
             target:
               entity_id: !input helper_last_mode
@@ -7479,10 +8019,14 @@ action:
 
           # CRITICAL SAFETY: Check overshoot target reached if in continue mode
           # This prevents bed comfort from interrupting active cooling/heating to target
+          # v4.0.4 FIX: Also exclude fan_only modes to prevent overriding power-saving fan-only
           - condition: template
             value_template: >
               {% set in_continue_mode = (last_mode == 'cooling' or last_mode == 'heating') %}
-              {% if not in_continue_mode %}
+              {% set in_fan_only_mode = last_mode in ['stability_fan_only', 'comfort_fan_only'] %}
+              {% if in_fan_only_mode %}
+                false  {# Don't interrupt fan-only power saving modes #}
+              {% elif not in_continue_mode %}
                 true
               {% elif last_mode == 'cooling' %}
                 {{ current_temp <= (target_temp - target_overshoot) }}
@@ -7556,11 +8100,29 @@ action:
                                 {{ fans[0] if fans else 'Auto' }}
                               {% endif %}
 
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ repeat.item }}"
                           data:
                             fan_mode: "{{ quietest_fan }}"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(repeat.item, 'fan_mode') | string | lower != quietest_fan | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                fan_mode: "{{ quietest_fan }}"
+                              continue_on_error: true
 
                         # v3.16.14 FIX: Wrapped debug in if/then to not block helper updates
                         - if:
@@ -7569,7 +8131,7 @@ action:
                           then:
                             - service: system_log.write
                               data:
-                                message: "🛏️ {{ room_name | upper }}: Set {{ repeat.item }} fan to {{ quietest_fan }} (ultra-quiet)"
+                                message: "🛏️ {{ room_name | upper }}: Set {{ repeat.item }} fan to {{ quietest_fan }} (actual: {{ state_attr(repeat.item, 'fan_mode') }})"
                                 level: debug
 
               # ECO mode - Actively maintain temperature using external sensor
@@ -7640,11 +8202,29 @@ action:
                       value: "{{ adjusted_target }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ adjusted_target }}"
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - if:
+                      - condition: template
+                        value_template: "{{ state_attr(climate_list[0], 'temperature') | float(0) != adjusted_target | float(0) }}"
+                    then:
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: !input climate_entities
+                        data:
+                          temperature: "{{ adjusted_target }}"
+                        continue_on_error: true
 
                   - condition: template
                     value_template: "{{ debug_enabled }}"
@@ -7800,11 +8380,29 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ expected_fan_mode }}"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != expected_fan_mode | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ expected_fan_mode }}"
+                              continue_on_error: true
 
                   # Set swing mode with compatibility check for eco mode
                   - repeat:
@@ -7971,11 +8569,29 @@ action:
                       value: "{{ adjusted_target }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ adjusted_target }}"
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - if:
+                      - condition: template
+                        value_template: "{{ state_attr(climate_list[0], 'temperature') | float(0) != adjusted_target | float(0) }}"
+                    then:
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: !input climate_entities
+                        data:
+                          temperature: "{{ adjusted_target }}"
+                        continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -8030,11 +8646,29 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ expected_fan_mode }}"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != expected_fan_mode | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ expected_fan_mode }}"
+                              continue_on_error: true
 
                   # Set swing mode with compatibility check for eco mode
                   - repeat:
@@ -8160,6 +8794,21 @@ action:
                       entity_id: !input climate_entities
                     continue_on_error: true
 
+                  # v4.2.1: Verify AC was turned off correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                          then:
+                            - service: climate.turn_off
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              continue_on_error: true
+
               - conditions:
                   - condition: template
                     value_template: "{{ comfort_zone_action == 'fan_only' }}"
@@ -8284,11 +8933,29 @@ action:
                       - repeat:
                           for_each: "{{ climate_list }}"
                           sequence:
+                            # v4.2.1: 200ms propagation delay before fan service call
+                            - delay:
+                                milliseconds: 200
+
                             - service: climate.set_fan_mode
                               target:
                                 entity_id: "{{ repeat.item }}"
                               data:
                                 fan_mode: "{{ selected_fan_only_fan_mode }}"
+
+                            # v4.2.1: Verify fan mode was set correctly, retry if not
+                            - delay:
+                                milliseconds: 500
+                            - if:
+                                - condition: template
+                                  value_template: "{{ state_attr(repeat.item, 'fan_mode') | string | lower != selected_fan_only_fan_mode | string | trim | lower }}"
+                              then:
+                                - service: climate.set_fan_mode
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  data:
+                                    fan_mode: "{{ selected_fan_only_fan_mode }}"
+                                  continue_on_error: true
 
                       # Update expected fan helper
                       - if:
@@ -8337,9 +9004,28 @@ action:
 
                     else:
                       # Fallback: AC doesn't support fan_only - turn off instead
+                      # v4.2.1: 200ms propagation delay before turn_off
+                      - delay:
+                          milliseconds: 200
+
                       - service: climate.turn_off
                         target:
                           entity_id: !input climate_entities
+
+                      # v4.2.1: Verify AC was turned off correctly, retry if not
+                      - delay:
+                          milliseconds: 500
+                      - repeat:
+                          for_each: "{{ climate_list }}"
+                          sequence:
+                            - if:
+                                - condition: template
+                                  value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                              then:
+                                - service: climate.turn_off
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  continue_on_error: true
 
                       - if:
                           - condition: template
@@ -8401,6 +9087,21 @@ action:
                 target:
                   entity_id: !input climate_entities
                 continue_on_error: true
+
+              # v4.2.1: Verify AC was turned off correctly, retry if not
+              - delay:
+                  milliseconds: 500
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                      then:
+                        - service: climate.turn_off
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          continue_on_error: true
 
               # Update mode start time for off-time protection tracking (always update when going to OFF)
               - if:
@@ -8569,11 +9270,29 @@ action:
               - repeat:
                   for_each: "{{ climate_list }}"
                   sequence:
+                    # v4.2.1: 200ms propagation delay before fan service call
+                    - delay:
+                        milliseconds: 200
+
                     - service: climate.set_fan_mode
                       target:
                         entity_id: "{{ repeat.item }}"
                       data:
                         fan_mode: "{{ selected_fan_only_fan_mode }}"
+
+                    # v4.2.1: Verify fan mode was set correctly, retry if not
+                    - delay:
+                        milliseconds: 500
+                    - if:
+                        - condition: template
+                          value_template: "{{ state_attr(repeat.item, 'fan_mode') | string | lower != selected_fan_only_fan_mode | string | trim | lower }}"
+                      then:
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            fan_mode: "{{ selected_fan_only_fan_mode }}"
+                          continue_on_error: true
 
               # Update expected fan helper
               - if:
@@ -8622,9 +9341,28 @@ action:
 
             else:
               # Fallback: AC doesn't support fan_only - turn off instead
+              # v4.2.1: 200ms propagation delay before turn_off
+              - delay:
+                  milliseconds: 200
+
               - service: climate.turn_off
                 target:
                   entity_id: !input climate_entities
+
+              # v4.2.1: Verify AC was turned off correctly, retry if not
+              - delay:
+                  milliseconds: 500
+              - repeat:
+                  for_each: "{{ climate_list }}"
+                  sequence:
+                    - if:
+                        - condition: template
+                          value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                      then:
+                        - service: climate.turn_off
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          continue_on_error: true
 
               - if:
                   - condition: template
@@ -8714,12 +9452,44 @@ action:
                           data:
                             hvac_mode: "fan_only"
 
+                        # v4.2.1: Verify HVAC mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) | lower != 'fan_only' }}"
+                          then:
+                            - service: climate.set_hvac_mode
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                hvac_mode: "fan_only"
+                              continue_on_error: true
+
                         # Then set fan speed
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ repeat.item }}"
                           data:
                             fan_mode: "{{ selected_fan_only_fan_mode }}"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(repeat.item, 'fan_mode') | string | lower != selected_fan_only_fan_mode | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                fan_mode: "{{ selected_fan_only_fan_mode }}"
+                              continue_on_error: true
 
                   # Update expected fan helper
                   - if:
@@ -8818,24 +9588,37 @@ action:
                           value: "off"
                         continue_on_error: true
 
-                  # v3.13.17 FIX: Update helper_last_mode BEFORE turn_off to prevent false override
-                  # If presence sensors trigger between turn_off and helper update, override detection
-                  # will see old mode (cooling_low) + AC off = false manual override!
-                  - service: input_text.set_value
-                    target:
-                      entity_id: !input helper_last_mode
-                    data:
-                      value: "stability_off"
-
-                  # v3.19.25 FIX: Add delay to prevent false override detection (same as lines 12179, 12423)
-                  # Problem: stability_off is included in is_manual_on check (line 4489)
-                  # Solution: 200ms delay ensures helper update commits before AC state changes
+                  # v4.2.1: 200ms propagation delay before turn_off
                   - delay:
                       milliseconds: 200
 
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
+
+                  # v4.2.1: Verify AC was turned off correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                          then:
+                            - service: climate.turn_off
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              continue_on_error: true
+
+                  # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
+                  # Problem: stability_off is in is_manual_on check - if helper set BEFORE turn_off,
+                  # another trigger during turn_off sees stability_off+on → false positive!
+                  - service: input_text.set_value
+                    target:
+                      entity_id: !input helper_last_mode
+                    data:
+                      value: "stability_off"
 
                   - service: system_log.write
                     data:
@@ -8846,7 +9629,7 @@ action:
                         Reason: Temperature equilibrium reached - AC job complete
                         Stable at: {{ current_temp | round(1) }}°C for {{ time_in_current_mode | round(0) }} minutes
                       level: warning
-              
+
               - conditions:
                   - condition: template
                     value_template: "{{ stability_behavior == 'eco' }}"
@@ -8936,11 +9719,32 @@ action:
                       value: "{{ expected_temp }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ expected_temp }}"
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - expected_temp) | abs > 0.5 }}"
+                          then:
+                            - service: climate.set_temperature
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                temperature: "{{ expected_temp }}"
+                              continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -9107,11 +9911,29 @@ action:
                       - repeat:
                           for_each: "{{ climate_list }}"
                           sequence:
+                            # v4.2.1: 200ms propagation delay before fan service call
+                            - delay:
+                                milliseconds: 200
+
                             - service: climate.set_fan_mode
                               target:
                                 entity_id: "{{ repeat.item }}"
                               data:
                                 fan_mode: "{{ selected_fan_only_fan_mode }}"
+
+                            # v4.2.1: Verify fan mode was set correctly, retry if not
+                            - delay:
+                                milliseconds: 500
+                            - if:
+                                - condition: template
+                                  value_template: "{{ state_attr(repeat.item, 'fan_mode') | string | lower != selected_fan_only_fan_mode | string | trim | lower }}"
+                              then:
+                                - service: climate.set_fan_mode
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  data:
+                                    fan_mode: "{{ selected_fan_only_fan_mode }}"
+                                  continue_on_error: true
 
                       # Update expected fan helper
                       - if:
@@ -9137,9 +9959,28 @@ action:
 
                     else:
                       # Fallback: AC doesn't support fan_only - turn off instead
+                      # v4.2.1: 200ms propagation delay before turn_off
+                      - delay:
+                          milliseconds: 200
+
                       - service: climate.turn_off
                         target:
                           entity_id: !input climate_entities
+
+                      # v4.2.1: Verify AC was turned off correctly, retry if not
+                      - delay:
+                          milliseconds: 500
+                      - repeat:
+                          for_each: "{{ climate_list }}"
+                          sequence:
+                            - if:
+                                - condition: template
+                                  value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                              then:
+                                - service: climate.turn_off
+                                  target:
+                                    entity_id: "{{ repeat.item }}"
+                                  continue_on_error: true
 
                       - if:
                           - condition: template
@@ -9390,19 +10231,18 @@ action:
 
                       # v3.16.34 FIX: Turn off AC BEFORE updating helper_change
                       # This ensures the AC actually turns off even if automation re-triggers quickly
-                      - service: climate.turn_off
-                        target:
-                          entity_id: "{{ repeat.item }}"
-
-                      # v3.11.13 FIX: Update helper_change AFTER turn_off
-                      - condition: template
-                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
-                      - service: input_datetime.set_datetime
-                        target:
-                          entity_id: !input helper_last_change
-                        data:
-                          datetime: "{{ now() }}"
-                        continue_on_error: true
+                # v4.2.1 FIX: Update ALL helpers BEFORE turn_off to prevent false override detection
+                # v3.11.13 FIX: Update helper_change BEFORE turn_off
+                - if:
+                    - condition: template
+                      value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                  then:
+                    - service: input_datetime.set_datetime
+                      target:
+                        entity_id: !input helper_last_change
+                      data:
+                        datetime: "{{ now() }}"
+                      continue_on_error: true
 
                 # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
                 - if:
@@ -9416,6 +10256,31 @@ action:
                         value: "off"
                       continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before turn_off
+                - delay:
+                    milliseconds: 200
+
+                # Turn off all climate entities
+                - service: climate.turn_off
+                  target:
+                    entity_id: !input climate_entities
+
+                # v4.2.1: Verify AC was turned off correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - repeat:
+                    for_each: "{{ climate_list }}"
+                    sequence:
+                      - if:
+                          - condition: template
+                            value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                        then:
+                          - service: climate.turn_off
+                            target:
+                              entity_id: "{{ repeat.item }}"
+                            continue_on_error: true
+
+                # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
                 - service: input_text.set_value
                   target:
                     entity_id: "{{ helper_mode }}"
@@ -9517,12 +10382,28 @@ action:
                   data:
                     value: "adaptive_off"
 
+                # v4.2.1: 200ms propagation delay before turn_off
+                - delay:
+                    milliseconds: 200
+
+                - service: climate.turn_off
+                  target:
+                    entity_id: !input climate_entities
+
+                # v4.2.1: Verify AC was turned off correctly, retry if not
+                - delay:
+                    milliseconds: 500
                 - repeat:
                     for_each: "{{ climate_list }}"
                     sequence:
-                      - service: climate.turn_off
-                        target:
-                          entity_id: "{{ repeat.item }}"
+                      - if:
+                          - condition: template
+                            value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                        then:
+                          - service: climate.turn_off
+                            target:
+                              entity_id: "{{ repeat.item }}"
+                            continue_on_error: true
 
                 # Debug completion log
                 - condition: template
@@ -9657,10 +10538,29 @@ action:
                   value: "off"
                 continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before turn_off
+          - delay:
+              milliseconds: 200
+
           # Turn off AC when switching to Manual mode from automation-controlled state
           - service: climate.turn_off
             target:
               entity_id: !input climate_entities
+
+          # v4.2.1: Verify AC was turned off correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                  then:
+                    - service: climate.turn_off
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      continue_on_error: true
 
       # Smart Mode room absence (room empty but still home)
       - conditions:
@@ -9716,16 +10616,36 @@ action:
                           value: "off"
                         continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before turn_off
+                  - delay:
+                      milliseconds: 200
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
+
+                  # v4.2.1: Verify AC was turned off correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                          then:
+                            - service: climate.turn_off
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              continue_on_error: true
+
+                  # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
                   - service: input_text.set_value
                     target:
                       entity_id: "{{ helper_mode }}"
                     data:
                       value: "smart_off"
                     continue_on_error: true
-
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
 
               - conditions:
                   - condition: template
@@ -9811,11 +10731,29 @@ action:
                       value: "{{ expected_temp }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ expected_temp }}"
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - if:
+                      - condition: template
+                        value_template: "{{ state_attr(climate_list[0], 'temperature') | float(0) != expected_temp | float(0) }}"
+                    then:
+                      - service: climate.set_temperature
+                        target:
+                          entity_id: !input climate_entities
+                        data:
+                          temperature: "{{ expected_temp }}"
+                        continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -9870,11 +10808,29 @@ action:
                             value: "{{ expected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ expected_fan_mode }}"
+
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != expected_fan_mode | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ expected_fan_mode }}"
+                              continue_on_error: true
 
               - conditions:
                   - condition: template
@@ -9888,11 +10844,32 @@ action:
                       value: "{{ adjusted_target }}"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
                     data:
                       temperature: "{{ adjusted_target }}"
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - adjusted_target) | abs > 0.5 }}"
+                          then:
+                            - service: climate.set_temperature
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                temperature: "{{ adjusted_target }}"
+                              continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -9984,9 +10961,28 @@ action:
                       value: "off"
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before turn_off
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.turn_off
                     target:
                       entity_id: !input climate_entities
+
+                  # v4.2.1: Verify AC was turned off correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                          then:
+                            - service: climate.turn_off
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              continue_on_error: true
 
               - conditions:
                   - condition: template
@@ -10051,6 +11047,10 @@ action:
                         {% endif %}
                     continue_on_error: true
 
+                  # v4.2.1: 200ms propagation delay before temperature service call
+                  - delay:
+                      milliseconds: 200
+
                   - service: climate.set_temperature
                     target:
                       entity_id: !input climate_entities
@@ -10061,6 +11061,30 @@ action:
                           {% else %}
                           {{ heating_target_temp - eco_mode_setpoint_offset }}
                         {% endif %}
+
+                  # v4.2.1: Verify temperature was set correctly, retry if not
+                  - delay:
+                      milliseconds: 500
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            eco_target: >
+                              {% if current_temp > comfort_max_temp %}
+                                {{ cooling_target_temp + eco_mode_setpoint_offset }}
+                              {% else %}
+                                {{ heating_target_temp - eco_mode_setpoint_offset }}
+                              {% endif %}
+                        - if:
+                            - condition: template
+                              value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - eco_target | float) | abs > 0.5 }}"
+                          then:
+                            - service: climate.set_temperature
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                temperature: "{{ eco_target }}"
+                              continue_on_error: true
 
                   - service: system_log.write
                     data:
@@ -10107,15 +11131,33 @@ action:
                             value: "{{ selected_fan_mode }}"
                           continue_on_error: true
 
+                        # v4.2.1: 200ms propagation delay before fan service call
+                        - delay:
+                            milliseconds: 200
+
                         - service: climate.set_fan_mode
                           target:
                             entity_id: "{{ current_entity }}"
                           data:
                             fan_mode: "{{ selected_fan_mode }}"
 
+                        # v4.2.1: Verify fan mode was set correctly, retry if not
+                        - delay:
+                            milliseconds: 500
+                        - if:
+                            - condition: template
+                              value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                          then:
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ current_entity }}"
+                              data:
+                                fan_mode: "{{ selected_fan_mode }}"
+                              continue_on_error: true
+
           - condition: template
             value_template: "{{ enable_notifications }}"
-          
+
           - service: !input notification_service
             data:
               title: "Climate Away Mode"
@@ -10300,11 +11342,32 @@ action:
               value: "{{ heating_target_temp }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before temperature service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ heating_target_temp }}"
+                      continue_on_error: true
 
           - service: system_log.write
             data:
@@ -10366,13 +11429,31 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before fan service call
+                - delay:
+                    milliseconds: 200
+
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
-                
+
+                # v4.2.1: Verify fan mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                  then:
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+                      continue_on_error: true
+
                 - condition: template
                   value_template: "{{ debug_enabled }}"
                 - service: system_log.write
@@ -10383,7 +11464,7 @@ action:
                       • Selected: {{ selected_fan_mode }}
                       • Reason: Low fan speed for gentle heating
                     level: debug
-          
+
           # Set swing mode with compatibility check
           - repeat:
               for_each: "{{ climate_list }}"
@@ -10434,9 +11515,9 @@ action:
                   data:
                     swing_mode: "{{ selected_swing_mode | trim }}"
           
-          # v3.9.13: Wait for fan/swing commands
+          # v4.2.1: 200ms propagation delay before temperature service call
           - delay:
-              milliseconds: 2000
+              milliseconds: 200
 
           # v3.9.13: Set temperature with correct fan/swing
           - service: climate.set_temperature
@@ -10444,6 +11525,23 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ heating_target_temp }}"
+                      continue_on_error: true
 
           - service: input_text.set_value
             target:
@@ -10556,11 +11654,32 @@ action:
               value: "{{ heating_target_temp }}"
             continue_on_error: true
 
+          # v4.2.1: 200ms propagation delay before temperature service call
+          - delay:
+              milliseconds: 200
+
           - service: climate.set_temperature
             target:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ heating_target_temp }}"
+                      continue_on_error: true
 
           - service: system_log.write
             data:
@@ -10602,13 +11721,31 @@ action:
                     value: "{{ selected_fan_mode }}"
                   continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before fan service call
+                - delay:
+                    milliseconds: 200
+
                 # v3.16.17 FIX: Convert BOTH sides to string for comparison (handles integer fan modes)
                 - service: climate.set_fan_mode
                   target:
                     entity_id: "{{ current_entity }}"
                   data:
                     fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
-          
+
+                # v4.2.1: Verify fan mode was set correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ state_attr(current_entity, 'fan_mode') | string | lower != selected_fan_mode | string | trim | lower }}"
+                  then:
+                    - service: climate.set_fan_mode
+                      target:
+                        entity_id: "{{ current_entity }}"
+                      data:
+                        fan_mode: "{{ selected_fan_mode | trim if selected_fan_mode is string else selected_fan_mode }}"
+                      continue_on_error: true
+
           # Set swing mode with compatibility check
           - repeat:
               for_each: "{{ climate_list }}"
@@ -10659,9 +11796,9 @@ action:
                   data:
                     swing_mode: "{{ selected_swing_mode | trim }}"
           
-          # v3.9.13: Wait for fan/swing commands
+          # v4.2.1: 200ms propagation delay before temperature service call
           - delay:
-              milliseconds: 2000
+              milliseconds: 200
 
           # v3.9.13: Set temperature with correct fan/swing
           - service: climate.set_temperature
@@ -10669,6 +11806,23 @@ action:
               entity_id: !input climate_entities
             data:
               temperature: "{{ heating_target_temp }}"
+
+          # v4.2.1: Verify temperature was set correctly, retry if not
+          - delay:
+              milliseconds: 500
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ (state_attr(repeat.item, 'temperature') | float(0) - heating_target_temp) | abs > 0.5 }}"
+                  then:
+                    - service: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ heating_target_temp }}"
+                      continue_on_error: true
 
           - service: input_text.set_value
             target:
@@ -10803,7 +11957,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
+      # Update expected_hvac BEFORE turn_off (this is correct - tells detection what we expect)
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10815,16 +11969,36 @@ action:
               value: "off"
             continue_on_error: true
 
+      # v4.2.1: 200ms propagation delay before turn_off
+      - delay:
+          milliseconds: 200
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+        continue_on_error: true
+
+      # v4.2.1: Verify AC was turned off correctly, retry if not
+      - delay:
+          milliseconds: 500
+      - repeat:
+          for_each: "{{ climate_list }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+              then:
+                - service: climate.turn_off
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  continue_on_error: true
+
+      # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
         data:
           value: "off"
-        continue_on_error: true
-
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
         continue_on_error: true
 
       # Update mode start time for off-time protection tracking
@@ -10884,7 +12058,7 @@ action:
           datetime: "{{ now() }}"
         continue_on_error: true
 
-      # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
+      # Update expected_hvac BEFORE turn_off (this is correct - tells detection what we expect)
       - if:
           - condition: template
             value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
@@ -10896,16 +12070,36 @@ action:
               value: "off"
             continue_on_error: true
 
+      # v4.2.1: 200ms propagation delay before turn_off
+      - delay:
+          milliseconds: 200
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+
+      # v4.2.1: Verify AC was turned off correctly, retry if not
+      - delay:
+          milliseconds: 500
+      - repeat:
+          for_each: "{{ climate_list }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+              then:
+                - service: climate.turn_off
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  continue_on_error: true
+
+      # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
         data:
           value: "off"
         continue_on_error: true
-
-      - service: climate.turn_off
-        target:
-          entity_id: !input climate_entities
 
       # Update mode start time for off-time protection tracking
       - if:
@@ -11200,10 +12394,25 @@ action:
                     hvac_mode: "off"
                   continue_on_error: true
 
+                # v4.2.1: 200ms propagation delay before turn_off
+                - delay:
+                    milliseconds: 200
+
                 - service: climate.turn_off
                   target:
                     entity_id: "{{ repeat.item }}"
-                  continue_on_error: true
+
+                # v4.2.1: Verify AC was turned off correctly, retry if not
+                - delay:
+                    milliseconds: 500
+                - if:
+                    - condition: template
+                      value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+                  then:
+                    - service: climate.turn_off
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      continue_on_error: true
 
           - if:
               - condition: template
@@ -11297,12 +12506,28 @@ action:
                     • Action: Turning off AC
               level: warning
 
+      # v4.2.1: 200ms propagation delay before turn_off
+      - delay:
+          milliseconds: 200
+
+      - service: climate.turn_off
+        target:
+          entity_id: !input climate_entities
+
+      # v4.2.1: Verify AC was turned off correctly, retry if not
+      - delay:
+          milliseconds: 500
       - repeat:
           for_each: "{{ climate_list }}"
           sequence:
-            - service: climate.turn_off
-              target:
-                entity_id: "{{ repeat.item }}"
+            - if:
+                - condition: template
+                  value_template: "{{ states(repeat.item) not in ['off', 'unavailable'] }}"
+              then:
+                - service: climate.turn_off
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  continue_on_error: true
 
       - service: input_text.set_value
         target:
