@@ -172,6 +172,51 @@ HELPER_DEFINITIONS = {
     },
 
     # ========================================
+    # STATE MACHINE HELPERS (v5.0.0 Redesign)
+    # ========================================
+    "state_machine": {
+        "domain": "input_select",
+        "name": "{room} Climate State Machine",
+        "icon": "mdi:state-machine",
+        "options": [
+            "AUTOMATION_OFF",
+            "AUTOMATION_COOLING",
+            "AUTOMATION_HEATING",
+            "AUTOMATION_ECO",
+            "AUTOMATION_FAN_ONLY",
+            "MANUAL_CONTROL",
+            "MANUAL_OVERRIDE_ACTIVE",
+            "PRESENCE_TIMEOUT",
+            "LOCKED",
+        ],
+        "initial": "AUTOMATION_OFF",
+    },
+    "state_start": {
+        "domain": "input_datetime",
+        "name": "{room} Climate State Start Time",
+        "icon": "mdi:clock-start",
+        "has_date": True,
+        "has_time": True,
+    },
+    "last_command": {
+        "domain": "input_text",
+        "name": "{room} Climate Last Command Snapshot",
+        "icon": "mdi:code-json",
+        "initial": "",
+        "max_length": 255,
+    },
+    "state_checksum": {
+        "domain": "input_number",
+        "name": "{room} Climate State Checksum",
+        "icon": "mdi:fingerprint",
+        "min": 0,
+        "max": 999999999,
+        "step": 1,
+        "initial": 0,
+        "mode": "box",
+    },
+
+    # ========================================
     # CONTROL MODE HELPERS
     # ========================================
     "control_mode": {
@@ -209,7 +254,13 @@ FEATURE_HELPERS = {
         "temp_stable_since",
         "last_transition",
     ],
-    "manual_override": ["manual_override", "mode_before_override", "override_time", "override_timeout", "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac"],
+    "manual_override": [
+        # Keep old helpers for backward compatibility (v5.0.0 - v6.0.0)
+        "manual_override", "mode_before_override", "override_time", "override_timeout",
+        "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac",
+        # Add new state machine helpers (v5.0.0+)
+        "state_machine", "state_start", "last_command", "state_checksum",
+    ],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected", "presence_validation_active"],
 }
@@ -1020,6 +1071,23 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             },
         )
 
+    async def async_step_create(self, user_input=None):
+        """Final step: Create helpers, automation, and config entry."""
+        # Create all helper entities via package file
+        await self._create_helpers(self.hass, self._room_data)
+
+        # Create main blueprint automation
+        automation_id = await self._create_automation(self.hass, self._room_data)
+        _LOGGER.info("Created main automation: %s", automation_id)
+
+        # Note: Turn-off automations are no longer needed - blueprint handles this internally
+
+        # Create config entry
+        return self.async_create_entry(
+            title=f"{self._room_data['room_name']} Climate Control",
+            data=self._room_data,
+        )
+
     async def _check_climate_entity_conflicts(self, selected_entities: list[str]) -> list[str]:
         """Check if climate entities are already used in other integrations."""
         conflicts = []
@@ -1350,13 +1418,19 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             helpers_config[domain][object_id] = helper_config
             created_helpers.append(entity_id)
 
-        # Add scripts for Override mode control (v3.13.1)
+        # Add scripts for Override mode control (v3.13.1 + v5.0.0 fix)
         if config.get("enable_control_mode", True):
             helpers_config["script"] = {
                 f"climate_clear_override_{sanitized_name}": {
                     "alias": f"Clear Override - {room_name}",
                     "description": f"Clear manual override mode and return to Smart mode for {room_name}",
                     "sequence": [
+                        {
+                            "service": "input_boolean.turn_off",
+                            "target": {
+                                "entity_id": f"input_boolean.climate_manual_override_{sanitized_name}"
+                            }
+                        },
                         {
                             "service": "input_select.select_option",
                             "data": {
@@ -1414,26 +1488,56 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             await hass.async_add_executor_job(write_package)
             _LOGGER.info("Created package file: %s", package_file)
 
-            # Reload all input helper domains WITH BLOCKING to ensure availability
-            reload_tasks = []
-            for domain in helpers_config.keys():
-                _LOGGER.info("Reloading %s...", domain)
-                reload_tasks.append(hass.services.async_call(domain, "reload", blocking=True))
-
-            # Wait for all reloads to complete
-            await asyncio.gather(*reload_tasks)
+            # Reload helper domains and scripts to load entities from new package file
+            # v5.0.0 FIX: Use individual domain reloads (reload_core_config doesn't load helpers/scripts)
+            _LOGGER.info("Reloading helper domains and scripts to load new package file...")
+            for domain in ["input_text", "input_datetime", "input_number", "input_boolean", "input_select", "script"]:
+                await hass.services.async_call(domain, "reload", blocking=True)
 
             # Add delay to ensure entities are fully registered in state machine
-            await asyncio.sleep(2)
+            # Package files need more time to load than service-created helpers
+            # v5.0.0: Increased wait time for state machine helpers (input_select with 8 options)
+            _LOGGER.info("Waiting for helper entities to register in state machine...")
+            await asyncio.sleep(8)
 
-            # Verify all helpers were successfully created
+            # Verify all helpers were successfully created with multiple retry attempts
+            # v5.0.0: Enhanced retry logic - state machine helpers need more time to register
             _LOGGER.info("Verifying %d helpers were created...", len(created_helpers))
-            for helper_id in created_helpers:
-                if hass.states.get(helper_id) is None:
-                    _LOGGER.error("Helper not available after reload: %s", helper_id)
-                    raise Exception(f"Helper creation failed: {helper_id} - Entity not found in state machine")
+            max_retries = 4
+            retry_delay = 5  # seconds between retries
 
-            _LOGGER.info("All helpers verified successfully")
+            for retry in range(max_retries):
+                failed_helpers = []
+                for helper_id in created_helpers:
+                    if hass.states.get(helper_id) is None:
+                        failed_helpers.append(helper_id)
+
+                if not failed_helpers:
+                    _LOGGER.info("✅ All helpers verified successfully%s", f" (after {retry} retries)" if retry > 0 else "")
+                    break
+
+                if retry < max_retries - 1:
+                    _LOGGER.warning(
+                        "⏳ Retry %d/%d: %d helpers not yet available: %s. Waiting %ds...",
+                        retry + 1,
+                        max_retries,
+                        len(failed_helpers),
+                        failed_helpers,
+                        retry_delay
+                    )
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Final retry failed
+                    total_wait = 8 + (retry_delay * max_retries)
+                    _LOGGER.error(
+                        "❌ Helpers failed to register after %ds (%d retries): %s",
+                        total_wait,
+                        max_retries,
+                        failed_helpers
+                    )
+                    raise Exception(
+                        f"Helper creation failed - {len(failed_helpers)} helpers not registered after {total_wait}s: {', '.join(failed_helpers)}"
+                    )
 
             self._created_helpers = created_helpers
             _LOGGER.info(
@@ -1482,10 +1586,16 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             helpers["helper_override_active"] = f"input_boolean.climate_manual_override_{sanitized_name}"
             helpers["helper_mode_before_override"] = f"input_text.climate_mode_before_override_{sanitized_name}"
             helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
+            helpers["helper_override_timeout"] = f"input_number.climate_override_timeout_{sanitized_name}"
             helpers["helper_expected_temp"] = f"input_number.climate_expected_temp_{sanitized_name}"
             helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
             helpers["helper_expected_swing"] = f"input_text.climate_expected_swing_{sanitized_name}"
             helpers["helper_expected_hvac"] = f"input_text.climate_expected_hvac_{sanitized_name}"
+            # v5.0.0: Add new state machine helpers
+            helpers["helper_state_machine"] = f"input_select.climate_state_machine_{sanitized_name}"
+            helpers["helper_state_start"] = f"input_datetime.climate_state_start_{sanitized_name}"
+            helpers["helper_last_command"] = f"input_text.climate_last_command_{sanitized_name}"
+            helpers["helper_state_checksum"] = f"input_number.climate_state_checksum_{sanitized_name}"
 
         # Build automation config with auto-calculated optimal settings
         comfort_width = config.get("comfort_zone_width", 1.0)
@@ -1529,8 +1639,13 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     "enable_notifications": config.get("enable_notifications", False),
 
                     # Dynamic target adjustment (new in v3.1.0)
-                    "enable_dynamic_target_adjustment": False,  # Default off (safe)
-                    "escalation_target_offset": 1.0,  # Default 1.0°C per level
+                    "enable_dynamic_target_adjustment": config.get("enable_dynamic_target_adjustment", False),
+                    "escalation_target_offset": config.get("escalation_target_offset", 1.0),
+
+                    # Wrong-direction escalation (new in v3.8.0)
+                    "enable_wrong_direction_escalation": config.get("enable_wrong_direction_escalation", False),
+                    "wrong_direction_escalation_per_check": config.get("wrong_direction_escalation_per_check", 1),
+                    "wrong_direction_min_rate": config.get("wrong_direction_min_rate", 0.05),
 
                     # Outside Temperature Compensation (new in v3.2.0) - Default disabled for safety
                     "enable_outside_temp_compensation": False,  # User must enable manually
@@ -1581,6 +1696,15 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             automation_config["use_blueprint"]["input"]["bed_sensor_manual"] = config["bed_sensor_manual"]
         if config.get("bed_comfort_mode"):
             automation_config["use_blueprint"]["input"]["bed_comfort_mode"] = config["bed_comfort_mode"]
+
+        # Add proximity detection settings (v3.5.0)
+        if config.get("enable_proximity"):
+            if config.get("proximity_sensor"):
+                automation_config["use_blueprint"]["input"]["proximity_sensor"] = config["proximity_sensor"]
+            if config.get("direction_sensor"):
+                automation_config["use_blueprint"]["input"]["direction_sensor"] = config["direction_sensor"]
+            if config.get("home_zone_distance") is not None:
+                automation_config["use_blueprint"]["input"]["home_zone_distance"] = config["home_zone_distance"]
 
         # Read existing automations
         automations_file = hass.config.path("automations.yaml")
