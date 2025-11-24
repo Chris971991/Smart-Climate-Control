@@ -616,8 +616,9 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # No room sensors but has person entities → Auto mode
                     self._room_data["default_control_mode"] = "Auto"
                 else:
-                    # No sensors at all → Smart mode (will just never activate)
-                    self._room_data["default_control_mode"] = "Smart"
+                    # No sensors at all → Auto mode (house-wide control)
+                    # CRITICAL FIX: Changed from "Smart" which would never activate without sensors
+                    self._room_data["default_control_mode"] = "Auto"
 
                 # If person entities selected, offer proximity pre-conditioning
                 if has_person_entities:
@@ -840,10 +841,21 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # Only set width, preserve user's target_temperature
                     user_input["comfort_zone_width"] = presets[preset]["width"]
 
-            self._room_data.update(user_input)
+            # CRITICAL FIX: Validate target temperature against AC limits (if configured)
+            target_temp = user_input.get("target_temperature")
+            ac_min = self._room_data.get("ac_minimum_temp", 0)
+            ac_max = self._room_data.get("ac_maximum_temp", 0)
 
-            # Continue to behavior settings step
-            return await self.async_step_behavior_settings()
+            # Only validate if AC limits are actually set (non-zero values)
+            if ac_max > 0 and target_temp > ac_max:
+                errors["target_temperature"] = "target_exceeds_ac_maximum"
+            elif ac_min > 0 and target_temp < ac_min:
+                errors["target_temperature"] = "target_below_ac_minimum"
+
+            if not errors:
+                self._room_data.update(user_input)
+                # Continue to behavior settings step
+                return await self.async_step_behavior_settings()
 
         data_schema = vol.Schema(
             {
@@ -1548,6 +1560,13 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
         except Exception as err:
             _LOGGER.error("Failed to create helpers package: %s", err)
+            # CRITICAL FIX: Clean up package file on failure to prevent orphaned files
+            try:
+                if 'package_file' in locals() and os.path.exists(package_file):
+                    _LOGGER.warning("Cleaning up package file due to failure: %s", package_file)
+                    await hass.async_add_executor_job(os.unlink, package_file)
+            except Exception as cleanup_err:
+                _LOGGER.error("Failed to cleanup package file: %s", cleanup_err)
             raise
 
     async def _create_automation(
@@ -1597,7 +1616,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             helpers["helper_last_command"] = f"input_text.climate_last_command_{sanitized_name}"
             helpers["helper_state_checksum"] = f"input_number.climate_state_checksum_{sanitized_name}"
 
-        # Build automation config with auto-calculated optimal settings
+        # Build automation config with ALL blueprint inputs explicitly written
+        # This ensures transparency and prevents blueprint version changes from altering behavior
         comfort_width = config.get("comfort_zone_width", 1.0)
 
         automation_config = {
@@ -1607,73 +1627,179 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             "use_blueprint": {
                 "path": "Chris971991/ultimate_climate_control.yaml",
                 "input": {
-                    # Basic settings
+                    # ========================================
+                    # CORE SETTINGS
+                    # ========================================
                     "room_name": room_name,
                     "climate_entities": config["climate_entities"],
                     **helpers,
 
-                    # Temperature settings (user-provided)
+                    # ========================================
+                    # TEMPERATURE SETTINGS
+                    # ========================================
                     "target_temperature": config.get("target_temperature", 22),
                     "comfort_zone_width": comfort_width,
                     "target_overshoot_strategy": config.get("target_overshoot_strategy", "moderate"),
                     "enable_heating_mode": config.get("enable_heating", True),
                     "enable_cooling_mode": config.get("enable_cooling", True),
 
-                    # Auto-configured stall detection (optimal defaults)
-                    "escalation_temp_tolerance": comfort_width,  # Same as comfort width
-                    "minimum_progress_rate": 0.01,  # Universal default (°C/min)
-                    "stall_escalation_time": 15,    # Universal default (minutes)
+                    # Advanced temperature control (disabled by default)
+                    "enable_advanced_temp": False,
+                    "comfort_min_temp": 21.0,  # Only used if enable_advanced_temp=true
+                    "comfort_max_temp": 25.0,  # Only used if enable_advanced_temp=true
+                    "cooling_target_temp": 22.0,  # Only used if enable_advanced_temp=true
+                    "heating_target_temp": 22.0,  # Only used if enable_advanced_temp=true
+                    "use_average_temperature": False,
+                    "comfort_zone_action": "off",  # What to do when in comfort zone
+                    "hysteresis_tolerance": 0.3,  # Prevent rapid mode switching
 
-                    # Auto-configured timing (user-configured compressor protection)
-                    "check_interval": 5,         # Check every 5 minutes
+                    # ========================================
+                    # DYNAMIC ADAPTATION & ESCALATION (CRITICAL!)
+                    # ========================================
+                    "enable_dynamic_adaptation": True,  # MUST be enabled for escalation to work!
+                    "effectiveness_check_minutes": 5,  # How often to check temperature progress
+                    "temperature_aggressiveness": 3,  # Escalation sensitivity (1=gentle, 5=aggressive)
+                    "escalation_temp_tolerance": comfort_width,  # Distance from target before escalating
+                    "minimum_progress_rate": 0.01,  # Minimum °C/min progress required
+                    "stall_escalation_time": 15,  # Minutes before escalating if stalled
+                    "extended_stall_multiplier": 30,  # Emergency escalation multiplier
+                    "deescalation_approach_threshold": 0.8,  # Start reducing power within this distance
+                    "enable_dynamic_target_adjustment": config.get("enable_dynamic_target_adjustment", False),
+                    "escalation_target_offset": config.get("escalation_target_offset", 1.0),
+                    "enable_wrong_direction_escalation": config.get("enable_wrong_direction_escalation", True),
+                    "wrong_direction_escalation_per_check": config.get("wrong_direction_escalation_per_check", 1),
+                    "wrong_direction_min_rate": config.get("wrong_direction_min_rate", 0.05),
+
+                    # ========================================
+                    # TIMING & COMPRESSOR PROTECTION
+                    # ========================================
+                    "check_interval_minutes": 5,  # FIX: Correct input name!
                     "min_runtime_minutes": config.get("min_runtime_minutes", 15),
                     "min_off_time_minutes": config.get("min_off_time_minutes", 10),
                     "enforce_off_time_protection": config.get("enforce_off_time_protection", True),
 
-                    # Behavior settings (user-provided)
-                    "away_mode_action": config.get("away_mode_action", "eco"),
-                    "smart_mode_behavior": config.get("smart_mode_behavior", "eco"),
+                    # ========================================
+                    # FAN SPEED SETTINGS
+                    # ========================================
+                    "fan_speed_max": "Level 5",  # Maximum escalation fan speed
+                    "fan_speed_medium": "Level 3",  # Medium escalation fan speed
+                    "fan_speed_eco": config.get("fan_speed_eco", "Level 1"),  # ECO mode fan speed
+                    "fan_only_fan_speed": "Auto",  # Fan-only mode fan speed
+                    "swing_mode_active": True,  # Enable swing mode control
+
+                    # ========================================
+                    # PRESENCE DETECTION & SMART MODE
+                    # ========================================
+                    "presence_timeout_minutes": 30,  # How long to wait before turning off
+                    "presence_confirmation_delay": config.get("presence_confirmation_delay", 0),
+                    "presence_validation_mode": "any",  # Will be overridden below based on sensors
+                    "adjacent_room_names": [],  # Adjacent room detection (disabled by default)
+
+                    # Temperature stability detection
+                    "temp_stability_enabled": False,
+                    "stability_tolerance": 0.2,
+                    "stability_duration": 10,
                     "stability_behavior": config.get("stability_behavior", "off"),
-                    "enable_eco_mode": config.get("enable_eco_mode", True),
-                    "fan_speed_eco": config.get("fan_speed_eco", "Level 1"),
+                    "smart_mode_behavior": config.get("smart_mode_behavior", "eco"),
+
+                    # ========================================
+                    # AWAY MODE & PRE-CONDITIONING
+                    # ========================================
+                    "enable_away_mode": True,
+                    "away_mode_action": config.get("away_mode_action", "eco"),
+                    "enable_pre_conditioning": False,  # Disabled by default
+                    "eco_mode_setpoint_offset": 2,  # °C offset for ECO mode
+
+                    # ========================================
+                    # BED COMFORT MODE
+                    # ========================================
+                    "bed_comfort_mode": config.get("bed_comfort_mode", "off"),
+                    "bed_sensor_manual": config.get("bed_sensor_manual", None) if config.get("bed_sensor_manual") else None,
+                    "bed_absence_grace_period": 30,  # Minutes grace after leaving bed
+                    "bed_eco_fan_only_mode": False,  # Use fan-only in bed ECO
+                    "bed_eco_stability_minutes": 15,  # Stability time for bed ECO
+                    "bed_eco_stability_rate": 0.02,  # °C/min threshold
+                    "bed_eco_return_threshold": 1.0,  # °C distance to exit bed ECO
+                    "bed_eco_max_overshoot": 0.5,  # Max °C overshoot allowed
+
+                    # ========================================
+                    # EXTREME TEMPERATURE OVERRIDE
+                    # ========================================
+                    "extreme_temp_override": True,  # Enable extreme temp bypass
+                    "extreme_high_temp": 32,  # °C threshold for extreme heat
+                    "extreme_low_temp": 10,  # °C threshold for extreme cold
+
+                    # ========================================
+                    # SCHEDULING (Disabled by default)
+                    # ========================================
+                    "enable_scheduling": False,
+                    "morning_temp": 22,
+                    "day_temp": 24,
+                    "evening_temp": 23,
+                    "night_temp": 20,
+                    "enable_weekend_schedule": False,
+                    "weekend_morning_temp": 22,
+                    "weekend_day_temp": 24,
+                    "weekend_night_temp": 20,
+
+                    # ========================================
+                    # WINDOW DETECTION (Disabled by default)
+                    # ========================================
+                    "enable_window_detection": False,
+                    "window_sensors": [],
+                    "window_open_delay": 120,  # Seconds before turning off
+                    "window_close_delay": 60,  # Seconds before turning back on
+
+                    # ========================================
+                    # OUTSIDE TEMPERATURE COMPENSATION (Disabled by default)
+                    # ========================================
+                    "enable_outside_temp_compensation": False,
+                    "weather_entity": None,
+                    "outdoor_temp_sensor": None,
+                    "outside_compensation_factor": 0.2,  # Mild compensation
+                    "max_outside_compensation": 2,  # Conservative max
+                    "outside_compensation_base_temp": 25,  # Neutral baseline
+
+                    # ========================================
+                    # MANUAL OVERRIDE DETECTION
+                    # ========================================
+                    "enable_manual_override_detection": True,
+                    "override_timeout": 2,  # Hours before auto-resuming
+                    "manual_mode_timeout": 24,  # Hours before manual mode expires
+
+                    # ========================================
+                    # AC TEMPERATURE LIMITS
+                    # ========================================
+                    "ac_minimum_temp": config.get("ac_minimum_temp", 0),  # 0 = use AC's own limits
+                    "ac_maximum_temp": config.get("ac_maximum_temp", 0),  # 0 = use AC's own limits
+
+                    # ========================================
+                    # NOTIFICATIONS
+                    # ========================================
                     "enable_notifications": config.get("enable_notifications", False),
+                    "notification_service": "notify.notify",  # Default notification service
 
-                    # Dynamic target adjustment (new in v3.1.0)
-                    "enable_dynamic_target_adjustment": config.get("enable_dynamic_target_adjustment", False),
-                    "escalation_target_offset": config.get("escalation_target_offset", 1.0),
+                    # ========================================
+                    # DEBUGGING & LOGGING
+                    # ========================================
+                    "enable_full_debug_logging": True,  # CRITICAL: Always enable for new setups!
+                    "enable_event_logging": False,  # Detailed event logs (optional)
 
-                    # Wrong-direction escalation (new in v3.8.0)
-                    "enable_wrong_direction_escalation": config.get("enable_wrong_direction_escalation", False),
-                    "wrong_direction_escalation_per_check": config.get("wrong_direction_escalation_per_check", 1),
-                    "wrong_direction_min_rate": config.get("wrong_direction_min_rate", 0.05),
-
-                    # Outside Temperature Compensation (new in v3.2.0) - Default disabled for safety
-                    "enable_outside_temp_compensation": False,  # User must enable manually
-                    "outside_compensation_factor": 0.2,  # Mild compensation (recommended)
-                    "max_outside_compensation": 2,  # Conservative 2°C max
-                    "outside_compensation_base_temp": 25,  # Neutral baseline for most climates
-                    # AC Temperature Limits (new in v3.9.7) - User overrides for incorrect integrations
-                    "ac_minimum_temp": config.get("ac_minimum_temp", 0),
-                    "ac_maximum_temp": config.get("ac_maximum_temp", 0),
+                    # ========================================
+                    # SENSORS (Conditionally set below)
+                    # ========================================
+                    "temperature_sensor": config.get("temperature_sensor", None) if config.get("temperature_sensor") else None,
+                    "room_presence_sensors": config.get("room_presence_sensors", []),
+                    "presence_persons": config.get("presence_persons", []),
+                    "presence_devices": config.get("presence_devices", []),
+                    "proximity_sensor": config.get("proximity_sensor", None) if config.get("proximity_sensor") else None,
+                    "direction_sensor": config.get("direction_sensor", None) if config.get("direction_sensor") else None,
+                    "home_zone_distance": config.get("home_zone_distance", 10000),
                 },
             },
         }
 
-        # Add optional sensors
-        if config.get("temperature_sensor"):
-            automation_config["use_blueprint"]["input"]["temperature_sensor"] = config["temperature_sensor"]
-
-        if config.get("room_presence_sensors"):
-            automation_config["use_blueprint"]["input"]["room_presence_sensors"] = config["room_presence_sensors"]
-
-        # Add presence detection entities
-        if config.get("presence_persons"):
-            automation_config["use_blueprint"]["input"]["presence_persons"] = config["presence_persons"]
-
-        if config.get("presence_devices"):
-            automation_config["use_blueprint"]["input"]["presence_devices"] = config["presence_devices"]
-
-        # Set presence validation mode based on sensor configuration (v3.4.0 enhanced modes)
+        # Override presence validation mode based on sensor configuration (v3.4.0 enhanced modes)
         # Intelligently choose best mode based on available sensors
         has_bed_sensor = config.get("is_bedroom_with_bed_sensor", False)
         has_room_sensors = bool(config.get("room_presence_sensors"))
@@ -1688,23 +1814,8 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             # Only has BLE/motion -> use BLE_MOTION for best accuracy
             automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "ble_motion"
         else:
-            # No sensors configured -> fallback to ANY mode
-            automation_config["use_blueprint"]["input"]["presence_validation_mode"] = "any"
-
-        # Add bed comfort settings (v3.12.0)
-        if config.get("bed_sensor_manual"):
-            automation_config["use_blueprint"]["input"]["bed_sensor_manual"] = config["bed_sensor_manual"]
-        if config.get("bed_comfort_mode"):
-            automation_config["use_blueprint"]["input"]["bed_comfort_mode"] = config["bed_comfort_mode"]
-
-        # Add proximity detection settings (v3.5.0)
-        if config.get("enable_proximity"):
-            if config.get("proximity_sensor"):
-                automation_config["use_blueprint"]["input"]["proximity_sensor"] = config["proximity_sensor"]
-            if config.get("direction_sensor"):
-                automation_config["use_blueprint"]["input"]["direction_sensor"] = config["direction_sensor"]
-            if config.get("home_zone_distance") is not None:
-                automation_config["use_blueprint"]["input"]["home_zone_distance"] = config["home_zone_distance"]
+            # No sensors configured -> fallback to ANY mode (already set as default above)
+            pass
 
         # Read existing automations
         automations_file = hass.config.path("automations.yaml")
