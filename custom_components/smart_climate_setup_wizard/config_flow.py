@@ -549,11 +549,12 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         # Build schema with optional sensors
         data_schema_dict = {}
 
-        # Temperature sensor (optional)
+        # Temperature sensor (optional) - supports multiple sensors for multi-room cooling
         data_schema_dict[vol.Optional("temperature_sensor")] = selector.EntitySelector(
             selector.EntitySelectorConfig(
                 domain="sensor",
                 device_class="temperature",
+                multiple=True,  # Allow multiple temperature sensors (Phase 1: Multi-sensor support)
             )
         )
 
