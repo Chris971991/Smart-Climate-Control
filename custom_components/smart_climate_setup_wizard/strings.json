@@ -137,7 +137,9 @@
       "proximity_sensor_not_found": "The selected proximity distance sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
       "direction_sensor_not_found": "The selected direction sensor is not available in Home Assistant. Please check that the Proximity integration is set up correctly.",
       "home_zone_not_found": "⚠️ Home zone is not configured in Home Assistant. Proximity-based pre-conditioning requires a 'Home' zone to work.\n\n**To create the Home zone:**\n1. Go to Settings → Areas, labels & zones → Zones\n2. Click 'Add Zone'\n3. Name it 'Home'\n4. Set your home location on the map\n5. Save and run this wizard again\n\n**Or:** Uncheck the proximity option and continue without this feature.",
-      "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)"
+      "climate_entities_in_use": "⚠️ One or more of these A/C units are already being controlled by another room's automation. Each A/C unit can only be controlled by one automation at a time.\n\nAlready in use by: {conflicting_rooms}\n\nPlease either:\n• Select different A/C units\n• Delete the conflicting room's setup first\n• Use the same A/C for multiple rooms (not recommended)",
+      "target_exceeds_ac_maximum": "⚠️ Target temperature exceeds AC maximum limit. Your AC's maximum temperature is configured lower than your target. Please either lower your target temperature or adjust the AC maximum override in the previous step.",
+      "target_below_ac_minimum": "⚠️ Target temperature is below AC minimum limit. Your AC's minimum temperature is configured higher than your target. Please either raise your target temperature or adjust the AC minimum override in the previous step."
     },
     "abort": {
       "already_configured": "Climate control for this room already exists.",

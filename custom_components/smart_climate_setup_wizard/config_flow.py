@@ -1789,7 +1789,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     # ========================================
                     # SENSORS (Conditionally set below)
                     # ========================================
-                    "temperature_sensor": config.get("temperature_sensor", None) if config.get("temperature_sensor") else None,
+                    "temperature_sensor": config.get("temperature_sensor", []) if config.get("temperature_sensor") else [],
                     "room_presence_sensors": config.get("room_presence_sensors", []),
                     "presence_persons": config.get("presence_persons", []),
                     "presence_devices": config.get("presence_devices", []),
