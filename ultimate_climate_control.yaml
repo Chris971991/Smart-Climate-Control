@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.1.5
+  name: Ultimate Smart Climate Control - v7.1.6
 
   description: |
-    **Ultimate Smart Climate Control v7.1.5**
+    **Ultimate Smart Climate Control v7.1.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,7 +60,7 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.1.5 - Fix Bed Comfort Cycling (5-10 min ON/OFF loop):**
+    **v7.1.6 - Fix Bed Comfort Cycling (5-10 min ON/OFF loop):**
     • **🐛 BUG**: AC cycles ON/OFF every 5-10 minutes when bed comfort mode is active
     • **📝 ROOT CAUSE 1**: Target-reached turn-off block had broken bed guard (`bed_eco_fan_only_mode == true` compared string to boolean - always false)
     • **📝 SCENARIO**: Cooling reaches target → choose block activates bed ECO → post-choose still sees stale `last_mode='cooling'` → turns AC OFF → temp rises → cooling restarts → repeat
@@ -12623,6 +12623,9 @@ action:
       - conditions:
           - condition: template
             value_template: "{{ control_mode == 'Smart' }}"
+          # v7.1.6: Don't turn off if bed sensor shows occupancy (defense-in-depth)
+          - condition: template
+            value_template: "{{ not bed_occupied }}"
           - condition: template
             value_template: "{{ not room_presence_detected }}"
           - condition: template
