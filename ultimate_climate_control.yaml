@@ -71,52 +71,9 @@ blueprint:
 
     **v7.1.3 - Fix Pre-conditioning Fan Speed + Add Boost Mode:**
     • **🐛 BUG**: Pre-conditioning uses fan speed 1 instead of configured High/5
-    • **📝 ROOT CAUSE**: CONTINUE MODE conditions too complex - fan never gets set after AC turns on
-    • **✅ FIX 1**: Added dedicated "PRE-CONDITIONING FAN CORRECTION" section
+    • **✅ FIX**: Added dedicated "PRE-CONDITIONING FAN CORRECTION" section
     • **✨ NEW**: Added `precond_boost_enabled` setting (default: ON)
-      - When enabled, pre-conditioning uses AC min temp (18°C) for cooling / max temp for heating
-      - Cools/heats as fast as possible before you arrive home
     • **🔄 RESULT**: Pre-conditioning now uses max fan AND aggressive temperature for fastest results
-
-    **v7.1.2 - Fix Pre-conditioning High Fan Not Applied:**
-    • **🐛 BUG 1**: Pre-conditioning mode exits immediately, before High fan can be applied
-    • **📝 ROOT CAUSE 1**: STEP B checks `precond_temp_reached` and exits before climate commands complete
-    • **✅ FIX 1**: Added 30-second minimum runtime before temp-based exit is allowed
-    • **🐛 BUG 2**: CONTINUE MODE skipped when `last_mode` is "off" (AC just turned on)
-    • **📝 ROOT CAUSE 2**: CONTINUE MODE requires `last_mode in ['cooling']` but helper shows 'off' initially
-    • **✅ FIX 2**: Added bypass when `is_precond_mode and states(climate_list[0]) == 'cool/heat'`
-    • **🐛 BUG 3**: Manual Pre-conditioning exits immediately due to stale timestamp
-    • **📝 ROOT CAUSE 3**: Old `precond_start_timestamp` from previous session triggers auto-exit
-    • **✅ FIX 3**: Added 2-hour max age check for `precond_was_automation_triggered`
-    • **🔄 RESULT**: Pre-conditioning High fan is now applied correctly
-
-    **v7.1.1 - Fix Pre-conditioning High Fan Still Not Applied:**
-    • **🐛 BUG**: When `precond_fan_mode: High` was set, fan stayed at escalation level instead of max
-    • **📝 CAUSE**: CONTINUE MODE `should_activate` check failed when temp reached threshold
-    • **📝 ROOT CAUSE**: `precond_temp_reached` sets `should_activate=false`, blocking CONTINUE MODE entirely
-    • **✅ FIX**: Added `or is_precond_mode` bypass to `should_activate` check in CONTINUE MODE
-    • **🔄 RESULT**: Pre-conditioning now correctly applies High fan mode even when temp approaches target
-
-    **v6.6.3 - Fix Grace Period Race Condition:**
-    • **🐛 BUG**: AC turned off immediately when BLE briefly flapped, ignoring grace period
-    • **📝 CAUSE**: `minutes_since_presence` calculated from stale helper timestamp at automation START
-    • **📝 SCENARIO**: Presence active for 2+ min without transition → helper not updated → grace period check fails
-    • **✅ FIX**: Check if `presence_validation_helper` is ON (meaning presence was JUST active)
-    • **🔄 RESULT**: Grace period now works correctly even when helper timestamp is stale
-
-    **v6.6.2 - Bed Sensor Safeguard for Smart Mode Turn-Off:**
-    • **🐛 BUG**: AC turned off in Smart mode despite bed sensor showing occupancy
-    • **📝 CAUSE**: mmWave sensor WiFi disconnect triggered presence loss, `smart_presence_active` failed
-    • **📝 SCENARIO**: `ble_smart` mode requires BLE + motion, bed sensor only in `bed_occupied` fallback
-    • **✅ FIX**: Added explicit `not bed_occupied` check to Smart mode turn-off condition
-    • **🔄 RESULT**: AC won't turn off if bed sensor shows someone is in bed, even if presence detection fails
-
-    **v6.6.1 - Fix Pre-conditioning Instant Exit Loop:**
-    • **🐛 BUG**: Pre-conditioning mode entered and exited within 50-100ms, causing notification spam
-    • **📝 CAUSE**: `precond_should_end` calculated in variables section used STALE helper values
-    • **📝 ROOT CAUSE**: Variables calculated at automation START, but arrival helper updated DURING run
-    • **✅ FIX**: STEP B now recalculates exit conditions with FRESH helper values inline
-    • **🔄 RESULT**: Pre-conditioning stays active until grace period actually expires
 
     **v6.5.5 - Fix False Override on BRP072C Devices During Pre-Conditioning:**
     • **🐛 BUG**: Automation turning AC OFF falsely triggered "physical remote turn-ON" override
