@@ -132,6 +132,13 @@ HELPER_DEFINITIONS = {
         "unit_of_measurement": "h",
         "mode": "box",
     },
+    "last_ui_click": {
+        "domain": "input_datetime",
+        "name": "{room} Last UI Click",
+        "icon": "mdi:gesture-tap",
+        "has_date": True,
+        "has_time": True,
+    },
     "proximity_override": {
         "domain": "input_boolean",
         "name": "{room} Climate Proximity Override",
@@ -260,6 +267,8 @@ FEATURE_HELPERS = {
         "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac",
         # Add new state machine helpers (v5.0.0+)
         "state_machine", "state_start", "last_command", "state_checksum",
+        # v6.4.0: UI click tracking for race condition prevention
+        "last_ui_click",
     ],
     "control_mode": ["control_mode"],
     "smart_mode": ["presence_detected", "presence_validation_active"],
@@ -535,11 +544,20 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                         errors["room_presence_sensors"] = "sensor_not_found"
                         break
 
-            # Validate temperature sensor if provided
+            # Validate temperature sensor if provided (supports single or multiple sensors)
             if user_input.get("temperature_sensor"):
                 temp_sensor = user_input["temperature_sensor"]
-                if self.hass.states.get(temp_sensor) is None:
-                    errors["temperature_sensor"] = "sensor_not_found"
+                # Handle both single sensor (string) and multiple sensors (list)
+                if isinstance(temp_sensor, list):
+                    # Validate each sensor in the list
+                    for sensor in temp_sensor:
+                        if self.hass.states.get(sensor) is None:
+                            errors["temperature_sensor"] = "sensor_not_found"
+                            break
+                else:
+                    # Single sensor validation (backward compatibility)
+                    if self.hass.states.get(temp_sensor) is None:
+                        errors["temperature_sensor"] = "sensor_not_found"
 
             if not errors:
                 self._room_data.update(user_input)
@@ -1094,6 +1112,49 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
         _LOGGER.info("Created main automation: %s", automation_id)
 
         # Note: Turn-off automations are no longer needed - blueprint handles this internally
+
+        # Generate and send dashboard card notification
+        room_name = self._room_data["room_name"]
+        dashboard_card = self._generate_dashboard_card(self._room_data)
+
+        if dashboard_card:
+            message = f"""## 🎉 Setup Complete for {room_name}!
+
+Your climate control automation is now active and monitoring.
+
+## 📋 Next Steps
+
+**Add Dashboard Control Card:**
+
+Copy this YAML and add it to your dashboard:
+
+```yaml
+{dashboard_card}
+```
+
+**To add to your dashboard:**
+1. Go to your dashboard
+2. Click Edit (top right)
+3. Click Add Card
+4. Search for "Manual" card
+5. Paste the YAML above
+6. Save!
+
+**Note:** Requires `mushroom` and `card-mod` custom cards (install via HACS)
+
+---
+
+You can dismiss this notification once you've copied the card YAML (if desired)."""
+
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": f"🎉 {room_name} Climate Setup Complete",
+                    "message": message,
+                    "notification_id": f"climate_setup_{room_name.lower().replace(' ', '_')}",
+                },
+            )
 
         # Create config entry
         return self.async_create_entry(
@@ -1722,6 +1783,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                     "bed_eco_stability_rate": 0.02,  # °C/min threshold
                     "bed_eco_return_threshold": 1.0,  # °C distance to exit bed ECO
                     "bed_eco_max_overshoot": 0.5,  # Max °C overshoot allowed
+                    "bed_eco_near_target_threshold": 0.3,  # °C threshold for escalation suppression in bed ECO
 
                     # ========================================
                     # EXTREME TEMPERATURE OVERRIDE
@@ -1965,7 +2027,20 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
             "action": [
                 {
                     "variables": {
-                        "current_temp": f"{{{{ states('{temp_sensor}') | float(22) }}}}" if temp_sensor else f"{{{{ state_attr('{climate_entities[0]}', 'current_temperature') | float(22) }}}}",
+                        # Handle multiple temperature sensors (use average for turnoff decision)
+                        "current_temp": (
+                            # Multiple sensors: calculate average
+                            "{% set temp_sensors = " + str(temp_sensor) + " %}"
+                            "{% if temp_sensors is list and temp_sensors | length > 0 %}"
+                            "  {% set temps = namespace(values=[]) %}"
+                            "  {% for sensor in temp_sensors %}"
+                            "    {% set temps.values = temps.values + [states(sensor) | float(0)] %}"
+                            "  {% endfor %}"
+                            "  {{ (temps.values | sum / temps.values | length) | round(1) }}"
+                            "{% else %}"
+                            f"  {{{{ state_attr('{climate_entities[0]}', 'current_temperature') | float(22) }}}}"
+                            "{% endif %}"
+                        ) if temp_sensor else f"{{{{ state_attr('{climate_entities[0]}', 'current_temperature') | float(22) }}}}",
                         "comfort_min": comfort_min,
                         "comfort_max": comfort_max,
                         "enable_heating": enable_heating,
