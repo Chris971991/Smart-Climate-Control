@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.2.1
+  name: Ultimate Smart Climate Control - v7.3.0
 
   description: |
-    **Ultimate Smart Climate Control v7.2.1**
+    **Ultimate Smart Climate Control v7.3.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -1299,7 +1299,7 @@ blueprint:
               unit_of_measurement: "°C"
 
     # ===========================================
-    # AUTO-OFF CONDITIONS (v7.2.0)
+    # AUTO-OFF CONDITIONS (v7.3.0)
     # ===========================================
     auto_off_conditions_settings:
       name: "Auto-Off Conditions"
@@ -3568,7 +3568,7 @@ variables:
   temp_stability_enabled: "{{ stability_mode != 'disabled' }}"
   stability_behavior: "{{ stability_mode if stability_mode != 'disabled' else 'off' }}"
 
-  # Auto-Off Conditions (v7.2.0)
+  # Auto-Off Conditions (v7.3.0)
   enable_auto_off_conditions: !input enable_auto_off_conditions
   auto_off_action: !input auto_off_action
   auto_off_persons: !input auto_off_persons
@@ -3856,17 +3856,17 @@ trigger:
     entity_id: !input room_presence_sensors
     id: room_presence_change
 
-  # v7.2.0: Fire when household members' home/away state changes
+  # v7.3.0: Fire when household members' home/away state changes
   - platform: state
     entity_id: !input auto_off_persons
     id: auto_off_person_change
 
-  # v7.2.0: Fire when 1-person-home sensors change
+  # v7.3.0: Fire when 1-person-home sensors change
   - platform: state
     entity_id: !input auto_off_sensors_1_home
     id: auto_off_sensor_1_change
 
-  # v7.2.0: Fire when everyone-home sensors change
+  # v7.3.0: Fire when everyone-home sensors change
   - platform: state
     entity_id: !input auto_off_sensors_all_home
     id: auto_off_sensor_all_change
@@ -6243,7 +6243,7 @@ action:
       # v3.11.0: Override is now a control mode, no separate flag needed
 
       # ===================================
-      # AUTO-OFF CONDITIONS COMPUTED VARIABLES (v7.2.0)
+      # AUTO-OFF CONDITIONS COMPUTED VARIABLES (v7.3.0)
       # ===================================
 
       # Condition 1: Person-count-aware bed sensors
@@ -8818,7 +8818,7 @@ action:
                 continue_on_error: true
 
       # =====================================
-      # AUTO-OFF CONDITIONS (v7.2.0)
+      # AUTO-OFF CONDITIONS (v7.3.0)
       # Turn off/reduce AC based on remote bed sensors, time schedule, or room absence
       # Any single condition triggers the action (OR logic)
       # =====================================
