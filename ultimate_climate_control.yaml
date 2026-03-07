@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.1.6
+  name: Ultimate Smart Climate Control - v7.2.0
 
   description: |
-    **Ultimate Smart Climate Control v7.1.6**
+    **Ultimate Smart Climate Control v7.2.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,14 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v7.2.0 - Auto-Off Conditions (Cross-Room Bed Sensors, Time Window, Room Absence):**
+    • **NEW**: Auto-Off Conditions feature — three independent conditions (OR logic) that turn off or reduce AC
+    • **Condition 1**: Remote bed sensors — when ANY sensor shows occupied (cross-room awareness, e.g., bedroom bed sensor controls living room AC)
+    • **Condition 2**: Scheduled time window — configurable start/end time with overnight support (e.g., 22:00-06:00)
+    • **Condition 3**: Room absence sensors — when ALL sensors show no presence for configurable timeout (lighter alternative to Smart mode)
+    • **Configurable action**: Off, Eco, or Fan Only — user chooses per room
+    • Works in Auto and Smart control modes, respects Override/Manual, compressor protection, and all existing safeguards
 
     **v7.1.6 - Fix Bed Comfort Cycling (5-10 min ON/OFF loop):**
     • **🐛 BUG**: AC cycles ON/OFF every 5-10 minutes when bed comfort mode is active
@@ -3121,6 +3129,130 @@ blueprint:
               domain: input_text
 
     # ===========================================
+    # AUTO-OFF CONDITIONS (v7.2.0)
+    # ===========================================
+    auto_off_conditions_settings:
+      name: "Auto-Off Conditions"
+      icon: mdi:power-sleep
+      collapsed: true
+      description: "Turn off or reduce AC based on cross-room bed sensors, time schedule, or room absence. Any single condition triggers the action. Works in Auto and Smart modes."
+      input:
+        enable_auto_off_conditions:
+          name: "Enable Auto-Off Conditions"
+          description: |
+            **Master switch** for the Auto-Off Conditions feature.
+
+            When enabled, the AC will turn off or reduce when ANY of the configured conditions below are met.
+
+            **Use cases:**
+            - Living room AC that wastes energy overnight (use bed sensors or time window)
+            - Rooms without presence sensors that need lighter absence detection
+            - Any room where you want schedule-based energy savings
+          default: false
+          selector:
+            boolean:
+
+        auto_off_action:
+          name: "Auto-Off Action"
+          description: |
+            What to do when auto-off conditions are met:
+
+            - **OFF:** Turn AC completely off (maximum savings)
+            - **ECO:** Switch to eco mode with wider temperature range
+            - **FAN ONLY:** Fan-only mode (maintains airflow, no compressor)
+          default: "off"
+          selector:
+            select:
+              options:
+                - label: "Off - Turn AC off (maximum savings)"
+                  value: "off"
+                - label: "Eco - Reduce to eco mode"
+                  value: "eco"
+                - label: "Fan Only - Fan only, no compressor"
+                  value: "fan_only"
+
+        auto_off_remote_bed_sensors:
+          name: "Remote Bed Sensors (Cross-Room)"
+          description: |
+            **Binary sensors from OTHER rooms** that indicate someone is in bed.
+
+            When ANY of these sensors shows **ON** (occupied), this room's AC will turn off/reduce.
+
+            **Example:** Living room automation uses the master bedroom bed sensor.
+            When someone goes to bed, the living room AC turns off.
+
+            **Leave empty to disable this condition.**
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: binary_sensor
+
+        auto_off_schedule_enabled:
+          name: "Enable Time Window"
+          description: |
+            **Turn off/reduce AC during a specific time window.**
+
+            Supports overnight windows (e.g., 22:00 to 06:00).
+          default: false
+          selector:
+            boolean:
+
+        auto_off_schedule_start:
+          name: "Time Window Start"
+          description: |
+            **Start time** for the auto-off window.
+
+            Example: 22:00 for a "nighttime off" schedule.
+          default: "22:00:00"
+          selector:
+            time:
+
+        auto_off_schedule_end:
+          name: "Time Window End"
+          description: |
+            **End time** for the auto-off window.
+
+            Can be earlier than start time for overnight windows.
+            Example: Start 22:00, End 06:00 = overnight window.
+          default: "06:00:00"
+          selector:
+            time:
+
+        auto_off_absence_sensors:
+          name: "Room Absence Sensors"
+          description: |
+            **Binary sensors for THIS room** that detect presence.
+
+            When ALL of these sensors show **OFF** (no presence) for the configured timeout,
+            this room's AC will turn off/reduce.
+
+            **Lighter alternative** to full Smart mode - no control mode change needed.
+
+            **Leave empty to disable this condition.**
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: binary_sensor
+
+        auto_off_absence_timeout:
+          name: "Room Absence Timeout"
+          description: |
+            **Minutes** all absence sensors must show no presence before triggering auto-off.
+
+            - **5 min:** Aggressive (may trigger during brief absences)
+            - **10-15 min:** Balanced (recommended)
+            - **20-30 min:** Conservative
+          default: 15
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: "min"
+
+    # ===========================================
     # HELP & DOCUMENTATION
     # ===========================================
     help_section:
@@ -3441,6 +3573,16 @@ variables:
   temp_stability_enabled: "{{ stability_mode != 'disabled' }}"
   stability_behavior: "{{ stability_mode if stability_mode != 'disabled' else 'off' }}"
 
+  # Auto-Off Conditions (v7.2.0)
+  enable_auto_off_conditions: !input enable_auto_off_conditions
+  auto_off_action: !input auto_off_action
+  auto_off_remote_bed_sensors: !input auto_off_remote_bed_sensors
+  auto_off_schedule_enabled: !input auto_off_schedule_enabled
+  auto_off_schedule_start: !input auto_off_schedule_start
+  auto_off_schedule_end: !input auto_off_schedule_end
+  auto_off_absence_sensors: !input auto_off_absence_sensors
+  auto_off_absence_timeout: !input auto_off_absence_timeout
+
   # Fan-only mode configuration (v3.18.0)
   fan_only_fan_speed_setting: !input fan_only_fan_speed
 
@@ -3673,6 +3815,7 @@ variables:
     - adaptive_off
     - stability_off
     - smart_off
+    - auto_off_off
 
 trigger:
   - platform: state
@@ -3717,6 +3860,16 @@ trigger:
   - platform: state
     entity_id: !input room_presence_sensors
     id: room_presence_change
+
+  # v7.2.0: Fire when remote bed sensors change (Auto-Off Conditions)
+  - platform: state
+    entity_id: !input auto_off_remote_bed_sensors
+    id: auto_off_bed_sensor_change
+
+  # v7.2.0: Fire when room absence sensors change (Auto-Off Conditions)
+  - platform: state
+    entity_id: !input auto_off_absence_sensors
+    id: auto_off_absence_sensor_change
 
   # Fire immediately when control mode changes (Manual/Smart/Auto/Override)
   - platform: state
@@ -4536,7 +4689,7 @@ action:
       # Fix: When AC is off but helper hasn't been updated (last_mode != 'off'),
       # use the AC entity's last_changed timestamp as the actual off-time.
       effective_off_time: >
-        {% if actual_ac_state == 'off' and last_mode not in ['off', 'smart_off', 'away_off'] and climate_list | length > 0 %}
+        {% if actual_ac_state == 'off' and last_mode not in ['off', 'smart_off', 'away_off', 'auto_off_off'] and climate_list | length > 0 %}
           {% set ac_last_changed = as_timestamp(states[climate_list[0]].last_changed) %}
           {% if ac_last_changed %}
             {{ ((as_timestamp(now()) - ac_last_changed) / 60) | round(1) | abs | float }}
@@ -4639,7 +4792,7 @@ action:
           {# REMOVED not_in_continue_mode check - other conditions are sufficient to prevent premature shutoff #}
           {% if temp_diff <= stability_tolerance and calculated_trend == 'stable' and in_comfort_zone %}
             {% if temp_stability_time >= time_threshold %}
-              {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'stability_fan_only', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'unavailable', 'unknown', none] %}
+              {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'stability_fan_only', 'auto_off_off', 'auto_off_eco', 'auto_off_fan_only', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'unavailable', 'unknown', none] %}
                 true
               {% else %}
                 false
@@ -5491,8 +5644,12 @@ action:
           AUTOMATION_HEATING
         {% elif last_mode == 'eco' or last_mode == 'bed_comfort_eco' %}
           AUTOMATION_ECO
-        {% elif last_mode == 'stability_fan_only' %}
+        {% elif last_mode == 'stability_fan_only' or last_mode == 'auto_off_fan_only' %}
           AUTOMATION_FAN_ONLY
+        {% elif last_mode == 'auto_off_off' %}
+          AUTOMATION_OFF
+        {% elif last_mode == 'auto_off_eco' %}
+          AUTOMATION_ECO
         {% elif last_mode == 'off' %}
           AUTOMATION_OFF
         {% else %}
@@ -6085,6 +6242,83 @@ action:
 
       # v3.11.0: Override is now a control mode, no separate flag needed
 
+      # ===================================
+      # AUTO-OFF CONDITIONS COMPUTED VARIABLES (v7.2.0)
+      # ===================================
+
+      # Condition 1: Any remote bed sensor is ON (occupied)
+      auto_off_any_bed_occupied: >
+        {% set sensors = auto_off_remote_bed_sensors %}
+        {% if sensors | length == 0 %}
+          false
+        {% else %}
+          {% set ns = namespace(any_on=false) %}
+          {% for sensor in sensors %}
+            {% if is_state(sensor, 'on') %}
+              {% set ns.any_on = true %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.any_on }}
+        {% endif %}
+
+      # Condition 2: Current time is within the scheduled window
+      auto_off_in_schedule: >
+        {% if not auto_off_schedule_enabled %}
+          false
+        {% else %}
+          {% set now_time = now().strftime('%H:%M:%S') %}
+          {% set start = auto_off_schedule_start %}
+          {% set end_time = auto_off_schedule_end %}
+          {% if start <= end_time %}
+            {# Normal window: e.g., 09:00-17:00 #}
+            {{ now_time >= start and now_time < end_time }}
+          {% else %}
+            {# Overnight window: e.g., 22:00-06:00 #}
+            {{ now_time >= start or now_time < end_time }}
+          {% endif %}
+        {% endif %}
+
+      # Condition 3: All room absence sensors are OFF for timeout
+      auto_off_room_absent: >
+        {% set sensors = auto_off_absence_sensors %}
+        {% if sensors | length == 0 %}
+          false
+        {% else %}
+          {% set ns = namespace(all_off=true, min_off_minutes=999) %}
+          {% for sensor in sensors %}
+            {% if is_state(sensor, 'on') %}
+              {% set ns.all_off = false %}
+            {% else %}
+              {% set last_change = state_attr(sensor, 'last_changed') %}
+              {% if last_change %}
+                {% set mins = ((as_timestamp(now()) - as_timestamp(last_change)) / 60) | float(0) %}
+                {% if mins < ns.min_off_minutes %}
+                  {% set ns.min_off_minutes = mins %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.all_off and ns.min_off_minutes >= (auto_off_absence_timeout | float(15)) }}
+        {% endif %}
+
+      # Combined: Should auto-off conditions activate? (OR logic)
+      auto_off_conditions_active: >
+        {{ enable_auto_off_conditions and (auto_off_any_bed_occupied | bool or auto_off_in_schedule | bool or auto_off_room_absent | bool) }}
+
+      # Which condition triggered (for logging)
+      auto_off_trigger_reason: >
+        {% set reasons = [] %}
+        {% if auto_off_any_bed_occupied | bool %}
+          {% set reasons = reasons + ['bed_sensors_occupied'] %}
+        {% endif %}
+        {% if auto_off_in_schedule | bool %}
+          {% set reasons = reasons + ['time_window'] %}
+        {% endif %}
+        {% if auto_off_room_absent | bool %}
+          {% set reasons = reasons + ['room_absent'] %}
+        {% endif %}
+        {{ reasons | join(', ') if reasons | length > 0 else 'none' }}
+
       should_activate: >
         {# v3.11.0: Override mode = automation paused, just like Manual mode #}
         {% if control_mode == 'Override' %}
@@ -6132,7 +6366,7 @@ action:
         {% elif last_mode in ['cooling', 'heating'] and (time_in_current_mode | float(0)) < (runtime_min | float(0)) and actual_ac_state == 'on' %}
           RUNTIME_PROTECTION (time={{ time_in_current_mode }}min < {{ runtime_min }}min)
         {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime and (effective_off_time | float(0)) <= (offtime_min | float(0)) and control_mode != 'Pre-conditioning' %}
-          OFFTIME_PROTECTION (effective_off_time={{ effective_off_time }}min, helper_desynced={{ last_mode not in ['off', 'smart_off', 'away_off'] and actual_ac_state == 'off' }})
+          OFFTIME_PROTECTION (effective_off_time={{ effective_off_time }}min, helper_desynced={{ last_mode not in ['off', 'smart_off', 'away_off', 'auto_off_off'] and actual_ac_state == 'off' }})
         {% elif control_mode == 'Manual' %}
           MANUAL_MODE (extreme={{ extreme_temp_detected }}, presence={{ room_presence_detected }})
         {% elif control_mode == 'Smart' %}
@@ -8578,6 +8812,346 @@ action:
                   entity_id: !input helper_mode_start_time
                 data:
                   datetime: "{{ now() }}"
+                continue_on_error: true
+
+      # =====================================
+      # AUTO-OFF CONDITIONS (v7.2.0)
+      # Turn off/reduce AC based on remote bed sensors, time schedule, or room absence
+      # Any single condition triggers the action (OR logic)
+      # =====================================
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_auto_off_conditions }}"
+          - condition: template
+            value_template: "{{ control_mode in ['Smart', 'Auto'] }}"
+          - condition: template
+            value_template: "{{ auto_off_conditions_active | bool }}"
+        sequence:
+          # If already in auto-off state, just maintain it (prevent downstream logic from overriding)
+          - if:
+              - condition: template
+                value_template: "{{ last_mode in ['auto_off_off', 'auto_off_eco', 'auto_off_fan_only'] }}"
+            then:
+              - stop: "Auto-off conditions still active, maintaining current state"
+
+          # Check runtime protection before transitioning
+          - if:
+              - condition: template
+                value_template: "{{ last_mode in active_modes and (time_in_current_mode | float(0)) < (runtime_min | float(0)) }}"
+            then:
+              - stop: "Auto-off waiting for minimum runtime protection"
+
+          # Debug logging
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🌙 {{ room_name | upper }}: Auto-Off Conditions Met
+                    💡 Triggered by: {{ auto_off_trigger_reason }}
+                    🎯 Action: {{ auto_off_action | upper }}
+                    📋 Technical: {{ time_in_current_mode | round(1) }}min in current mode, control_mode={{ control_mode }}, last_mode={{ last_mode }}
+                  level: warning
+
+          - choose:
+              # === OFF BRANCH ===
+              - conditions:
+                  - condition: template
+                    value_template: "{{ auto_off_action == 'off' }}"
+                sequence:
+                  # Update helper_change BEFORE turn_off
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_datetime.set_datetime
+                        target:
+                          entity_id: !input helper_last_change
+                        data:
+                          datetime: "{{ now() }}"
+                        continue_on_error: true
+
+                  # Update expected HVAC BEFORE turn_off (prevent false override)
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_expected_hvac }}"
+                        data:
+                          value: "off"
+                        continue_on_error: true
+
+                  # Set last_mode BEFORE turn_off
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_mode }}"
+                    data:
+                      value: "auto_off_off"
+                    continue_on_error: true
+
+                  # Update mode_start_time for off-time protection
+                  - service: input_datetime.set_datetime
+                    target:
+                      entity_id: !input helper_mode_start_time
+                    data:
+                      datetime: "{{ now() }}"
+                    continue_on_error: true
+
+                  # Update snapshot BEFORE sending command
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_last_command not in [none, 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_last_command }}"
+                        data:
+                          value: "hvac=off,temp=0,fan=unknown,swing=unknown"
+                        continue_on_error: true
+                      - service: input_number.set_value
+                        target:
+                          entity_id: "{{ helper_state_checksum }}"
+                        data:
+                          value: "0"
+                        continue_on_error: true
+
+                  # NOW send the turn_off command
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
+                    continue_on_error: true
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌙 {{ room_name | upper }} AUTO-OFF: Turned AC OFF
+                        Reason: {{ auto_off_trigger_reason }}
+                      level: warning
+
+              # === ECO BRANCH ===
+              - conditions:
+                  - condition: template
+                    value_template: "{{ auto_off_action == 'eco' }}"
+                sequence:
+                  - variables:
+                      eco_target: >
+                        {% if current_temp > comfort_max_temp %}
+                          {{ cooling_target_temp + eco_mode_setpoint_offset }}
+                        {% else %}
+                          {{ heating_target_temp - eco_mode_setpoint_offset }}
+                        {% endif %}
+
+                  # Capture expected temperature
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_expected_temp }}"
+                    data:
+                      value: "{{ eco_target }}"
+                    continue_on_error: true
+
+                  # Set last_mode BEFORE climate commands
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_mode }}"
+                    data:
+                      value: "auto_off_eco"
+                    continue_on_error: true
+
+                  # Set HVAC mode + temperature per entity
+                  - repeat:
+                      for_each: "{{ climate_list }}"
+                      sequence:
+                        - variables:
+                            current_entity: "{{ repeat.item }}"
+                            available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
+
+                            selected_hvac_mode: >
+                              {% if 'auto' in available_modes %}
+                                auto
+                              {% elif 'Auto' in available_modes %}
+                                Auto
+                              {% elif 'heat_cool' in available_modes %}
+                                heat_cool
+                              {% elif current_temp > comfort_max_temp and 'cool' in available_modes %}
+                                cool
+                              {% elif current_temp < comfort_min_temp and 'heat' in available_modes %}
+                                heat
+                              {% else %}
+                                {{ available_modes[0] if available_modes else 'off' }}
+                              {% endif %}
+
+                        # FIRST: Set temperature + HVAC mode together
+                        - service: climate.set_temperature
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            temperature: "{{ eco_target }}"
+                            hvac_mode: "{{ selected_hvac_mode }}"
+                          continue_on_error: false
+
+                        # Capture expected HVAC
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_hvac }}"
+                          data:
+                            value: "{{ selected_hvac_mode }}"
+                          continue_on_error: true
+
+                        # Capture expected fan
+                        - service: input_text.set_value
+                          target:
+                            entity_id: "{{ helper_expected_fan }}"
+                          data:
+                            value: "{{ new_fan_mode }}"
+                          continue_on_error: true
+
+                        - delay:
+                            milliseconds: 500
+
+                        # SECOND: Set fan mode
+                        - service: climate.set_fan_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            fan_mode: "{{ new_fan_mode }}"
+                          continue_on_error: false
+
+                        - delay:
+                            milliseconds: 500
+
+                        # THIRD: Set swing mode
+                        - service: climate.set_swing_mode
+                          target:
+                            entity_id: "{{ current_entity }}"
+                          data:
+                            swing_mode: "{{ validated_swing_mode }}"
+                          continue_on_error: true
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌙 {{ room_name | upper }} AUTO-OFF: Set AC to ECO ({{ eco_target | round(1) }}°C)
+                        Reason: {{ auto_off_trigger_reason }}
+                      level: warning
+
+              # === FAN_ONLY BRANCH ===
+              - conditions:
+                  - condition: template
+                    value_template: "{{ auto_off_action == 'fan_only' }}"
+                sequence:
+                  # Update expected HVAC BEFORE changing mode
+                  - if:
+                      - condition: template
+                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                    then:
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_expected_hvac }}"
+                        data:
+                          value: "fan_only"
+                        continue_on_error: true
+
+                  # Set last_mode BEFORE climate commands
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_mode }}"
+                    data:
+                      value: "auto_off_fan_only"
+                    continue_on_error: true
+
+                  # Check if AC supports fan_only mode and switch
+                  - variables:
+                      selected_fan_only_hvac: >
+                        {% set modes = state_attr(climate_list[0], 'hvac_modes') | list if climate_list | length > 0 else [] %}
+                        {% if 'fan_only' in modes %}
+                          fan_only
+                        {% elif 'dry' in modes %}
+                          dry
+                        {% else %}
+                          off
+                        {% endif %}
+
+                  - if:
+                      - condition: template
+                        value_template: "{{ selected_fan_only_hvac != 'off' }}"
+                    then:
+                      - repeat:
+                          for_each: "{{ climate_list }}"
+                          sequence:
+                            - service: climate.set_temperature
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                temperature: "{{ target_temp }}"
+                                hvac_mode: "{{ selected_fan_only_hvac }}"
+                              continue_on_error: false
+
+                            - delay:
+                                milliseconds: 500
+
+                            - service: climate.set_fan_mode
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                fan_mode: "{{ selected_fan_only_fan_mode }}"
+                              continue_on_error: false
+
+                      - if:
+                          - condition: template
+                            value_template: "{{ helper_expected_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                        then:
+                          - service: input_text.set_value
+                            target:
+                              entity_id: "{{ helper_expected_fan }}"
+                            data:
+                              value: "{{ selected_fan_only_fan_mode }}"
+                            continue_on_error: true
+                    else:
+                      # Fallback: turn off if fan_only not supported
+                      - service: climate.turn_off
+                        target:
+                          entity_id: !input climate_entities
+                        continue_on_error: true
+
+                      - service: input_text.set_value
+                        target:
+                          entity_id: "{{ helper_mode }}"
+                        data:
+                          value: "auto_off_off"
+                        continue_on_error: true
+
+                  - service: system_log.write
+                    data:
+                      message: >
+                        🌙 {{ room_name | upper }} AUTO-OFF: Set AC to FAN ONLY ({{ selected_fan_only_hvac }})
+                        Reason: {{ auto_off_trigger_reason }}
+                      level: warning
+
+          # Update mode_start_time (shared across all branches)
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode_time not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_mode_start_time
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
+          # Notification (shared across all branches)
+          - if:
+              - condition: template
+                value_template: "{{ enable_notifications }}"
+            then:
+              - service: !input notification_service
+                data:
+                  title: "{{ room_name }} Climate Control"
+                  message: "Auto-Off: {{ auto_off_action }} ({{ auto_off_trigger_reason }}, {{ current_temp }}°C)"
                 continue_on_error: true
 
       # =====================================
@@ -11439,7 +12013,7 @@ action:
                           - condition: template
                             value_template: >
                               {{ (states(climate_list[0]) in ['fan_only', 'dry'] or actual_ac_state == 'on')
-                                 and last_mode not in ['smart_off', 'off', 'smart_eco', 'smart_maintain', 'away_off', 'away_eco'] }}
+                                 and last_mode not in ['smart_off', 'off', 'smart_eco', 'smart_maintain', 'away_off', 'away_eco', 'auto_off_off', 'auto_off_eco', 'auto_off_fan_only'] }}
                         sequence:
                           - if:
                               - condition: template
@@ -12058,7 +12632,7 @@ action:
           - condition: template
             value_template: "{{ temp_stability_detected }}"
           - condition: template
-            value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'stability_fan_only', 'comfort_fan_only', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'unavailable', 'unknown', none] }}"
+            value_template: "{{ last_mode not in ['off', 'stability_off', 'stability_eco', 'stability_fan_only', 'auto_off_off', 'auto_off_eco', 'auto_off_fan_only', 'comfort_fan_only', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'unavailable', 'unknown', none] }}"
           - condition: template
             value_template: "{{ time_since_change >= (runtime_min | float(0)) }}"
           # v3.9.21 FIX: Only turn off when WITHIN comfort zone, not outside it with buffer
@@ -12536,7 +13110,7 @@ action:
           - condition: template
             value_template: "{{ control_mode == 'Manual' }}"
           - condition: template
-            value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'stability_fan_only', 'smart_off', 'smart_eco', 'smart_maintain', 'eco', 'cooling', 'heating'] }}"
+            value_template: "{{ last_mode in ['stability_off', 'stability_eco', 'stability_fan_only', 'auto_off_off', 'auto_off_eco', 'auto_off_fan_only', 'smart_off', 'smart_eco', 'smart_maintain', 'eco', 'cooling', 'heating'] }}"
         sequence:
           - if:
               - condition: template
@@ -14418,7 +14992,7 @@ action:
   #         even if smart_presence_active fails due to mmWave sensor disconnection
   - if:
       - condition: template
-        value_template: "{{ control_mode == 'Smart' and not smart_presence_active and not bed_occupied and actual_ac_state == 'on' }}"
+        value_template: "{{ control_mode == 'Smart' and not smart_presence_active and not bed_occupied and actual_ac_state == 'on' and last_mode not in ['auto_off_off', 'auto_off_eco', 'auto_off_fan_only'] }}"
     then:
       - if:
           - condition: template
