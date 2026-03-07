@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.0
+  name: Ultimate Smart Climate Control - v7.3.1
 
   description: |
-    **Ultimate Smart Climate Control v7.3.0**
+    **Ultimate Smart Climate Control v7.3.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -1341,25 +1341,11 @@ blueprint:
                 - label: "Fan Only - Fan only, no compressor"
                   value: "fan_only"
 
-        auto_off_persons:
-          name: "Household Members"
-          description: |
-            **Who lives here?** Select the person entities to track.
-
-            The system counts how many are currently home and picks
-            the right sensor list below.
-
-            **Leave empty to disable this condition.**
-          default: []
-          selector:
-            entity:
-              multiple: true
-              domain: person
-
         auto_off_sensors_1_home:
           name: "Sensors — 1 Person Home"
           description: |
-            **Which sensors to check when only 1 person is home.**
+            **Which sensors to check when only 1 person is home**
+            (based on People to Track in Presence settings).
 
             If ANY of these sensors is ON, auto-off triggers.
 
@@ -1374,7 +1360,8 @@ blueprint:
         auto_off_sensors_all_home:
           name: "Sensors — Everyone Home"
           description: |
-            **Which sensors to check when 2 or more people are home.**
+            **Which sensors to check when 2+ people are home**
+            (based on People to Track in Presence settings).
 
             ALL of these sensors must be ON for auto-off to trigger.
 
@@ -3571,7 +3558,6 @@ variables:
   # Auto-Off Conditions (v7.3.0)
   enable_auto_off_conditions: !input enable_auto_off_conditions
   auto_off_action: !input auto_off_action
-  auto_off_persons: !input auto_off_persons
   auto_off_sensors_1_home: !input auto_off_sensors_1_home
   auto_off_sensors_all_home: !input auto_off_sensors_all_home
   auto_off_schedule_enabled: !input auto_off_schedule_enabled
@@ -3855,11 +3841,6 @@ trigger:
   - platform: state
     entity_id: !input room_presence_sensors
     id: room_presence_change
-
-  # v7.3.0: Fire when household members' home/away state changes
-  - platform: state
-    entity_id: !input auto_off_persons
-    id: auto_off_person_change
 
   # v7.3.0: Fire when 1-person-home sensors change
   - platform: state
@@ -6249,7 +6230,7 @@ action:
       # Condition 1: Person-count-aware bed sensors
       auto_off_people_home_count: >
         {% set count = namespace(n=0) %}
-        {% for person in auto_off_persons %}
+        {% for person in persons %}
           {% if states(person) == 'home' %}
             {% set count.n = count.n + 1 %}
           {% endif %}
@@ -6258,7 +6239,7 @@ action:
 
       auto_off_person_triggered: >
         {% set people_home = auto_off_people_home_count | int(0) %}
-        {% if auto_off_persons | length == 0 or people_home == 0 %}
+        {% if persons | length == 0 or people_home == 0 %}
           false
         {% elif people_home == 1 %}
           {# 1 person home: ANY sensor ON = they're in bed #}
