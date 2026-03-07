@@ -60,7 +60,7 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.2.0 - Auto-Off Conditions (Cross-Room Bed Sensors, Time Window, Room Absence):**
+    **v7.2.1 - Auto-Off Conditions (Cross-Room Bed Sensors, Time Window, Room Absence):**
     • **NEW**: Auto-Off Conditions feature — three independent conditions (OR logic) that turn off or reduce AC
     • **Condition 1**: Remote bed sensors — when ANY sensor shows occupied (cross-room awareness, e.g., bedroom bed sensor controls living room AC)
     • **Condition 2**: Scheduled time window — configurable start/end time with overnight support (e.g., 22:00-06:00)
