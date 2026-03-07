@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.3
+  name: Ultimate Smart Climate Control - v7.3.4
 
   description: |
-    **Ultimate Smart Climate Control v7.3.3**
+    **Ultimate Smart Climate Control v7.3.4**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,12 +60,14 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.3.2 - Family-Friendly Auto-Off (Optional Person Override + Threshold Fix):**
-    • **NEW**: Optional "Auto-Off People" override — leave empty to use People to Track, or set explicitly for families (e.g., track only adults)
-    • **FIX**: Threshold logic now uses "not everyone home" vs "everyone home" instead of "1" vs "2+" — correct for families of any size
-    • **Condition 1**: Not everyone home → ANY sensor ON triggers auto-off; Everyone home → ALL sensors must be ON
-    • **Condition 2**: Scheduled time window — configurable start/end time with overnight support (e.g., 22:00-06:00)
-    • **Configurable action**: Off, Eco, or Fan Only — user chooses per room
+    **v7.3.4 - Auto-Off Grace Periods + Family-Friendly Logic:**
+    • **NEW**: Entry delay — sensors must be triggered for X minutes before auto-off activates (prevents brief bed-sits)
+    • **NEW**: Exit delay — sensors must be cleared for X minutes before AC resumes (prevents toilet-trip cycling)
+    • **NEW**: Optional "Auto-Off People" override — leave empty to use People to Track, or set explicitly (e.g., adults only)
+    • **FIX**: Threshold logic uses "not everyone home" vs "everyone home" — correct for families of any size
+    • **FIX**: manual_override_detection string truthiness bug (| bool filter)
+    • **Condition 1**: Not everyone home → ANY sensor ON triggers; Everyone home → ALL sensors must be ON
+    • **Condition 2**: Scheduled time window with overnight support (e.g., 22:00-06:00)
     • Works in Auto and Smart control modes, respects Override/Manual, compressor protection, and all existing safeguards
 
     **v7.1.6 - Fix Bed Comfort Cycling (5-10 min ON/OFF loop):**
@@ -1385,6 +1387,43 @@ blueprint:
             entity:
               multiple: true
               domain: binary_sensor
+
+        auto_off_entry_delay:
+          name: "Entry Delay (Minutes)"
+          description: |
+            **How long sensors must be in triggering state before auto-off activates.**
+
+            Prevents brief bed-sits or passing through a room from turning off the AC.
+
+            **Example:** Set to 3 min — someone must be in bed for 3 minutes before auto-off kicks in.
+
+            Set to 0 to disable (instant activation).
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 1
+              unit_of_measurement: "min"
+
+        auto_off_exit_delay:
+          name: "Exit Delay (Minutes)"
+          description: |
+            **How long sensors must be cleared before auto-off deactivates and AC resumes.**
+
+            Prevents toilet trips or brief wake-ups from cycling the AC on and off.
+
+            **Example:** Set to 5 min — if someone gets up at night, the AC won't turn
+            back on unless they're out of bed for 5+ minutes.
+
+            Set to 0 to disable (instant resume).
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 1
+              unit_of_measurement: "min"
 
         auto_off_schedule_enabled:
           name: "Enable Time Window"
@@ -3574,6 +3613,8 @@ variables:
   auto_off_persons: !input auto_off_persons
   auto_off_sensors_1_home: !input auto_off_sensors_1_home
   auto_off_sensors_all_home: !input auto_off_sensors_all_home
+  auto_off_entry_delay: !input auto_off_entry_delay
+  auto_off_exit_delay: !input auto_off_exit_delay
   auto_off_schedule_enabled: !input auto_off_schedule_enabled
   auto_off_schedule_start: !input auto_off_schedule_start
   auto_off_schedule_end: !input auto_off_schedule_end
@@ -6275,35 +6316,66 @@ action:
       auto_off_person_triggered: >
         {% set total = auto_off_total_tracked | int(0) %}
         {% set people_home = auto_off_people_home_count | int(0) %}
+        {% set entry_delay = auto_off_entry_delay | float(0) %}
+        {% set exit_delay = auto_off_exit_delay | float(0) %}
+        {% set already_in_auto_off = last_mode in ['auto_off_off', 'auto_off_eco', 'auto_off_fan_only'] %}
+        {# Skip entry delay if already in auto-off (prevents gap when re-entering after exit grace) #}
+        {% set effective_entry = 0 if already_in_auto_off else entry_delay %}
         {% if total == 0 or people_home == 0 %}
           false
         {% elif people_home < total %}
-          {# Not everyone home: ANY sensor ON = they're in bed #}
+          {# Not everyone home: ANY sensor ON (with grace periods) #}
           {% set sensors = auto_off_sensors_1_home %}
           {% if sensors | length == 0 %}
             false
           {% else %}
-            {% set ns = namespace(any_on=false) %}
+            {% set ns = namespace(any_on_ready=false, any_recently_off=false) %}
             {% for s in sensors %}
+              {% set mins = ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) | float(0) %}
               {% if is_state(s, 'on') %}
-                {% set ns.any_on = true %}
+                {% if effective_entry <= 0 or mins >= effective_entry %}
+                  {% set ns.any_on_ready = true %}
+                {% endif %}
+              {% else %}
+                {# Sensor OFF — exit grace: treat as still triggered if recently turned off #}
+                {% if exit_delay > 0 and mins < exit_delay %}
+                  {% set ns.any_recently_off = true %}
+                {% endif %}
               {% endif %}
             {% endfor %}
-            {{ ns.any_on }}
+            {{ ns.any_on_ready or ns.any_recently_off }}
           {% endif %}
         {% else %}
-          {# Everyone home: ALL sensors ON = everyone in bed #}
+          {# Everyone home: ALL sensors ON (with grace periods) #}
           {% set sensors = auto_off_sensors_all_home %}
           {% if sensors | length == 0 %}
             false
           {% else %}
-            {% set ns = namespace(all_on=true) %}
+            {% set ns = namespace(all_on=true, min_on_time=9999, any_still_on=false, any_recently_off=false) %}
             {% for s in sensors %}
-              {% if not is_state(s, 'on') %}
+              {% set mins = ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) | float(0) %}
+              {% if is_state(s, 'on') %}
+                {% set ns.any_still_on = true %}
+                {% if mins < ns.min_on_time %}
+                  {% set ns.min_on_time = mins %}
+                {% endif %}
+              {% else %}
                 {% set ns.all_on = false %}
+                {# Exit grace: sensor recently turned off, others may still be on #}
+                {% if exit_delay > 0 and mins < exit_delay %}
+                  {% set ns.any_recently_off = true %}
+                {% endif %}
               {% endif %}
             {% endfor %}
-            {{ ns.all_on }}
+            {% if ns.all_on %}
+              {# All sensors ON — check entry delay #}
+              {{ effective_entry <= 0 or ns.min_on_time >= effective_entry }}
+            {% elif ns.any_recently_off and ns.any_still_on %}
+              {# Exit grace: one sensor just turned off but others still on #}
+              true
+            {% else %}
+              false
+            {% endif %}
           {% endif %}
         {% endif %}
 
