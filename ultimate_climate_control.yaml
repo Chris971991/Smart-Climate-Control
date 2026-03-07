@@ -60,11 +60,10 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.2.1 - Auto-Off Conditions (Cross-Room Bed Sensors, Time Window, Room Absence):**
-    • **NEW**: Auto-Off Conditions feature — three independent conditions (OR logic) that turn off or reduce AC
-    • **Condition 1**: Remote bed sensors — when ANY sensor shows occupied (cross-room awareness, e.g., bedroom bed sensor controls living room AC)
+    **v7.3.0 - Auto-Off Conditions (Person-Count-Aware Sensors, Time Window):**
+    • **NEW**: Person-count-aware auto-off — configure household members and different sensors for 1-person-home vs everyone-home
+    • **Condition 1**: When 1 person home → ANY of configured sensors ON triggers auto-off; when 2+ home → ALL sensors must be ON
     • **Condition 2**: Scheduled time window — configurable start/end time with overnight support (e.g., 22:00-06:00)
-    • **Condition 3**: Room absence sensors — when ALL sensors show no presence for configurable timeout (lighter alternative to Smart mode)
     • **Configurable action**: Off, Eco, or Fan Only — user chooses per room
     • Works in Auto and Smart control modes, respects Override/Manual, compressor protection, and all existing safeguards
 
@@ -1306,7 +1305,7 @@ blueprint:
       name: "Auto-Off Conditions"
       icon: mdi:power-sleep
       collapsed: true
-      description: "Turn off or reduce AC based on cross-room bed sensors, time schedule, or room absence. Any single condition triggers the action. Works in Auto and Smart modes."
+      description: "Turn off or reduce AC based on household occupancy sensors or time schedule. Configure who lives here, then set sensors for when 1 person is home vs everyone. Works in Auto and Smart modes."
       input:
         enable_auto_off_conditions:
           name: "Enable Auto-Off Conditions"
@@ -1316,9 +1315,9 @@ blueprint:
             When enabled, the AC will turn off or reduce when ANY of the configured conditions below are met.
 
             **Use cases:**
-            - Living room AC that wastes energy overnight (use bed sensors or time window)
-            - Rooms without presence sensors that need lighter absence detection
-            - Any room where you want schedule-based energy savings
+            - Living room AC that wastes energy overnight (use bed sensors + household members)
+            - Schedule-based energy savings (time window)
+            - Any room where you want automatic turn-off based on who's home and in bed
           default: false
           selector:
             boolean:
@@ -1342,17 +1341,45 @@ blueprint:
                 - label: "Fan Only - Fan only, no compressor"
                   value: "fan_only"
 
-        auto_off_remote_bed_sensors:
-          name: "Remote Bed Sensors (Cross-Room)"
+        auto_off_persons:
+          name: "Household Members"
           description: |
-            **Binary sensors from OTHER rooms** that indicate someone is in bed.
+            **Who lives here?** Select the person entities to track.
 
-            When ANY of these sensors shows **ON** (occupied), this room's AC will turn off/reduce.
-
-            **Example:** Living room automation uses the master bedroom bed sensor.
-            When someone goes to bed, the living room AC turns off.
+            The system counts how many are currently home and picks
+            the right sensor list below.
 
             **Leave empty to disable this condition.**
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: person
+
+        auto_off_sensors_1_home:
+          name: "Sensors — 1 Person Home"
+          description: |
+            **Which sensors to check when only 1 person is home.**
+
+            If ANY of these sensors is ON, auto-off triggers.
+
+            **Example:** bed_left + bed_right — either one ON means
+            the person is in bed.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: binary_sensor
+
+        auto_off_sensors_all_home:
+          name: "Sensors — Everyone Home"
+          description: |
+            **Which sensors to check when 2 or more people are home.**
+
+            ALL of these sensors must be ON for auto-off to trigger.
+
+            **Example:** bed_left + bed_right — both ON means everyone
+            is in bed.
           default: []
           selector:
             entity:
@@ -1390,38 +1417,6 @@ blueprint:
           selector:
             time:
 
-        auto_off_absence_sensors:
-          name: "Room Absence Sensors"
-          description: |
-            **Binary sensors for THIS room** that detect presence.
-
-            When ALL of these sensors show **OFF** (no presence) for the configured timeout,
-            this room's AC will turn off/reduce.
-
-            **Lighter alternative** to full Smart mode - no control mode change needed.
-
-            **Leave empty to disable this condition.**
-          default: []
-          selector:
-            entity:
-              multiple: true
-              domain: binary_sensor
-
-        auto_off_absence_timeout:
-          name: "Room Absence Timeout"
-          description: |
-            **Minutes** all absence sensors must show no presence before triggering auto-off.
-
-            - **5 min:** Aggressive (may trigger during brief absences)
-            - **10-15 min:** Balanced (recommended)
-            - **20-30 min:** Conservative
-          default: 15
-          selector:
-            number:
-              min: 1
-              max: 60
-              step: 1
-              unit_of_measurement: "min"
 
     # Scheduling Settings (Optional)
     scheduling_settings:
@@ -3576,12 +3571,12 @@ variables:
   # Auto-Off Conditions (v7.2.0)
   enable_auto_off_conditions: !input enable_auto_off_conditions
   auto_off_action: !input auto_off_action
-  auto_off_remote_bed_sensors: !input auto_off_remote_bed_sensors
+  auto_off_persons: !input auto_off_persons
+  auto_off_sensors_1_home: !input auto_off_sensors_1_home
+  auto_off_sensors_all_home: !input auto_off_sensors_all_home
   auto_off_schedule_enabled: !input auto_off_schedule_enabled
   auto_off_schedule_start: !input auto_off_schedule_start
   auto_off_schedule_end: !input auto_off_schedule_end
-  auto_off_absence_sensors: !input auto_off_absence_sensors
-  auto_off_absence_timeout: !input auto_off_absence_timeout
 
   # Fan-only mode configuration (v3.18.0)
   fan_only_fan_speed_setting: !input fan_only_fan_speed
@@ -3861,15 +3856,20 @@ trigger:
     entity_id: !input room_presence_sensors
     id: room_presence_change
 
-  # v7.2.0: Fire when remote bed sensors change (Auto-Off Conditions)
+  # v7.2.0: Fire when household members' home/away state changes
   - platform: state
-    entity_id: !input auto_off_remote_bed_sensors
-    id: auto_off_bed_sensor_change
+    entity_id: !input auto_off_persons
+    id: auto_off_person_change
 
-  # v7.2.0: Fire when room absence sensors change (Auto-Off Conditions)
+  # v7.2.0: Fire when 1-person-home sensors change
   - platform: state
-    entity_id: !input auto_off_absence_sensors
-    id: auto_off_absence_sensor_change
+    entity_id: !input auto_off_sensors_1_home
+    id: auto_off_sensor_1_change
+
+  # v7.2.0: Fire when everyone-home sensors change
+  - platform: state
+    entity_id: !input auto_off_sensors_all_home
+    id: auto_off_sensor_all_change
 
   # Fire immediately when control mode changes (Manual/Smart/Auto/Override)
   - platform: state
@@ -6246,19 +6246,48 @@ action:
       # AUTO-OFF CONDITIONS COMPUTED VARIABLES (v7.2.0)
       # ===================================
 
-      # Condition 1: Any remote bed sensor is ON (occupied)
-      auto_off_any_bed_occupied: >
-        {% set sensors = auto_off_remote_bed_sensors %}
-        {% if sensors | length == 0 %}
+      # Condition 1: Person-count-aware bed sensors
+      auto_off_people_home_count: >
+        {% set count = namespace(n=0) %}
+        {% for person in auto_off_persons %}
+          {% if states(person) == 'home' %}
+            {% set count.n = count.n + 1 %}
+          {% endif %}
+        {% endfor %}
+        {{ count.n }}
+
+      auto_off_person_triggered: >
+        {% set people_home = auto_off_people_home_count | int(0) %}
+        {% if auto_off_persons | length == 0 or people_home == 0 %}
           false
+        {% elif people_home == 1 %}
+          {# 1 person home: ANY sensor ON = they're in bed #}
+          {% set sensors = auto_off_sensors_1_home %}
+          {% if sensors | length == 0 %}
+            false
+          {% else %}
+            {% set ns = namespace(any_on=false) %}
+            {% for s in sensors %}
+              {% if is_state(s, 'on') %}
+                {% set ns.any_on = true %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.any_on }}
+          {% endif %}
         {% else %}
-          {% set ns = namespace(any_on=false) %}
-          {% for sensor in sensors %}
-            {% if is_state(sensor, 'on') %}
-              {% set ns.any_on = true %}
-            {% endif %}
-          {% endfor %}
-          {{ ns.any_on }}
+          {# 2+ people home: ALL sensors ON = everyone in bed #}
+          {% set sensors = auto_off_sensors_all_home %}
+          {% if sensors | length == 0 %}
+            false
+          {% else %}
+            {% set ns = namespace(all_on=true) %}
+            {% for s in sensors %}
+              {% if not is_state(s, 'on') %}
+                {% set ns.all_on = false %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.all_on }}
+          {% endif %}
         {% endif %}
 
       # Condition 2: Current time is within the scheduled window
@@ -6278,44 +6307,18 @@ action:
           {% endif %}
         {% endif %}
 
-      # Condition 3: All room absence sensors are OFF for timeout
-      auto_off_room_absent: >
-        {% set sensors = auto_off_absence_sensors %}
-        {% if sensors | length == 0 %}
-          false
-        {% else %}
-          {% set ns = namespace(all_off=true, min_off_minutes=999) %}
-          {% for sensor in sensors %}
-            {% if is_state(sensor, 'on') %}
-              {% set ns.all_off = false %}
-            {% else %}
-              {% set last_change = state_attr(sensor, 'last_changed') %}
-              {% if last_change %}
-                {% set mins = ((as_timestamp(now()) - as_timestamp(last_change)) / 60) | float(0) %}
-                {% if mins < ns.min_off_minutes %}
-                  {% set ns.min_off_minutes = mins %}
-                {% endif %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-          {{ ns.all_off and ns.min_off_minutes >= (auto_off_absence_timeout | float(15)) }}
-        {% endif %}
-
       # Combined: Should auto-off conditions activate? (OR logic)
       auto_off_conditions_active: >
-        {{ enable_auto_off_conditions and (auto_off_any_bed_occupied | bool or auto_off_in_schedule | bool or auto_off_room_absent | bool) }}
+        {{ enable_auto_off_conditions and (auto_off_person_triggered | bool or auto_off_in_schedule | bool) }}
 
       # Which condition triggered (for logging)
       auto_off_trigger_reason: >
         {% set reasons = [] %}
-        {% if auto_off_any_bed_occupied | bool %}
-          {% set reasons = reasons + ['bed_sensors_occupied'] %}
+        {% if auto_off_person_triggered | bool %}
+          {% set reasons = reasons + ['person_sensors (home: ' ~ auto_off_people_home_count ~ ')'] %}
         {% endif %}
         {% if auto_off_in_schedule | bool %}
           {% set reasons = reasons + ['time_window'] %}
-        {% endif %}
-        {% if auto_off_room_absent | bool %}
-          {% set reasons = reasons + ['room_absent'] %}
         {% endif %}
         {{ reasons | join(', ') if reasons | length > 0 else 'none' }}
 
