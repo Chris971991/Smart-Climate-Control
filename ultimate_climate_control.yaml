@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.1
+  name: Ultimate Smart Climate Control - v7.3.2
 
   description: |
-    **Ultimate Smart Climate Control v7.3.1**
+    **Ultimate Smart Climate Control v7.3.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,9 +60,10 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.3.0 - Auto-Off Conditions (Person-Count-Aware Sensors, Time Window):**
-    • **NEW**: Person-count-aware auto-off — configure household members and different sensors for 1-person-home vs everyone-home
-    • **Condition 1**: When 1 person home → ANY of configured sensors ON triggers auto-off; when 2+ home → ALL sensors must be ON
+    **v7.3.2 - Family-Friendly Auto-Off (Optional Person Override + Threshold Fix):**
+    • **NEW**: Optional "Auto-Off People" override — leave empty to use People to Track, or set explicitly for families (e.g., track only adults)
+    • **FIX**: Threshold logic now uses "not everyone home" vs "everyone home" instead of "1" vs "2+" — correct for families of any size
+    • **Condition 1**: Not everyone home → ANY sensor ON triggers auto-off; Everyone home → ALL sensors must be ON
     • **Condition 2**: Scheduled time window — configurable start/end time with overnight support (e.g., 22:00-06:00)
     • **Configurable action**: Off, Eco, or Fan Only — user chooses per room
     • Works in Auto and Smart control modes, respects Override/Manual, compressor protection, and all existing safeguards
@@ -1341,11 +1342,24 @@ blueprint:
                 - label: "Fan Only - Fan only, no compressor"
                   value: "fan_only"
 
-        auto_off_sensors_1_home:
-          name: "Sensors — 1 Person Home"
+        auto_off_persons:
+          name: "Auto-Off People (Optional)"
           description: |
-            **Which sensors to check when only 1 person is home**
-            (based on People to Track in Presence settings).
+            **Override** who counts for auto-off decisions.
+
+            **Leave empty** to use People to Track from Presence settings.
+            **Set explicitly** if auto-off should track different people
+            (e.g., only adults in a family with kids).
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: person
+
+        auto_off_sensors_1_home:
+          name: "Sensors — Not Everyone Home"
+          description: |
+            **Which sensors to check when not all tracked people are home.**
 
             If ANY of these sensors is ON, auto-off triggers.
 
@@ -1360,8 +1374,7 @@ blueprint:
         auto_off_sensors_all_home:
           name: "Sensors — Everyone Home"
           description: |
-            **Which sensors to check when 2+ people are home**
-            (based on People to Track in Presence settings).
+            **Which sensors to check when all tracked people are home.**
 
             ALL of these sensors must be ON for auto-off to trigger.
 
@@ -3558,6 +3571,7 @@ variables:
   # Auto-Off Conditions (v7.3.0)
   enable_auto_off_conditions: !input enable_auto_off_conditions
   auto_off_action: !input auto_off_action
+  auto_off_persons: !input auto_off_persons
   auto_off_sensors_1_home: !input auto_off_sensors_1_home
   auto_off_sensors_all_home: !input auto_off_sensors_all_home
   auto_off_schedule_enabled: !input auto_off_schedule_enabled
@@ -3841,6 +3855,11 @@ trigger:
   - platform: state
     entity_id: !input room_presence_sensors
     id: room_presence_change
+
+  # v7.3.2: Fire when auto-off person override entities change
+  - platform: state
+    entity_id: !input auto_off_persons
+    id: auto_off_person_change
 
   # v7.3.0: Fire when 1-person-home sensors change
   - platform: state
@@ -6227,22 +6246,39 @@ action:
       # AUTO-OFF CONDITIONS COMPUTED VARIABLES (v7.3.0)
       # ===================================
 
-      # Condition 1: Person-count-aware bed sensors
+      # Condition 1: Person-count-aware bed sensors (v7.3.2: family-friendly)
+      # Use auto_off_persons override if set, otherwise fall back to People to Track
+      auto_off_effective_persons: >
+        {% if auto_off_persons | length > 0 %}
+          {{ auto_off_persons }}
+        {% else %}
+          {{ persons }}
+        {% endif %}
+
       auto_off_people_home_count: >
+        {% set eff = auto_off_persons if auto_off_persons | length > 0 else persons %}
         {% set count = namespace(n=0) %}
-        {% for person in persons %}
+        {% for person in eff %}
           {% if states(person) == 'home' %}
             {% set count.n = count.n + 1 %}
           {% endif %}
         {% endfor %}
         {{ count.n }}
 
+      auto_off_total_tracked: >
+        {% if auto_off_persons | length > 0 %}
+          {{ auto_off_persons | length }}
+        {% else %}
+          {{ persons | length }}
+        {% endif %}
+
       auto_off_person_triggered: >
+        {% set total = auto_off_total_tracked | int(0) %}
         {% set people_home = auto_off_people_home_count | int(0) %}
-        {% if persons | length == 0 or people_home == 0 %}
+        {% if total == 0 or people_home == 0 %}
           false
-        {% elif people_home == 1 %}
-          {# 1 person home: ANY sensor ON = they're in bed #}
+        {% elif people_home < total %}
+          {# Not everyone home: ANY sensor ON = they're in bed #}
           {% set sensors = auto_off_sensors_1_home %}
           {% if sensors | length == 0 %}
             false
@@ -6256,7 +6292,7 @@ action:
             {{ ns.any_on }}
           {% endif %}
         {% else %}
-          {# 2+ people home: ALL sensors ON = everyone in bed #}
+          {# Everyone home: ALL sensors ON = everyone in bed #}
           {% set sensors = auto_off_sensors_all_home %}
           {% if sensors | length == 0 %}
             false
@@ -6296,7 +6332,7 @@ action:
       auto_off_trigger_reason: >
         {% set reasons = [] %}
         {% if auto_off_person_triggered | bool %}
-          {% set reasons = reasons + ['person_sensors (home: ' ~ auto_off_people_home_count ~ ')'] %}
+          {% set reasons = reasons + ['person_sensors (' ~ auto_off_people_home_count ~ '/' ~ auto_off_total_tracked ~ ' home)'] %}
         {% endif %}
         {% if auto_off_in_schedule | bool %}
           {% set reasons = reasons + ['time_window'] %}
