@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.2
+  name: Ultimate Smart Climate Control - v7.3.3
 
   description: |
-    **Ultimate Smart Climate Control v7.3.2**
+    **Ultimate Smart Climate Control v7.3.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -6345,7 +6345,7 @@ action:
           false
         {# v7.0.3 FIX: Manual override (physical remote) takes priority over runtime protection #}
         {# If user pressed physical remote to turn off AC, respect that immediately #}
-        {% elif manual_override_detection %}
+        {% elif manual_override_detection | bool %}
           false
         {# v3.9.20 FIX: Runtime protection overrides ALL activation logic #}
         {# v3.11.8 FIX: Runtime protection should only apply when AC is actually still running #}
@@ -6381,7 +6381,7 @@ action:
         {# DEBUG: Track which branch set should_activate #}
         {% if control_mode == 'Override' %}
           OVERRIDE_MODE
-        {% elif manual_override_detection %}
+        {% elif manual_override_detection | bool %}
           MANUAL_OVERRIDE_DETECTED (physical remote or UI click)
         {% elif last_mode in ['cooling', 'heating'] and (time_in_current_mode | float(0)) < (runtime_min | float(0)) and actual_ac_state == 'on' %}
           RUNTIME_PROTECTION (time={{ time_in_current_mode }}min < {{ runtime_min }}min)
@@ -8236,7 +8236,7 @@ action:
       # Skip if manual override is active (user changed AC while in Auto/Smart) - NEVER for mode changes
       - conditions:
           - condition: template
-            value_template: "{{ control_mode == 'Override' and manual_override_detection }}"
+            value_template: "{{ control_mode == 'Override' and manual_override_detection | bool }}"
         sequence:
           - if:
               - condition: template
