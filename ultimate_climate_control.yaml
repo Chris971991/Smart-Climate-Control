@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.5
+  name: Ultimate Smart Climate Control - v7.3.6
 
   description: |
-    **Ultimate Smart Climate Control v7.3.5**
+    **Ultimate Smart Climate Control v7.3.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,11 +60,15 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v7.3.5 - Fix Google Home / Voice Commands Not Triggering Override:**
+    **v7.3.6 - Fix Google Home / Voice Commands Not Triggering Override:**
     • **FIX**: Google Home and HA UI commands to turn off AC no longer bypass manual override detection
-    • **ROOT CAUSE**: The v6.7.0 `likely_automation_change` check treated ALL recent commands as automation-confirmed,
+    • **ROOT CAUSE 1**: The v6.7.0 `likely_automation_change` check treated ALL recent commands as automation-confirmed,
       including user-initiated ones (Google Home, HA UI), because the integration sets `expected_hvac_mode` and
       `last_command_time` for all callers. Added `and not state_change_from_user` exclusion.
+    • **ROOT CAUSE 2**: Override activation required `trigger.id == 'climate_state_change'` (v5.3.10), but with
+      `mode:restart`, a `periodic_check` trigger can replace the original trigger before override activates.
+      The `helper_last_ui_click` mechanism (v6.4.0) correctly detected the click but couldn't activate override
+      because of the trigger restriction. Now allows `periodic_check` to also activate override.
 
     **v7.3.4 - Auto-Off Grace Periods + Family-Friendly Logic:**
     • **NEW**: Entry delay — sensors must be triggered for X minutes before auto-off activates (prevents brief bed-sits)
@@ -6242,7 +6246,7 @@ action:
             {# v6.7.0 FIX: If automation sent a command recently AND expected matches actual, #}
             {# this is definitely an automation-triggered change. Context.parent_id is often #}
             {# lost when async_write_ha_state() is called within service handlers. #}
-            {# v7.3.5 FIX: Exclude user-initiated changes (Google Home, HA UI) from this check. #}
+            {# v7.3.6 FIX: Exclude user-initiated changes (Google Home, HA UI) from this check. #}
             {# The integration's _set() sets expected_hvac_mode and last_command_time for ALL #}
             {# callers (automation AND user), so without this exclusion, Google Home OFF commands #}
             {# are incorrectly treated as automation confirmations and override never fires. #}
@@ -7115,9 +7119,13 @@ action:
       # Changing control mode (Auto/Smart/Manual) is intentional user action, not a manual AC override
       - condition: template
         value_template: "{{ trigger.id != 'mode_change' }}"
-      # v5.3.10 FIX: Must be climate_state_change trigger (not temp sensor, presence, etc.)
+      # v5.3.10 FIX: Must be climate_state_change OR periodic_check trigger
+      # v7.3.6 FIX: Allow periodic_check to activate override when helper_last_ui_click
+      # detected a recent user action. With mode:restart, periodic_check can replace
+      # the climate_state_change trigger before override activates. The manual_override_detection
+      # variable already handles trigger filtering (returns false for irrelevant triggers).
       - condition: template
-        value_template: "{{ trigger.id == 'climate_state_change' }}"
+        value_template: "{{ trigger.id in ['climate_state_change', 'periodic_check'] }}"
       # v5.3.15 FIX: REMOVED redundant parent_id check - it bypassed the grace period!
       # The manual_override_detection variable already includes:
       #   1. parent_id is none check (for physical remote detection)
