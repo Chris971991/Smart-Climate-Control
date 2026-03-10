@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.4
+  name: Ultimate Smart Climate Control - v7.3.5
 
   description: |
-    **Ultimate Smart Climate Control v7.3.4**
+    **Ultimate Smart Climate Control v7.3.5**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,12 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v7.3.5 - Fix Google Home / Voice Commands Not Triggering Override:**
+    • **FIX**: Google Home and HA UI commands to turn off AC no longer bypass manual override detection
+    • **ROOT CAUSE**: The v6.7.0 `likely_automation_change` check treated ALL recent commands as automation-confirmed,
+      including user-initiated ones (Google Home, HA UI), because the integration sets `expected_hvac_mode` and
+      `last_command_time` for all callers. Added `and not state_change_from_user` exclusion.
 
     **v7.3.4 - Auto-Off Grace Periods + Family-Friendly Logic:**
     • **NEW**: Entry delay — sensors must be triggered for X minutes before auto-off activates (prevents brief bed-sits)
@@ -6236,8 +6242,12 @@ action:
             {# v6.7.0 FIX: If automation sent a command recently AND expected matches actual, #}
             {# this is definitely an automation-triggered change. Context.parent_id is often #}
             {# lost when async_write_ha_state() is called within service handlers. #}
+            {# v7.3.5 FIX: Exclude user-initiated changes (Google Home, HA UI) from this check. #}
+            {# The integration's _set() sets expected_hvac_mode and last_command_time for ALL #}
+            {# callers (automation AND user), so without this exclusion, Google Home OFF commands #}
+            {# are incorrectly treated as automation confirmations and override never fires. #}
             {% set expected_matches_actual = (expected_hvac is not none and expected_hvac == actual_hvac) %}
-            {% set likely_automation_change = (recent_automation and expected_matches_actual) %}
+            {% set likely_automation_change = (recent_automation and expected_matches_actual and not state_change_from_user) %}
 
             {# v6.1.2: Check STATE CHANGE CONTEXT first - this is 100% reliable #}
             {# v6.7.0: Also check if this looks like a recent automation command #}
