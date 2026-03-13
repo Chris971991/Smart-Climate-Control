@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.8
+  name: Ultimate Smart Climate Control - v7.3.9
 
   description: |
-    **Ultimate Smart Climate Control v7.3.8**
+    **Ultimate Smart Climate Control v7.3.9**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,11 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v7.3.9 - Bed Sensor Respects Presence Confirmation Delay:**
+    • **BUG**: Walking into empty bedroom and lying in bed turns AC on instantly, bypassing the 5-minute presence confirmation delay
+    • **ROOT CAUSE**: `bed_occupied` check in `smart_presence_active` returned `true` immediately without consulting `presence_confirmation_delay` — the bed sensor was a backdoor past the delay
+    • **FIX**: Bed sensor now requires confirmation delay for initial activation (empty room → bed). If AC is already running in a bed comfort mode, bed_occupied keeps it on without delay (sleeping continuity preserved)
 
     **v7.3.8 - Fix Bed Eco Cooling Past Fan-Only Target:**
     • **BUG**: AC in bed eco mode cools to 20°C instead of transitioning to fan_only at ~22°C
@@ -5970,7 +5975,12 @@ action:
         {% elif effective_mode == 'Smart' %}
           {# v4.3.0: Bed sensor counts as confirmed presence for Smart mode #}
           {# This prevents Smart mode from turning off AC while person is sleeping #}
-          {% if bed_occupied %}
+          {# v7.3.0 FIX: Bed sensor must ALSO respect presence_confirmation_delay for INITIAL activation #}
+          {# Previously bed_occupied bypassed the delay entirely, causing instant AC turn-on when entering room #}
+          {# If AC is already in a bed comfort mode, bed_occupied keeps it on (no delay needed) #}
+          {% if bed_occupied and last_mode in ['bed_comfort_quiet', 'bed_comfort_eco', 'bed_eco_fan_only'] %}
+            true
+          {% elif bed_occupied and (presence_confirmation_delay == 0 or minutes_with_presence >= (presence_confirmation_delay - 0.17)) %}
             true
           {# v4.3.0: Bed absence grace period - bathroom breaks during sleep #}
           {# Only applies when bed sensor was previously active (last_mode was bed_comfort) #}
