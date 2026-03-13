@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v7.3.7
+  name: Ultimate Smart Climate Control - v7.3.8
 
   description: |
-    **Ultimate Smart Climate Control v7.3.7**
+    **Ultimate Smart Climate Control v7.3.8**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,11 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v7.3.8 - Fix Bed Eco Cooling Past Fan-Only Target:**
+    • **BUG**: AC in bed eco mode cools to 20°C instead of transitioning to fan_only at ~22°C
+    • **ROOT CAUSE**: Dynamic escalation and outside temp compensation lower the AC setpoint aggressively during bed_comfort_eco, causing the room to blow past the narrow fan_only trigger window (0.5°C) between polling intervals
+    • **FIX**: Skip both dynamic escalation and outside temp compensation during bed comfort modes (bed_comfort_eco, bed_comfort_quiet, bed_eco_fan_only) — these modes should use the raw target_temp for gentle cooling, then transition to fan_only
 
     **v7.3.7 - Fix Google Home / Voice Commands Not Triggering Override:**
     • **FIX**: Google Home and HA UI commands to turn off AC no longer bypass manual override detection
@@ -5437,9 +5442,12 @@ action:
         {% set temp_needs_heating = current_temp < comfort_min_temp %}
         {% set is_cooling = mode_is_cooling or (not mode_is_heating and temp_needs_cooling) %}
         {% set is_heating = mode_is_heating or (not mode_is_cooling and temp_needs_heating) %}
+        {# v7.2.0: Bed comfort modes use raw target for gentle cooling to fan_only transition #}
+        {% set in_bed_comfort = last_mode in ['bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only'] %}
 
         {# Step 1: Apply outside temperature compensation if enabled #}
-        {% if enable_outside_temp_compensation and (is_cooling or is_heating) %}
+        {# v7.2.0: Skip outside compensation in bed comfort modes - use raw target for gentle cooling #}
+        {% if enable_outside_temp_compensation and (is_cooling or is_heating) and not in_bed_comfort %}
           {% set outdoor = outdoor_temperature | float(25) %}
           {% set outdoor_delta = outdoor - outside_compensation_base_temp %}
 
@@ -5453,7 +5461,8 @@ action:
         {% endif %}
 
         {# Step 2: Apply dynamic escalation adjustment if enabled #}
-        {% if enable_dynamic_target and (final_escalation_level | int(0)) > 0 and (is_cooling or is_heating) %}
+        {# v7.2.0: Skip escalation in bed comfort modes - gentle cooling to target then fan_only #}
+        {% if enable_dynamic_target and (final_escalation_level | int(0)) > 0 and (is_cooling or is_heating) and not in_bed_comfort %}
           {% set escalation_adj = final_escalation_level * escalation_offset %}
           {% if is_cooling %}
             {% set base = base - escalation_adj %}
