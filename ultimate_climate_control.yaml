@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.3.0
+  name: Ultimate Smart Climate Control - v8.4.0
 
   description: |
-    **Ultimate Smart Climate Control v8.3.0**
+    **Ultimate Smart Climate Control v8.4.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,12 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v8.4.0 - Ceiling Fan Speed Switch Support:**
+    • **NEW**: Support for fans with separate speed switch entities (low/medium/high switches)
+    • 3 new inputs: ceiling_fan_low_switch, ceiling_fan_medium_switch, ceiling_fan_high_switch
+    • Auto-detects switch-based fans and uses switch.turn_on/off instead of fan.set_preset_mode
+    • All fan speed control and turn-off locations updated to support both methods
 
     **v8.3.0 - Ceiling Fan Zone Architecture Fix:**
     • **CRITICAL FIX**: Ceiling fan code was unreachable (dead code) due to being nested inside stability reset block
@@ -3002,6 +3008,43 @@ blueprint:
                 - fan
                 - switch
 
+        ceiling_fan_low_switch:
+          name: "Ceiling Fan Low Speed Switch"
+          description: |
+            **Switch entity for LOW fan speed.**
+
+            If your ceiling fan uses separate switch entities for each speed, configure them here.
+            Leave empty if your fan entity supports preset modes or percentage control natively.
+          default: []
+          selector:
+            entity:
+              domain:
+                - switch
+
+        ceiling_fan_medium_switch:
+          name: "Ceiling Fan Medium Speed Switch"
+          description: |
+            **Switch entity for MEDIUM fan speed.**
+
+            Leave empty if your fan entity supports preset modes or percentage control natively.
+          default: []
+          selector:
+            entity:
+              domain:
+                - switch
+
+        ceiling_fan_high_switch:
+          name: "Ceiling Fan High Speed Switch"
+          description: |
+            **Switch entity for HIGH fan speed.**
+
+            Leave empty if your fan entity supports preset modes or percentage control natively.
+          default: []
+          selector:
+            entity:
+              domain:
+                - switch
+
         fan_cooling_offset:
           name: Fan Cooling Offset
           description: |
@@ -3795,6 +3838,9 @@ variables:
   fan_precondition_mode: !input fan_precondition_mode
   fan_bed_comfort_mode: !input fan_bed_comfort_mode
   fan_on_vacancy: !input fan_on_vacancy
+  ceiling_fan_low_switch_input: !input ceiling_fan_low_switch
+  ceiling_fan_medium_switch_input: !input ceiling_fan_medium_switch
+  ceiling_fan_high_switch_input: !input ceiling_fan_high_switch
 
   # Derived ceiling fan variables
   ceiling_fan_configured: >
@@ -3826,6 +3872,36 @@ variables:
       {{ state_attr(ceiling_fan_entity, 'preset_modes') not in [none, []] }}
     {% else %}
       false
+    {% endif %}
+
+  # Check if speed switches are configured (alternative to preset_mode/percentage)
+  ceiling_fan_has_speed_switches: >
+    {{ ceiling_fan_low_switch_input not in [none, '', [], 'unknown', 'unavailable']
+       and ceiling_fan_medium_switch_input not in [none, '', [], 'unknown', 'unavailable']
+       and ceiling_fan_high_switch_input not in [none, '', [], 'unknown', 'unavailable'] }}
+  ceiling_fan_low_switch: >
+    {% if ceiling_fan_low_switch_input is string %}
+      {{ ceiling_fan_low_switch_input }}
+    {% elif ceiling_fan_low_switch_input is iterable and ceiling_fan_low_switch_input | length > 0 %}
+      {{ ceiling_fan_low_switch_input[0] }}
+    {% else %}
+      none
+    {% endif %}
+  ceiling_fan_medium_switch: >
+    {% if ceiling_fan_medium_switch_input is string %}
+      {{ ceiling_fan_medium_switch_input }}
+    {% elif ceiling_fan_medium_switch_input is iterable and ceiling_fan_medium_switch_input | length > 0 %}
+      {{ ceiling_fan_medium_switch_input[0] }}
+    {% else %}
+      none
+    {% endif %}
+  ceiling_fan_high_switch: >
+    {% if ceiling_fan_high_switch_input is string %}
+      {{ ceiling_fan_high_switch_input }}
+    {% elif ceiling_fan_high_switch_input is iterable and ceiling_fan_high_switch_input | length > 0 %}
+      {{ ceiling_fan_high_switch_input[0] }}
+    {% else %}
+      none
     {% endif %}
 
   # Swing mode validation - maps user input to AC's actual swing mode names
@@ -5005,7 +5081,7 @@ action:
       heating_target_temp: "{{ base_heating_target | round(1) }}"
 
       # =====================================================
-      # CEILING FAN COMPUTED VARIABLES (v8.3.0)
+      # CEILING FAN COMPUTED VARIABLES (v8.4.0)
       # Must be after comfort_max_temp and current_temp are defined
       # =====================================================
 
@@ -5058,6 +5134,20 @@ action:
           66
         {% else %}
           100
+        {% endif %}
+
+      # Resolve the correct switch entity for the target speed
+      ceiling_fan_target_switch: >
+        {% if ceiling_fan_has_speed_switches %}
+          {% if ceiling_fan_target_speed == 'low' %}
+            {{ ceiling_fan_low_switch }}
+          {% elif ceiling_fan_target_speed == 'medium' %}
+            {{ ceiling_fan_medium_switch }}
+          {% else %}
+            {{ ceiling_fan_high_switch }}
+          {% endif %}
+        {% else %}
+          none
         {% endif %}
 
       # Check if ceiling fan mode was escalated to AC (watchdog triggered)
@@ -7507,10 +7597,23 @@ action:
           - condition: template
             value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on }}"
         then:
-          - service: homeassistant.turn_off
-            target:
-              entity_id: "{{ ceiling_fan_entity }}"
-            continue_on_error: true
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ ceiling_fan_has_speed_switches }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id:
+                        - "{{ ceiling_fan_low_switch }}"
+                        - "{{ ceiling_fan_medium_switch }}"
+                        - "{{ ceiling_fan_high_switch }}"
+                    continue_on_error: true
+            default:
+              - service: homeassistant.turn_off
+                target:
+                  entity_id: "{{ ceiling_fan_entity }}"
+                continue_on_error: true
 
       # Stop automation immediately - don't continue with any AC commands
       - stop: "Physical remote override detected - automation paused"
@@ -10094,6 +10197,15 @@ action:
               ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
 
           - choose:
+              # Speed switches (separate switch entities for each speed)
+              - conditions:
+                  - condition: template
+                    value_template: "{{ ceiling_fan_has_speed_switches }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: "{{ ceiling_fan_target_switch }}"
+                    continue_on_error: true
               # Fan entity with speed control
               - conditions:
                   - condition: template
@@ -10165,15 +10277,38 @@ action:
                   - condition: template
                     value_template: "{{ fan_with_ac_mode == 'off' }}"
                 sequence:
-                  - service: homeassistant.turn_off
-                    target:
-                      entity_id: "{{ ceiling_fan_entity }}"
-                    continue_on_error: true
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ ceiling_fan_has_speed_switches }}"
+                        sequence:
+                          - service: switch.turn_off
+                            target:
+                              entity_id:
+                                - "{{ ceiling_fan_low_switch }}"
+                                - "{{ ceiling_fan_medium_switch }}"
+                                - "{{ ceiling_fan_high_switch }}"
+                            continue_on_error: true
+                    default:
+                      - service: homeassistant.turn_off
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        continue_on_error: true
               - conditions:
                   - condition: template
-                    value_template: "{{ fan_with_ac_mode == 'low' and ceiling_fan_domain == 'fan' }}"
+                    value_template: "{{ fan_with_ac_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
                 sequence:
                   - choose:
+                      # Speed switches (separate switch entities for each speed)
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ ceiling_fan_has_speed_switches }}"
+                        sequence:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_low_switch }}"
+                            continue_on_error: true
+                      # Preset modes (low/medium/high presets)
                       - conditions:
                           - condition: template
                             value_template: "{{ ceiling_fan_has_presets }}"
@@ -10284,9 +10419,19 @@ action:
 
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_domain == 'fan' and ceiling_fan_speed_mode != 'static' }}"
+                value_template: "{{ (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) and ceiling_fan_speed_mode != 'static' }}"
             then:
               - choose:
+                  # Speed switches (separate switch entities for each speed)
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_target_switch }}"
+                        continue_on_error: true
+                  # Preset modes (low/medium/high presets)
                   - conditions:
                       - condition: template
                         value_template: "{{ ceiling_fan_has_presets }}"
@@ -12097,15 +12242,38 @@ action:
                       - condition: template
                         value_template: "{{ fan_bed_comfort_mode == 'off' }}"
                     sequence:
-                      - service: homeassistant.turn_off
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        continue_on_error: true
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ ceiling_fan_has_speed_switches }}"
+                            sequence:
+                              - service: switch.turn_off
+                                target:
+                                  entity_id:
+                                    - "{{ ceiling_fan_low_switch }}"
+                                    - "{{ ceiling_fan_medium_switch }}"
+                                    - "{{ ceiling_fan_high_switch }}"
+                                continue_on_error: true
+                        default:
+                          - service: homeassistant.turn_off
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            continue_on_error: true
                   - conditions:
                       - condition: template
-                        value_template: "{{ fan_bed_comfort_mode == 'low' and ceiling_fan_domain == 'fan' }}"
+                        value_template: "{{ fan_bed_comfort_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
                     sequence:
                       - choose:
+                          # Speed switches (separate switch entities for each speed)
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ ceiling_fan_has_speed_switches }}"
+                            sequence:
+                              - service: switch.turn_on
+                                target:
+                                  entity_id: "{{ ceiling_fan_low_switch }}"
+                                continue_on_error: true
+                          # Preset modes (low/medium/high presets)
                           - conditions:
                               - condition: template
                                 value_template: "{{ ceiling_fan_has_presets }}"
@@ -12609,10 +12777,23 @@ action:
                   {{ ceiling_fan_configured and ceiling_fan_is_on
                      and fan_at_target_temp != 'replace_ac' }}
             then:
-              - service: homeassistant.turn_off
-                target:
-                  entity_id: "{{ ceiling_fan_entity }}"
-                continue_on_error: true
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_off
+                        target:
+                          entity_id:
+                            - "{{ ceiling_fan_low_switch }}"
+                            - "{{ ceiling_fan_medium_switch }}"
+                            - "{{ ceiling_fan_high_switch }}"
+                        continue_on_error: true
+                default:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    continue_on_error: true
 
           - choose:
               - conditions:
@@ -13596,6 +13777,15 @@ action:
 
                   # Activate ceiling fan on low for maintenance
                   - choose:
+                      # Speed switches (separate switch entities for each speed)
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ ceiling_fan_has_speed_switches }}"
+                        sequence:
+                          - service: switch.turn_on
+                            target:
+                              entity_id: "{{ ceiling_fan_low_switch }}"
+                            continue_on_error: true
                       - conditions:
                           - condition: template
                             value_template: "{{ ceiling_fan_domain == 'fan' }}"
@@ -14206,10 +14396,23 @@ action:
               - condition: template
                 value_template: "{{ ceiling_fan_configured and fan_on_vacancy == 'off' and ceiling_fan_is_on }}"
             then:
-              - service: homeassistant.turn_off
-                target:
-                  entity_id: "{{ ceiling_fan_entity }}"
-                continue_on_error: true
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_off
+                        target:
+                          entity_id:
+                            - "{{ ceiling_fan_low_switch }}"
+                            - "{{ ceiling_fan_medium_switch }}"
+                            - "{{ ceiling_fan_high_switch }}"
+                        continue_on_error: true
+                default:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    continue_on_error: true
 
           - choose:
               - conditions:
@@ -14528,10 +14731,23 @@ action:
               - condition: template
                 value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on }}"
             then:
-              - service: homeassistant.turn_off
-                target:
-                  entity_id: "{{ ceiling_fan_entity }}"
-                continue_on_error: true
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_off
+                        target:
+                          entity_id:
+                            - "{{ ceiling_fan_low_switch }}"
+                            - "{{ ceiling_fan_medium_switch }}"
+                            - "{{ ceiling_fan_high_switch }}"
+                        continue_on_error: true
+                default:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    continue_on_error: true
 
           - if:
               - condition: template
