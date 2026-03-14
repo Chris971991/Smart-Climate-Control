@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.4.0
+  name: Ultimate Smart Climate Control - v8.5.0
 
   description: |
-    **Ultimate Smart Climate Control v8.4.0**
+    **Ultimate Smart Climate Control v8.5.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,10 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v8.5.0 - Multi-Fan Support:**
+    • All ceiling fan inputs now accept multiple entities (for rooms with multiple fans)
+    • Speed switches, fan entities, and turn-on/off calls all support entity lists natively
 
     **v8.4.0 - Ceiling Fan Speed Switch Support:**
     • **NEW**: Support for fans with separate speed switch entities (low/medium/high switches)
@@ -3004,6 +3008,7 @@ blueprint:
           default: []
           selector:
             entity:
+              multiple: true
               domain:
                 - fan
                 - switch
@@ -3018,6 +3023,7 @@ blueprint:
           default: []
           selector:
             entity:
+              multiple: true
               domain:
                 - switch
 
@@ -3030,6 +3036,7 @@ blueprint:
           default: []
           selector:
             entity:
+              multiple: true
               domain:
                 - switch
 
@@ -3042,6 +3049,7 @@ blueprint:
           default: []
           selector:
             entity:
+              multiple: true
               domain:
                 - switch
 
@@ -3845,6 +3853,16 @@ variables:
   # Derived ceiling fan variables
   ceiling_fan_configured: >
     {{ ceiling_fan_entity_input not in [none, '', [], 'unknown', 'unavailable'] }}
+  # Full list of fan entities (for service calls - entity_id accepts lists)
+  ceiling_fan_entities: >
+    {% if ceiling_fan_entity_input is string %}
+      {{ [ceiling_fan_entity_input] }}
+    {% elif ceiling_fan_entity_input is iterable and ceiling_fan_entity_input | length > 0 %}
+      {{ ceiling_fan_entity_input | list }}
+    {% else %}
+      {{ [] }}
+    {% endif %}
+  # First fan entity (for state checks like is_state, state_attr)
   ceiling_fan_entity: >
     {% if ceiling_fan_entity_input is string %}
       {{ ceiling_fan_entity_input }}
@@ -3881,27 +3899,27 @@ variables:
        and ceiling_fan_high_switch_input not in [none, '', [], 'unknown', 'unavailable'] }}
   ceiling_fan_low_switch: >
     {% if ceiling_fan_low_switch_input is string %}
-      {{ ceiling_fan_low_switch_input }}
+      {{ [ceiling_fan_low_switch_input] }}
     {% elif ceiling_fan_low_switch_input is iterable and ceiling_fan_low_switch_input | length > 0 %}
-      {{ ceiling_fan_low_switch_input[0] }}
+      {{ ceiling_fan_low_switch_input | list }}
     {% else %}
-      none
+      {{ [] }}
     {% endif %}
   ceiling_fan_medium_switch: >
     {% if ceiling_fan_medium_switch_input is string %}
-      {{ ceiling_fan_medium_switch_input }}
+      {{ [ceiling_fan_medium_switch_input] }}
     {% elif ceiling_fan_medium_switch_input is iterable and ceiling_fan_medium_switch_input | length > 0 %}
-      {{ ceiling_fan_medium_switch_input[0] }}
+      {{ ceiling_fan_medium_switch_input | list }}
     {% else %}
-      none
+      {{ [] }}
     {% endif %}
   ceiling_fan_high_switch: >
     {% if ceiling_fan_high_switch_input is string %}
-      {{ ceiling_fan_high_switch_input }}
+      {{ [ceiling_fan_high_switch_input] }}
     {% elif ceiling_fan_high_switch_input is iterable and ceiling_fan_high_switch_input | length > 0 %}
-      {{ ceiling_fan_high_switch_input[0] }}
+      {{ ceiling_fan_high_switch_input | list }}
     {% else %}
-      none
+      {{ [] }}
     {% endif %}
 
   # Swing mode validation - maps user input to AC's actual swing mode names
@@ -5081,7 +5099,7 @@ action:
       heating_target_temp: "{{ base_heating_target | round(1) }}"
 
       # =====================================================
-      # CEILING FAN COMPUTED VARIABLES (v8.4.0)
+      # CEILING FAN COMPUTED VARIABLES (v8.5.0)
       # Must be after comfort_max_temp and current_temp are defined
       # =====================================================
 
@@ -7612,7 +7630,7 @@ action:
             default:
               - service: homeassistant.turn_off
                 target:
-                  entity_id: "{{ ceiling_fan_entity }}"
+                  entity_id: "{{ ceiling_fan_entities }}"
                 continue_on_error: true
 
       # Stop automation immediately - don't continue with any AC commands
@@ -10213,7 +10231,7 @@ action:
                 sequence:
                   - service: fan.turn_on
                     target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                      entity_id: "{{ ceiling_fan_entities }}"
                     continue_on_error: true
                   - delay:
                       milliseconds: 500
@@ -10225,14 +10243,14 @@ action:
                         sequence:
                           - service: fan.set_preset_mode
                             target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                              entity_id: "{{ ceiling_fan_entities }}"
                             data:
                               preset_mode: "{{ ceiling_fan_target_speed }}"
                             continue_on_error: true
                     default:
                       - service: fan.set_percentage
                         target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                          entity_id: "{{ ceiling_fan_entities }}"
                         data:
                           percentage: "{{ ceiling_fan_target_pct }}"
                         continue_on_error: true
@@ -10240,7 +10258,7 @@ action:
             default:
               - service: homeassistant.turn_on
                 target:
-                  entity_id: "{{ ceiling_fan_entity }}"
+                  entity_id: "{{ ceiling_fan_entities }}"
                 continue_on_error: true
 
           - service: system_log.write
@@ -10292,7 +10310,7 @@ action:
                     default:
                       - service: homeassistant.turn_off
                         target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                          entity_id: "{{ ceiling_fan_entities }}"
                         continue_on_error: true
               - conditions:
                   - condition: template
@@ -10315,14 +10333,14 @@ action:
                         sequence:
                           - service: fan.set_preset_mode
                             target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                              entity_id: "{{ ceiling_fan_entities }}"
                             data:
                               preset_mode: "low"
                             continue_on_error: true
                     default:
                       - service: fan.set_percentage
                         target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                          entity_id: "{{ ceiling_fan_entities }}"
                         data:
                           percentage: 33
                         continue_on_error: true
@@ -10438,14 +10456,14 @@ action:
                     sequence:
                       - service: fan.set_preset_mode
                         target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                          entity_id: "{{ ceiling_fan_entities }}"
                         data:
                           preset_mode: "{{ ceiling_fan_target_speed }}"
                         continue_on_error: true
                 default:
                   - service: fan.set_percentage
                     target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                      entity_id: "{{ ceiling_fan_entities }}"
                     data:
                       percentage: "{{ ceiling_fan_target_pct }}"
                     continue_on_error: true
@@ -12257,7 +12275,7 @@ action:
                         default:
                           - service: homeassistant.turn_off
                             target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                              entity_id: "{{ ceiling_fan_entities }}"
                             continue_on_error: true
                   - conditions:
                       - condition: template
@@ -12280,14 +12298,14 @@ action:
                             sequence:
                               - service: fan.set_preset_mode
                                 target:
-                                  entity_id: "{{ ceiling_fan_entity }}"
+                                  entity_id: "{{ ceiling_fan_entities }}"
                                 data:
                                   preset_mode: "low"
                                 continue_on_error: true
                         default:
                           - service: fan.set_percentage
                             target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                              entity_id: "{{ ceiling_fan_entities }}"
                             data:
                               percentage: 25
                             continue_on_error: true
@@ -12792,7 +12810,7 @@ action:
                 default:
                   - service: homeassistant.turn_off
                     target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                      entity_id: "{{ ceiling_fan_entities }}"
                     continue_on_error: true
 
           - choose:
@@ -13792,7 +13810,7 @@ action:
                         sequence:
                           - service: fan.turn_on
                             target:
-                              entity_id: "{{ ceiling_fan_entity }}"
+                              entity_id: "{{ ceiling_fan_entities }}"
                             continue_on_error: true
                           - delay:
                               milliseconds: 500
@@ -13803,21 +13821,21 @@ action:
                                 sequence:
                                   - service: fan.set_preset_mode
                                     target:
-                                      entity_id: "{{ ceiling_fan_entity }}"
+                                      entity_id: "{{ ceiling_fan_entities }}"
                                     data:
                                       preset_mode: "low"
                                     continue_on_error: true
                             default:
                               - service: fan.set_percentage
                                 target:
-                                  entity_id: "{{ ceiling_fan_entity }}"
+                                  entity_id: "{{ ceiling_fan_entities }}"
                                 data:
                                   percentage: 33
                                 continue_on_error: true
                     default:
                       - service: homeassistant.turn_on
                         target:
-                          entity_id: "{{ ceiling_fan_entity }}"
+                          entity_id: "{{ ceiling_fan_entities }}"
                         continue_on_error: true
 
                   - service: input_text.set_value
@@ -14411,7 +14429,7 @@ action:
                 default:
                   - service: homeassistant.turn_off
                     target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                      entity_id: "{{ ceiling_fan_entities }}"
                     continue_on_error: true
 
           - choose:
@@ -14746,7 +14764,7 @@ action:
                 default:
                   - service: homeassistant.turn_off
                     target:
-                      entity_id: "{{ ceiling_fan_entity }}"
+                      entity_id: "{{ ceiling_fan_entities }}"
                     continue_on_error: true
 
           - if:
