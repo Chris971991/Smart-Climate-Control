@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.7.1
+  name: Ultimate Smart Climate Control - v8.8.0
 
   description: |
-    **Ultimate Smart Climate Control v8.7.1**
+    **Ultimate Smart Climate Control v8.8.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,7 +60,7 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v8.7.1 - Multi-Fan Support:**
+    **v8.8.0 - Multi-Fan Support:**
     • All ceiling fan inputs now accept multiple entities (for rooms with multiple fans)
     • Speed switches, fan entities, and turn-on/off calls all support entity lists natively
 
@@ -5099,7 +5099,7 @@ action:
       heating_target_temp: "{{ base_heating_target | round(1) }}"
 
       # =====================================================
-      # CEILING FAN COMPUTED VARIABLES (v8.7.1)
+      # CEILING FAN COMPUTED VARIABLES (v8.8.0)
       # Must be after comfort_max_temp and current_temp are defined
       # =====================================================
 
@@ -9938,6 +9938,59 @@ action:
                   level: warning
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
+          # v8.8.0: Turn off ceiling fan if AC is cooling and fan_with_ac_mode says off
+          - if:
+              - condition: template
+                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_with_ac_mode == 'off' }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_off
+                        target:
+                          entity_id:
+                            - "{{ ceiling_fan_low_switch }}"
+                            - "{{ ceiling_fan_medium_switch }}"
+                            - "{{ ceiling_fan_high_switch }}"
+                        continue_on_error: true
+                default:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ ceiling_fan_entities }}"
+                    continue_on_error: true
+          - if:
+              - condition: template
+                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_with_ac_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_low_switch }}"
+                        continue_on_error: true
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_presets }}"
+                    sequence:
+                      - service: fan.set_preset_mode
+                        target:
+                          entity_id: "{{ ceiling_fan_entities }}"
+                        data:
+                          preset_mode: "low"
+                        continue_on_error: true
+                default:
+                  - service: fan.set_percentage
+                    target:
+                      entity_id: "{{ ceiling_fan_entities }}"
+                    data:
+                      percentage: 33
+                    continue_on_error: true
+
           # v5.0.3: ALWAYS SEND - Let integration handle deduplication
           # The integration has optimistic state + 30s timeout specifically to handle this
           # Our job: Calculate correct settings and send them
@@ -11267,7 +11320,7 @@ action:
                                   • Reason: Exited comfort zone stability, activating cooling
                                 level: debug
 
-                  # v8.7.1: Handle ceiling fan when AC activates directly (respects fan_with_ac_mode)
+                  # v8.8.0: Handle ceiling fan when AC activates directly (respects fan_with_ac_mode)
                   - if:
                       - condition: template
                         value_template: "{{ ceiling_fan_configured and fan_with_ac_mode != 'on' }}"
@@ -12857,7 +12910,7 @@ action:
                         • Room Presence: {{ room_presence_detected }}
                         • Approaching Home: {{ approaching_home }}
                   level: warning
-          # v8.0.0/v8.7.1: Turn off ceiling fan when comfort zone reached
+          # v8.0.0/v8.8.0: Turn off ceiling fan when comfort zone reached
           # replace_ac only keeps fan on when AC turns fully OFF (not when switching to fan_only)
           - if:
               - condition: template
