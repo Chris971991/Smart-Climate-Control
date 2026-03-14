@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.0.0
+  name: Ultimate Smart Climate Control - v8.1.0
 
   description: |
-    **Ultimate Smart Climate Control v8.0.0**
+    **Ultimate Smart Climate Control v8.1.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,13 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v8.1.0 - Ceiling Fan Speed Control Modes:**
+    • Replaced simple on/off speed toggle with 3 modes: Static, Auto, Custom
+    • Static: fixed speed (Low/Medium/High) that never changes
+    • Auto: speed scales with temperature (Low → Medium → High)
+    • Custom: user defines speed per temperature band (0-1°C, 1-2°C, 2°C+)
+    • Uses fan preset modes (low/medium/high) with percentage fallback for compatibility
 
     **v8.0.0 - Ceiling Fan Pre-Cooling:**
     • **NEW**: Ceiling fan integration with hybrid cooling strategy
@@ -3025,20 +3032,98 @@ blueprint:
               step: 1
               unit_of_measurement: "minutes"
 
-        fan_speed_scaling:
-          name: Auto Fan Speed Scaling
+        ceiling_fan_speed_mode:
+          name: Ceiling Fan Speed Mode
           description: |
-            **Automatically adjust ceiling fan speed based on temperature.**
+            **How should the ceiling fan speed be controlled?**
 
-            When enabled (only works with `fan` entities, not switches):
-            - **Low:** 0-1°C above comfort max
-            - **Medium:** 1-2°C above comfort max
-            - **High:** 2°C+ above comfort max
+            - **Static:** Fixed speed — fan always runs at the same speed
+            - **Auto:** Speed increases automatically as temp rises (Low → Medium → High)
+            - **Custom:** You choose the speed for each temperature band
 
-            Disable for fixed-speed operation (fan always runs at full speed).
-          default: true
+            Only applies to `fan` entities with speed support. Switch entities are always on/off.
+          default: "auto"
           selector:
-            boolean:
+            select:
+              options:
+                - label: "Static - Fixed speed, never changes"
+                  value: "static"
+                - label: "Auto - Speed scales with temperature (recommended)"
+                  value: "auto"
+                - label: "Custom - Define speed per temperature band"
+                  value: "custom"
+
+        ceiling_fan_static_speed:
+          name: "Static: Fan Speed"
+          description: |
+            **Fan speed when Static mode is selected.**
+
+            The ceiling fan will always run at this speed regardless of temperature.
+            Only applies when Speed Mode is set to "Static".
+          default: "medium"
+          selector:
+            select:
+              options:
+                - label: "Low"
+                  value: "low"
+                - label: "Medium"
+                  value: "medium"
+                - label: "High"
+                  value: "high"
+
+        ceiling_fan_band_1_speed:
+          name: "Custom: Speed for 0-1°C Above Comfort"
+          description: |
+            **Fan speed when temp is 0-1°C above comfort max.**
+
+            This is the mildest warmth — just slightly above comfort.
+            Only applies when Speed Mode is set to "Custom".
+          default: "low"
+          selector:
+            select:
+              options:
+                - label: "Low"
+                  value: "low"
+                - label: "Medium"
+                  value: "medium"
+                - label: "High"
+                  value: "high"
+
+        ceiling_fan_band_2_speed:
+          name: "Custom: Speed for 1-2°C Above Comfort"
+          description: |
+            **Fan speed when temp is 1-2°C above comfort max.**
+
+            Moderate warmth — fan should be more noticeable.
+            Only applies when Speed Mode is set to "Custom".
+          default: "medium"
+          selector:
+            select:
+              options:
+                - label: "Low"
+                  value: "low"
+                - label: "Medium"
+                  value: "medium"
+                - label: "High"
+                  value: "high"
+
+        ceiling_fan_band_3_speed:
+          name: "Custom: Speed for 2°C+ Above Comfort"
+          description: |
+            **Fan speed when temp is 2°C+ above comfort max.**
+
+            Getting warm — fan at maximum effort before AC takes over.
+            Only applies when Speed Mode is set to "Custom".
+          default: "high"
+          selector:
+            select:
+              options:
+                - label: "Low"
+                  value: "low"
+                - label: "Medium"
+                  value: "medium"
+                - label: "High"
+                  value: "high"
 
         fan_with_ac_mode:
           name: Fan Behavior When AC Activates
@@ -3691,7 +3776,11 @@ variables:
   ceiling_fan_entity_input: !input ceiling_fan_entity
   fan_cooling_offset: !input fan_cooling_offset
   fan_escalation_timeout: !input fan_escalation_timeout
-  fan_speed_scaling_enabled: !input fan_speed_scaling
+  ceiling_fan_speed_mode: !input ceiling_fan_speed_mode
+  ceiling_fan_static_speed: !input ceiling_fan_static_speed
+  ceiling_fan_band_1_speed: !input ceiling_fan_band_1_speed
+  ceiling_fan_band_2_speed: !input ceiling_fan_band_2_speed
+  ceiling_fan_band_3_speed: !input ceiling_fan_band_3_speed
   fan_with_ac_mode: !input fan_with_ac_mode
   fan_at_target_temp: !input fan_at_target_temp
   fan_precondition_mode: !input fan_precondition_mode
@@ -3718,6 +3807,50 @@ variables:
   ceiling_fan_is_on: >
     {% if ceiling_fan_configured %}
       {{ is_state(ceiling_fan_entity, 'on') }}
+    {% else %}
+      false
+    {% endif %}
+
+  # Resolve ceiling fan target speed based on mode and current temperature
+  # Returns: "low", "medium", or "high"
+  ceiling_fan_target_speed: >
+    {% set delta = (current_temp | float(0)) - (comfort_max_temp | float(0)) %}
+    {% if ceiling_fan_speed_mode == 'static' %}
+      {{ ceiling_fan_static_speed }}
+    {% elif ceiling_fan_speed_mode == 'custom' %}
+      {% if delta <= 1.0 %}
+        {{ ceiling_fan_band_1_speed }}
+      {% elif delta <= 2.0 %}
+        {{ ceiling_fan_band_2_speed }}
+      {% else %}
+        {{ ceiling_fan_band_3_speed }}
+      {% endif %}
+    {% else %}
+      {# Auto mode: low → medium → high #}
+      {% if delta <= 1.0 %}
+        low
+      {% elif delta <= 2.0 %}
+        medium
+      {% else %}
+        high
+      {% endif %}
+    {% endif %}
+
+  # Map speed preset to percentage (fallback for fans without preset_mode support)
+  ceiling_fan_target_pct: >
+    {% set speed = ceiling_fan_target_speed %}
+    {% if speed == 'low' %}
+      33
+    {% elif speed == 'medium' %}
+      66
+    {% else %}
+      100
+    {% endif %}
+
+  # Check if fan entity supports preset modes
+  ceiling_fan_has_presets: >
+    {% if ceiling_fan_configured and ceiling_fan_domain == 'fan' %}
+      {{ state_attr(ceiling_fan_entity, 'preset_modes') not in [none, []] }}
     {% else %}
       false
     {% endif %}
@@ -10583,21 +10716,10 @@ action:
                           datetime: "{{ now() }}"
                         continue_on_error: true
 
-                  # Calculate fan speed based on temp delta
+                  # Activate ceiling fan with appropriate speed
                   - variables:
                       ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
-                      ceiling_fan_speed_pct: >
-                        {% if not fan_speed_scaling_enabled or ceiling_fan_domain != 'fan' %}
-                          100
-                        {% elif ceiling_fan_temp_delta <= 1.0 %}
-                          33
-                        {% elif ceiling_fan_temp_delta <= 2.0 %}
-                          66
-                        {% else %}
-                          100
-                        {% endif %}
 
-                  # Activate ceiling fan
                   - choose:
                       # Fan entity with speed control
                       - conditions:
@@ -10610,12 +10732,25 @@ action:
                             continue_on_error: true
                           - delay:
                               milliseconds: 500
-                          - service: fan.set_percentage
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              percentage: "{{ ceiling_fan_speed_pct }}"
-                            continue_on_error: true
+                          # Try preset mode first (low/medium/high), fall back to percentage
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ ceiling_fan_has_presets }}"
+                                sequence:
+                                  - service: fan.set_preset_mode
+                                    target:
+                                      entity_id: "{{ ceiling_fan_entity }}"
+                                    data:
+                                      preset_mode: "{{ ceiling_fan_target_speed }}"
+                                    continue_on_error: true
+                            default:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: "{{ ceiling_fan_target_pct }}"
+                                continue_on_error: true
                     # Switch entity (on/off only)
                     default:
                       - service: homeassistant.turn_on
@@ -10630,8 +10765,10 @@ action:
                         • Current Temp: {{ current_temp }}°C
                         • Comfort Max: {{ comfort_max_temp }}°C
                         • Fan Zone Max: {{ ceiling_fan_zone_max }}°C
-                        • Temp Delta: {{ ceiling_fan_temp_delta | round(1) }}°C above comfort
-                        • Fan Speed: {{ ceiling_fan_speed_pct }}%
+                        • Temp Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C above comfort
+                        • Speed Mode: {{ ceiling_fan_speed_mode }}
+                        • Target Speed: {{ ceiling_fan_target_speed }} ({{ ceiling_fan_target_pct }}%)
+                        • Has Presets: {{ ceiling_fan_has_presets }}
                         • Fan Entity: {{ ceiling_fan_entity }} ({{ ceiling_fan_domain }})
                         • Escalation Timeout: {{ fan_escalation_timeout }} minutes
                         • AC stays OFF - ceiling fan handling mild warmth
@@ -10663,12 +10800,24 @@ action:
                           - condition: template
                             value_template: "{{ fan_with_ac_mode == 'low' and ceiling_fan_domain == 'fan' }}"
                         sequence:
-                          - service: fan.set_percentage
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              percentage: 33
-                            continue_on_error: true
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ ceiling_fan_has_presets }}"
+                                sequence:
+                                  - service: fan.set_preset_mode
+                                    target:
+                                      entity_id: "{{ ceiling_fan_entity }}"
+                                    data:
+                                      preset_mode: "low"
+                                    continue_on_error: true
+                            default:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 33
+                                continue_on_error: true
                     # fan_with_ac_mode == 'on': keep fan as-is
 
                   - service: system_log.write
@@ -10756,30 +10905,32 @@ action:
                          and in_ceiling_fan_zone
                          and (control_mode != 'Smart' or smart_presence_active) }}
                 sequence:
-                  # Update fan speed based on current temp delta
+                  # Update fan speed based on current temp delta (only for fan entities, not switches)
                   - variables:
                       ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
-                      ceiling_fan_speed_pct: >
-                        {% if not fan_speed_scaling_enabled or ceiling_fan_domain != 'fan' %}
-                          100
-                        {% elif ceiling_fan_temp_delta <= 1.0 %}
-                          33
-                        {% elif ceiling_fan_temp_delta <= 2.0 %}
-                          66
-                        {% else %}
-                          100
-                        {% endif %}
 
                   - if:
                       - condition: template
-                        value_template: "{{ ceiling_fan_domain == 'fan' and fan_speed_scaling_enabled }}"
+                        value_template: "{{ ceiling_fan_domain == 'fan' and ceiling_fan_speed_mode != 'static' }}"
                     then:
-                      - service: fan.set_percentage
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        data:
-                          percentage: "{{ ceiling_fan_speed_pct }}"
-                        continue_on_error: true
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ ceiling_fan_has_presets }}"
+                            sequence:
+                              - service: fan.set_preset_mode
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  preset_mode: "{{ ceiling_fan_target_speed }}"
+                                continue_on_error: true
+                        default:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: "{{ ceiling_fan_target_pct }}"
+                            continue_on_error: true
 
                   - if:
                       - condition: template
@@ -10790,7 +10941,7 @@ action:
                           message: >
                             🌀 {{ room_name | upper }} CEILING FAN MAINTAINING
                             • Temp: {{ current_temp }}°C | Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C
-                            • Fan Speed: {{ ceiling_fan_speed_pct }}%
+                            • Speed Mode: {{ ceiling_fan_speed_mode }} | Target: {{ ceiling_fan_target_speed }}
                             • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} / {{ fan_escalation_timeout }} min
                             • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, rising={{ (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
                           level: debug
@@ -11936,12 +12087,24 @@ action:
                       - condition: template
                         value_template: "{{ fan_bed_comfort_mode == 'low' and ceiling_fan_domain == 'fan' }}"
                     sequence:
-                      - service: fan.set_percentage
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        data:
-                          percentage: 25
-                        continue_on_error: true
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ ceiling_fan_has_presets }}"
+                            sequence:
+                              - service: fan.set_preset_mode
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  preset_mode: "low"
+                                continue_on_error: true
+                        default:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              percentage: 25
+                            continue_on_error: true
                 # 'unchanged': do nothing, keep current speed
 
           # Choose action based on mode
@@ -13425,12 +13588,24 @@ action:
                             continue_on_error: true
                           - delay:
                               milliseconds: 500
-                          - service: fan.set_percentage
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              percentage: 33
-                            continue_on_error: true
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ ceiling_fan_has_presets }}"
+                                sequence:
+                                  - service: fan.set_preset_mode
+                                    target:
+                                      entity_id: "{{ ceiling_fan_entity }}"
+                                    data:
+                                      preset_mode: "low"
+                                    continue_on_error: true
+                            default:
+                              - service: fan.set_percentage
+                                target:
+                                  entity_id: "{{ ceiling_fan_entity }}"
+                                data:
+                                  percentage: 33
+                                continue_on_error: true
                     default:
                       - service: homeassistant.turn_on
                         target:
