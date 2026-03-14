@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.0
+  name: Ultimate Smart Climate Control - v8.9.1
 
   description: |
-    **Ultimate Smart Climate Control v8.9.0**
+    **Ultimate Smart Climate Control v8.9.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3073,10 +3073,24 @@ blueprint:
               unit_of_measurement: "°C"
               mode: slider
 
+        enable_fan_escalation:
+          name: Enable Fan Escalation
+          description: |
+            **Automatically escalate from ceiling fan to AC if temperature keeps rising.**
+
+            When enabled, the system monitors temperature while the ceiling fan is running. If the temp rises ≥0.5°C after the timeout period, it escalates to AC.
+
+            When disabled, the system will only switch to AC when the temperature actually exceeds the fan cooling zone (comfort max + fan offset). The ceiling fan will keep running until that point regardless of whether temperature is rising.
+          default: true
+          selector:
+            boolean:
+
         fan_escalation_timeout:
           name: Fan Escalation Timeout
           description: |
             **Minutes before escalating to AC if temperature is still rising.**
+
+            ⚠️ *Only applies if Fan Escalation is enabled above.*
 
             The watchdog monitors temperature while the ceiling fan is active. If temp rises ≥0.5°C after this many minutes, the system escalates to AC.
 
@@ -3835,6 +3849,7 @@ variables:
   # =====================================================
   ceiling_fan_entity_input: !input ceiling_fan_entity
   fan_cooling_offset: !input fan_cooling_offset
+  enable_fan_escalation: !input enable_fan_escalation
   fan_escalation_timeout: !input fan_escalation_timeout
   ceiling_fan_speed_mode: !input ceiling_fan_speed_mode
   ceiling_fan_static_speed: !input ceiling_fan_static_speed
@@ -5190,7 +5205,8 @@ action:
       # Watchdog: should we escalate from ceiling fan to AC?
       # Escalate if: fan has been running >= timeout AND temp has risen >= 0.5°C from entry
       ceiling_fan_should_escalate: >
-        {{ ceiling_fan_mode_active
+        {{ enable_fan_escalation
+           and ceiling_fan_mode_active
            and (ceiling_fan_runtime_minutes | float(0)) >= (fan_escalation_timeout | float(10))
            and (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
 
@@ -10337,7 +10353,7 @@ action:
                 • Target Speed: {{ ceiling_fan_target_speed }} ({{ ceiling_fan_target_pct }}%)
                 • Has Presets: {{ ceiling_fan_has_presets }}
                 • Fan Entity: {{ ceiling_fan_entity }} ({{ ceiling_fan_domain }})
-                • Escalation Timeout: {{ fan_escalation_timeout }} minutes
+                • Fan Escalation: {{ 'Enabled (' ~ fan_escalation_timeout ~ ' min)' if enable_fan_escalation else 'Disabled' }}
                 • AC stays OFF - ceiling fan handling mild warmth
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
@@ -10542,7 +10558,8 @@ action:
                     🌀 {{ room_name | upper }} CEILING FAN MAINTAINING
                     • Temp: {{ current_temp }}°C | Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C
                     • Speed Mode: {{ ceiling_fan_speed_mode }} | Target: {{ ceiling_fan_target_speed }}
-                    • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} / {{ fan_escalation_timeout }} min
+                    • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} min
+                    • Escalation: {{ 'Enabled (' ~ fan_escalation_timeout ~ ' min) | ' ~ ceiling_fan_runtime_minutes | round(1) ~ '/' ~ fan_escalation_timeout ~ ' min' if enable_fan_escalation else 'Disabled' }}
                     • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, rising={{ (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
                   level: debug
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
