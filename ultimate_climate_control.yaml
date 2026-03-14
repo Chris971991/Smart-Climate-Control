@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.1.0
+  name: Ultimate Smart Climate Control - v8.2.0
 
   description: |
-    **Ultimate Smart Climate Control v8.1.0**
+    **Ultimate Smart Climate Control v8.2.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,6 +60,13 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
+    **v8.2.0 - Ceiling Fan Zone Architecture Fix:**
+    • **CRITICAL FIX**: Ceiling fan code was unreachable (dead code) due to being nested inside stability reset block
+    • Fan zone is BELOW comfort_max (pre-cooling), but stability reset required temp ABOVE comfort_max — mutually exclusive
+    • Extracted ceiling fan activation, watchdog, and maintaining to top-level conditions in main choose block
+    • Fixed input descriptions to reflect correct fan zone direction (before AC threshold, not above)
+    • Fan zone now correctly activates: comfort_max - offset → comfort_max (e.g., 24°C → 26°C with offset=2)
+
     **v8.1.0 - Ceiling Fan Speed Control Modes:**
     • Replaced simple on/off speed toggle with 3 modes: Static, Auto, Custom
     • Static: fixed speed (Low/Medium/High) that never changes
@@ -70,7 +77,7 @@ blueprint:
     **v8.0.0 - Ceiling Fan Pre-Cooling:**
     • **NEW**: Ceiling fan integration with hybrid cooling strategy
     • Rooms with ceiling fans can try fan cooling before activating AC (saves energy for mild warmth)
-    • Threshold-based fan zones: fans handle temp within configurable offset above comfort max
+    • Threshold-based fan zones: fans activate before AC threshold (within configurable offset below comfort max)
     • Watchdog timer: auto-escalates to AC if fan can't keep up (temp still rising after timeout)
     • Eco transition: optionally replace AC with ceiling fan when target temp is reached
     • Fully configurable: fan behavior with AC, at target temp, during bed comfort, pre-conditioning, and vacancy
@@ -2996,9 +3003,9 @@ blueprint:
         fan_cooling_offset:
           name: Fan Cooling Offset
           description: |
-            **Temperature range above comfort max where fans handle cooling alone.**
+            **Temperature range before AC activation where fans handle cooling alone.**
 
-            Example: If comfort max is 25°C and offset is 3°C, fans will handle 25-28°C. Above 28°C, AC activates immediately.
+            Example: If comfort max is 25°C and offset is 3°C, fans activate at 22°C. If fans can't keep up by 25°C, AC takes over.
 
             **Recommendations:**
             - **2°C:** Conservative - AC kicks in sooner
@@ -3072,11 +3079,11 @@ blueprint:
                   value: "high"
 
         ceiling_fan_band_1_speed:
-          name: "Custom: Speed for 0-1°C Above Comfort"
+          name: "Custom: Speed for Band 1 (lowest third of fan zone)"
           description: |
-            **Fan speed when temp is 0-1°C above comfort max.**
+            **Fan speed at the start of the fan zone (mildest warmth).**
 
-            This is the mildest warmth — just slightly above comfort.
+            This is when the fan first activates — just entering the pre-cooling zone.
             Only applies when Speed Mode is set to "Custom".
           default: "low"
           selector:
@@ -3090,11 +3097,11 @@ blueprint:
                   value: "high"
 
         ceiling_fan_band_2_speed:
-          name: "Custom: Speed for 1-2°C Above Comfort"
+          name: "Custom: Speed for Band 2 (middle third of fan zone)"
           description: |
-            **Fan speed when temp is 1-2°C above comfort max.**
+            **Fan speed in the middle of the fan zone (moderate warmth).**
 
-            Moderate warmth — fan should be more noticeable.
+            Getting warmer — fan should be more noticeable.
             Only applies when Speed Mode is set to "Custom".
           default: "medium"
           selector:
@@ -3108,11 +3115,11 @@ blueprint:
                   value: "high"
 
         ceiling_fan_band_3_speed:
-          name: "Custom: Speed for 2°C+ Above Comfort"
+          name: "Custom: Speed for Band 3 (upper third of fan zone)"
           description: |
-            **Fan speed when temp is 2°C+ above comfort max.**
+            **Fan speed near the top of the fan zone (approaching AC threshold).**
 
-            Getting warm — fan at maximum effort before AC takes over.
+            Nearly at comfort max — fan at maximum effort before AC takes over.
             Only applies when Speed Mode is set to "Custom".
           default: "high"
           selector:
@@ -3813,23 +3820,28 @@ variables:
 
   # Resolve ceiling fan target speed based on mode and current temperature
   # Returns: "low", "medium", or "high"
+  # Calculate fan speed based on how far into the fan zone we are
+  # Fan zone goes from ceiling_fan_zone_start to comfort_max
+  # Bands split the offset into thirds: low (0-33%), medium (33-66%), high (66-100%)
   ceiling_fan_target_speed: >
-    {% set delta = (current_temp | float(0)) - (comfort_max_temp | float(0)) %}
+    {% set delta = (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) %}
+    {% set offset = fan_cooling_offset | float(3) %}
+    {% set third = offset / 3.0 %}
     {% if ceiling_fan_speed_mode == 'static' %}
       {{ ceiling_fan_static_speed }}
     {% elif ceiling_fan_speed_mode == 'custom' %}
-      {% if delta <= 1.0 %}
+      {% if delta <= third %}
         {{ ceiling_fan_band_1_speed }}
-      {% elif delta <= 2.0 %}
+      {% elif delta <= (third * 2) %}
         {{ ceiling_fan_band_2_speed }}
       {% else %}
         {{ ceiling_fan_band_3_speed }}
       {% endif %}
     {% else %}
-      {# Auto mode: low → medium → high #}
-      {% if delta <= 1.0 %}
+      {# Auto mode: low → medium → high across the fan zone #}
+      {% if delta <= third %}
         low
-      {% elif delta <= 2.0 %}
+      {% elif delta <= (third * 2) %}
         medium
       {% else %}
         high
@@ -3855,14 +3867,15 @@ variables:
       false
     {% endif %}
 
-  # Fan zone detection: temp is between comfort_max and comfort_max + offset
-  # Only applies when cooling is needed (temp above comfort max)
-  ceiling_fan_zone_max: "{{ (comfort_max_temp | float(0)) + (fan_cooling_offset | float(3)) }}"
+  # Fan zone detection: temp is between (comfort_max - offset) and comfort_max
+  # Fan activates BEFORE the AC threshold as a preventative measure
+  # Example: comfort_max=26, offset=2 → fan zone is 24-26°C, AC activates above 26°C
+  ceiling_fan_zone_start: "{{ (comfort_max_temp | float(0)) - (fan_cooling_offset | float(3)) }}"
   in_ceiling_fan_zone: >
     {{ ceiling_fan_configured
        and enable_cooling
-       and (current_temp | float(0)) > (comfort_max_temp | float(0))
-       and (current_temp | float(0)) <= (ceiling_fan_zone_max | float(0)) }}
+       and (current_temp | float(0)) >= (ceiling_fan_zone_start | float(0))
+       and (current_temp | float(0)) <= (comfort_max_temp | float(0)) }}
 
   # Check if ceiling fan mode was escalated to AC (watchdog triggered)
   # Uses helper_mode to track - if last_mode is 'ceiling_fan_cooling', fan is active
@@ -10016,6 +10029,292 @@ action:
           # v5.0.7: Snapshot updates also moved to BEFORE service calls
           # This prevents race condition where climate_state_change trigger fires before helpers/snapshots updated
 
+      # =====================================================
+      # v8.0.0: CEILING FAN PRE-COOLING ZONE
+      # When temp enters fan zone (comfort_max - offset to comfort_max),
+      # activate ceiling fan instead of AC. Watchdog escalates to AC
+      # if fan can't keep up.
+      # =====================================================
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ceiling_fan_configured
+                 and should_activate
+                 and enable_cooling
+                 and in_ceiling_fan_zone
+                 and not ceiling_fan_should_escalate
+                 and not ceiling_fan_mode_active
+                 and (control_mode != 'Smart' or smart_presence_active)
+                 and not (is_precond_mode and fan_precondition_mode == 'skip')
+                 and not (bed_occupied and fan_bed_comfort_mode == 'off') }}
+        sequence:
+          # Set helper mode to ceiling_fan_cooling
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_mode }}"
+                data:
+                  value: "ceiling_fan_cooling"
+                continue_on_error: true
+
+          # Store entry temperature for watchdog comparison
+          - if:
+              - condition: template
+                value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_temp_history }}"
+                data:
+                  value: "{{ current_temp }}"
+                continue_on_error: true
+
+          # Update helper_change timestamp
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_change }}"
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
+          # Activate ceiling fan with appropriate speed
+          - variables:
+              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) }}"
+
+          - choose:
+              # Fan entity with speed control
+              - conditions:
+                  - condition: template
+                    value_template: "{{ ceiling_fan_domain == 'fan' }}"
+                sequence:
+                  - service: fan.turn_on
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    continue_on_error: true
+                  - delay:
+                      milliseconds: 500
+                  # Try preset mode first (low/medium/high), fall back to percentage
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ ceiling_fan_has_presets }}"
+                        sequence:
+                          - service: fan.set_preset_mode
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              preset_mode: "{{ ceiling_fan_target_speed }}"
+                            continue_on_error: true
+                    default:
+                      - service: fan.set_percentage
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          percentage: "{{ ceiling_fan_target_pct }}"
+                        continue_on_error: true
+            # Switch entity (on/off only)
+            default:
+              - service: homeassistant.turn_on
+                target:
+                  entity_id: "{{ ceiling_fan_entity }}"
+                continue_on_error: true
+
+          - service: system_log.write
+            data:
+              message: >
+                🌀 {{ room_name | upper }} CEILING FAN PRE-COOLING ACTIVATED
+                • Current Temp: {{ current_temp }}°C
+                • Comfort Max: {{ comfort_max_temp }}°C
+                • Fan Zone Start: {{ ceiling_fan_zone_start }}°C
+                • Temp Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C into fan zone
+                • Speed Mode: {{ ceiling_fan_speed_mode }}
+                • Target Speed: {{ ceiling_fan_target_speed }} ({{ ceiling_fan_target_pct }}%)
+                • Has Presets: {{ ceiling_fan_has_presets }}
+                • Fan Entity: {{ ceiling_fan_entity }} ({{ ceiling_fan_domain }})
+                • Escalation Timeout: {{ fan_escalation_timeout }} minutes
+                • AC stays OFF - ceiling fan handling mild warmth
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # v8.0.0: CEILING FAN WATCHDOG ESCALATION
+      # Fan has been running but temp is still rising - escalate to AC
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ceiling_fan_configured
+                 and ceiling_fan_mode_active
+                 and ceiling_fan_should_escalate
+                 and should_activate
+                 and enable_cooling }}
+        sequence:
+          # Turn off ceiling fan (or set per fan_with_ac_mode)
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ fan_with_ac_mode == 'off' }}"
+                sequence:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    continue_on_error: true
+              - conditions:
+                  - condition: template
+                    value_template: "{{ fan_with_ac_mode == 'low' and ceiling_fan_domain == 'fan' }}"
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ ceiling_fan_has_presets }}"
+                        sequence:
+                          - service: fan.set_preset_mode
+                            target:
+                              entity_id: "{{ ceiling_fan_entity }}"
+                            data:
+                              preset_mode: "low"
+                            continue_on_error: true
+                    default:
+                      - service: fan.set_percentage
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          percentage: 33
+                        continue_on_error: true
+            # fan_with_ac_mode == 'on': keep fan as-is
+
+          - service: system_log.write
+            data:
+              message: >
+                ⚡ {{ room_name | upper }} CEILING FAN → AC ESCALATION
+                • Fan ran for: {{ ceiling_fan_runtime_minutes | round(1) }} minutes
+                • Entry temp: {{ ceiling_fan_entry_temp }}°C → Current: {{ current_temp }}°C
+                • Temp rose: {{ ((current_temp | float(0)) - (ceiling_fan_entry_temp | float(0))) | round(1) }}°C
+                • Escalation timeout: {{ fan_escalation_timeout }} minutes
+                • Fan with AC mode: {{ fan_with_ac_mode }}
+                • Now activating AC...
+              level: warning
+              logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+          # Set helper to cooling so AC takes over
+          - if:
+              - condition: template
+                value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_mode }}"
+                data:
+                  value: "cooling"
+                continue_on_error: true
+
+          # Update helper_change timestamp
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_change }}"
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
+          # Immediately activate AC - don't wait for next automation cycle
+          - repeat:
+              for_each: "{{ climate_list }}"
+              sequence:
+                - variables:
+                    current_entity: "{{ repeat.item }}"
+                    escalation_hvac_mode: >
+                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
+                      {% if 'cool' in modes %}
+                        cool
+                      {% elif 'Cool' in modes %}
+                        Cool
+                      {% elif 'auto' in modes %}
+                        auto
+                      {% else %}
+                        {{ modes[0] if modes else 'off' }}
+                      {% endif %}
+                - service: climate.set_temperature
+                  target:
+                    entity_id: "{{ current_entity }}"
+                  data:
+                    temperature: "{{ cooling_target_temp }}"
+                    hvac_mode: "{{ escalation_hvac_mode }}"
+                  continue_on_error: true
+
+          # Update expected HVAC for manual override detection
+          - if:
+              - condition: template
+                value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_expected_hvac }}"
+                data:
+                  value: "cool"
+                continue_on_error: true
+
+      # v8.0.0: CEILING FAN MAINTAINING (already active, adjust speed)
+      # When ceiling fan is already running, just update speed based on temp
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ceiling_fan_configured
+                 and ceiling_fan_mode_active
+                 and not ceiling_fan_should_escalate
+                 and in_ceiling_fan_zone
+                 and (control_mode != 'Smart' or smart_presence_active) }}
+        sequence:
+          # Update fan speed based on current temp delta (only for fan entities, not switches)
+          - variables:
+              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ ceiling_fan_domain == 'fan' and ceiling_fan_speed_mode != 'static' }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_presets }}"
+                    sequence:
+                      - service: fan.set_preset_mode
+                        target:
+                          entity_id: "{{ ceiling_fan_entity }}"
+                        data:
+                          preset_mode: "{{ ceiling_fan_target_speed }}"
+                        continue_on_error: true
+                default:
+                  - service: fan.set_percentage
+                    target:
+                      entity_id: "{{ ceiling_fan_entity }}"
+                    data:
+                      percentage: "{{ ceiling_fan_target_pct }}"
+                    continue_on_error: true
+
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: >
+                    🌀 {{ room_name | upper }} CEILING FAN MAINTAINING
+                    • Temp: {{ current_temp }}°C | Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C
+                    • Speed Mode: {{ ceiling_fan_speed_mode }} | Target: {{ ceiling_fan_target_speed }}
+                    • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} / {{ fan_escalation_timeout }} min
+                    • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, rising={{ (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
+                  level: debug
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
       # =====================================
       # v4.6.0: CONTINUE MODE - INTELLIGENT FAN ADJUSTMENT (HEATING)
       # Dynamically adjust fan speed when already heating within comfort zone
@@ -10661,292 +10960,6 @@ action:
           
           # Now activate cooling/heating as needed since we're outside comfort zone or at trigger point
           - choose:
-              # =====================================================
-              # v8.0.0: CEILING FAN PRE-COOLING ZONE
-              # When temp is mildly above comfort (within fan_cooling_offset),
-              # activate ceiling fan instead of AC. Watchdog escalates to AC
-              # if fan can't keep up.
-              # =====================================================
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {{ ceiling_fan_configured
-                         and should_activate
-                         and enable_cooling
-                         and in_ceiling_fan_zone
-                         and not ceiling_fan_should_escalate
-                         and not ceiling_fan_mode_active
-                         and (control_mode != 'Smart' or smart_presence_active)
-                         and not (is_precond_mode and fan_precondition_mode == 'skip')
-                         and not (bed_occupied and fan_bed_comfort_mode == 'off') }}
-                sequence:
-                  # Set helper mode to ceiling_fan_cooling
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_text.set_value
-                        target:
-                          entity_id: "{{ helper_mode }}"
-                        data:
-                          value: "ceiling_fan_cooling"
-                        continue_on_error: true
-
-                  # Store entry temperature for watchdog comparison
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_temp_history not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_number.set_value
-                        target:
-                          entity_id: "{{ helper_temp_history }}"
-                        data:
-                          value: "{{ current_temp }}"
-                        continue_on_error: true
-
-                  # Update helper_change timestamp
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_datetime.set_datetime
-                        target:
-                          entity_id: "{{ helper_change }}"
-                        data:
-                          datetime: "{{ now() }}"
-                        continue_on_error: true
-
-                  # Activate ceiling fan with appropriate speed
-                  - variables:
-                      ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
-
-                  - choose:
-                      # Fan entity with speed control
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ ceiling_fan_domain == 'fan' }}"
-                        sequence:
-                          - service: fan.turn_on
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            continue_on_error: true
-                          - delay:
-                              milliseconds: 500
-                          # Try preset mode first (low/medium/high), fall back to percentage
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ ceiling_fan_has_presets }}"
-                                sequence:
-                                  - service: fan.set_preset_mode
-                                    target:
-                                      entity_id: "{{ ceiling_fan_entity }}"
-                                    data:
-                                      preset_mode: "{{ ceiling_fan_target_speed }}"
-                                    continue_on_error: true
-                            default:
-                              - service: fan.set_percentage
-                                target:
-                                  entity_id: "{{ ceiling_fan_entity }}"
-                                data:
-                                  percentage: "{{ ceiling_fan_target_pct }}"
-                                continue_on_error: true
-                    # Switch entity (on/off only)
-                    default:
-                      - service: homeassistant.turn_on
-                        target:
-                          entity_id: "{{ ceiling_fan_entity }}"
-                        continue_on_error: true
-
-                  - service: system_log.write
-                    data:
-                      message: >
-                        🌀 {{ room_name | upper }} CEILING FAN PRE-COOLING ACTIVATED
-                        • Current Temp: {{ current_temp }}°C
-                        • Comfort Max: {{ comfort_max_temp }}°C
-                        • Fan Zone Max: {{ ceiling_fan_zone_max }}°C
-                        • Temp Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C above comfort
-                        • Speed Mode: {{ ceiling_fan_speed_mode }}
-                        • Target Speed: {{ ceiling_fan_target_speed }} ({{ ceiling_fan_target_pct }}%)
-                        • Has Presets: {{ ceiling_fan_has_presets }}
-                        • Fan Entity: {{ ceiling_fan_entity }} ({{ ceiling_fan_domain }})
-                        • Escalation Timeout: {{ fan_escalation_timeout }} minutes
-                        • AC stays OFF - ceiling fan handling mild warmth
-                      level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-              # v8.0.0: CEILING FAN WATCHDOG ESCALATION
-              # Fan has been running but temp is still rising - escalate to AC
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {{ ceiling_fan_configured
-                         and ceiling_fan_mode_active
-                         and ceiling_fan_should_escalate
-                         and should_activate
-                         and enable_cooling }}
-                sequence:
-                  # Turn off ceiling fan (or set per fan_with_ac_mode)
-                  - choose:
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ fan_with_ac_mode == 'off' }}"
-                        sequence:
-                          - service: homeassistant.turn_off
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            continue_on_error: true
-                      - conditions:
-                          - condition: template
-                            value_template: "{{ fan_with_ac_mode == 'low' and ceiling_fan_domain == 'fan' }}"
-                        sequence:
-                          - choose:
-                              - conditions:
-                                  - condition: template
-                                    value_template: "{{ ceiling_fan_has_presets }}"
-                                sequence:
-                                  - service: fan.set_preset_mode
-                                    target:
-                                      entity_id: "{{ ceiling_fan_entity }}"
-                                    data:
-                                      preset_mode: "low"
-                                    continue_on_error: true
-                            default:
-                              - service: fan.set_percentage
-                                target:
-                                  entity_id: "{{ ceiling_fan_entity }}"
-                                data:
-                                  percentage: 33
-                                continue_on_error: true
-                    # fan_with_ac_mode == 'on': keep fan as-is
-
-                  - service: system_log.write
-                    data:
-                      message: >
-                        ⚡ {{ room_name | upper }} CEILING FAN → AC ESCALATION
-                        • Fan ran for: {{ ceiling_fan_runtime_minutes | round(1) }} minutes
-                        • Entry temp: {{ ceiling_fan_entry_temp }}°C → Current: {{ current_temp }}°C
-                        • Temp rose: {{ ((current_temp | float(0)) - (ceiling_fan_entry_temp | float(0))) | round(1) }}°C
-                        • Escalation timeout: {{ fan_escalation_timeout }} minutes
-                        • Fan with AC mode: {{ fan_with_ac_mode }}
-                        • Now activating AC...
-                      level: warning
-                      logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
-                  # Set helper to cooling so AC takes over
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_mode not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_text.set_value
-                        target:
-                          entity_id: "{{ helper_mode }}"
-                        data:
-                          value: "cooling"
-                        continue_on_error: true
-
-                  # Update helper_change timestamp
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_datetime.set_datetime
-                        target:
-                          entity_id: "{{ helper_change }}"
-                        data:
-                          datetime: "{{ now() }}"
-                        continue_on_error: true
-
-                  # Immediately activate AC - don't wait for next automation cycle
-                  - repeat:
-                      for_each: "{{ climate_list }}"
-                      sequence:
-                        - variables:
-                            current_entity: "{{ repeat.item }}"
-                            escalation_hvac_mode: >
-                              {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
-                              {% if 'cool' in modes %}
-                                cool
-                              {% elif 'Cool' in modes %}
-                                Cool
-                              {% elif 'auto' in modes %}
-                                auto
-                              {% else %}
-                                {{ modes[0] if modes else 'off' }}
-                              {% endif %}
-                        - service: climate.set_temperature
-                          target:
-                            entity_id: "{{ current_entity }}"
-                          data:
-                            temperature: "{{ cooling_target_temp }}"
-                            hvac_mode: "{{ escalation_hvac_mode }}"
-                          continue_on_error: true
-
-                  # Update expected HVAC for manual override detection
-                  - if:
-                      - condition: template
-                        value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
-                    then:
-                      - service: input_text.set_value
-                        target:
-                          entity_id: "{{ helper_expected_hvac }}"
-                        data:
-                          value: "cool"
-                        continue_on_error: true
-
-              # v8.0.0: CEILING FAN MAINTAINING (already active, adjust speed)
-              # When ceiling fan is already running, just update speed based on temp
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {{ ceiling_fan_configured
-                         and ceiling_fan_mode_active
-                         and not ceiling_fan_should_escalate
-                         and in_ceiling_fan_zone
-                         and (control_mode != 'Smart' or smart_presence_active) }}
-                sequence:
-                  # Update fan speed based on current temp delta (only for fan entities, not switches)
-                  - variables:
-                      ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ ceiling_fan_domain == 'fan' and ceiling_fan_speed_mode != 'static' }}"
-                    then:
-                      - choose:
-                          - conditions:
-                              - condition: template
-                                value_template: "{{ ceiling_fan_has_presets }}"
-                            sequence:
-                              - service: fan.set_preset_mode
-                                target:
-                                  entity_id: "{{ ceiling_fan_entity }}"
-                                data:
-                                  preset_mode: "{{ ceiling_fan_target_speed }}"
-                                continue_on_error: true
-                        default:
-                          - service: fan.set_percentage
-                            target:
-                              entity_id: "{{ ceiling_fan_entity }}"
-                            data:
-                              percentage: "{{ ceiling_fan_target_pct }}"
-                            continue_on_error: true
-
-                  - if:
-                      - condition: template
-                        value_template: "{{ debug_enabled }}"
-                    then:
-                      - service: system_log.write
-                        data:
-                          message: >
-                            🌀 {{ room_name | upper }} CEILING FAN MAINTAINING
-                            • Temp: {{ current_temp }}°C | Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C
-                            • Speed Mode: {{ ceiling_fan_speed_mode }} | Target: {{ ceiling_fan_target_speed }}
-                            • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} / {{ fan_escalation_timeout }} min
-                            • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, rising={{ (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
-                          level: debug
-                          logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
-
               # Need cooling (v5.3.5 FIX: Added should_activate AND enable_cooling checks)
               - conditions:
                   - condition: template
