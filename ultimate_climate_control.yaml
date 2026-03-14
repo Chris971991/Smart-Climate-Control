@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.2
+  name: Ultimate Smart Climate Control - v8.9.3
 
   description: |
-    **Ultimate Smart Climate Control v8.9.2**
+    **Ultimate Smart Climate Control v8.9.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -9872,6 +9872,15 @@ action:
           # Cooling enabled
           - condition: template
             value_template: "{{ enable_cooling }}"
+
+          # v8.9.3: Skip AC activation when ceiling fan should handle cooling
+          # If temp is in the fan zone and fan escalation hasn't triggered, let the ceiling fan block handle it
+          # Exception: if AC is already actively cooling (not from ceiling_fan mode), don't interrupt mid-cycle
+          - condition: template
+            value_template: >
+              {{ not in_ceiling_fan_zone
+                 or ceiling_fan_should_escalate
+                 or (last_mode == 'cooling' and actual_ac_state == 'on') }}
 
           # Runtime protection (respect minimum runtime)
           - condition: template
