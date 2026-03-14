@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.5.0
+  name: Ultimate Smart Climate Control - v8.6.0
 
   description: |
-    **Ultimate Smart Climate Control v8.5.0**
+    **Ultimate Smart Climate Control v8.6.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,7 +60,7 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v8.5.0 - Multi-Fan Support:**
+    **v8.6.0 - Multi-Fan Support:**
     • All ceiling fan inputs now accept multiple entities (for rooms with multiple fans)
     • Speed switches, fan entities, and turn-on/off calls all support entity lists natively
 
@@ -5099,7 +5099,7 @@ action:
       heating_target_temp: "{{ base_heating_target | round(1) }}"
 
       # =====================================================
-      # CEILING FAN COMPUTED VARIABLES (v8.5.0)
+      # CEILING FAN COMPUTED VARIABLES (v8.6.0)
       # Must be after comfort_max_temp and current_temp are defined
       # =====================================================
 
@@ -11254,8 +11254,68 @@ action:
                                   • HVAC Mode: {{ selected_hvac_mode }}
                                   • Fan Mode: {{ selected_fan_mode }}
                                   • Temperature: {{ cooling_target_temp }}°C
+                                  • Ceiling fan: {{ fan_with_ac_mode }} (configured: {{ ceiling_fan_configured }})
                                   • Reason: Exited comfort zone stability, activating cooling
                                 level: debug
+
+                  # v8.6.0: Handle ceiling fan when AC activates directly (respects fan_with_ac_mode)
+                  - if:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_configured and fan_with_ac_mode != 'on' }}"
+                    then:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ fan_with_ac_mode == 'off' }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                                    sequence:
+                                      - service: switch.turn_off
+                                        target:
+                                          entity_id:
+                                            - "{{ ceiling_fan_low_switch }}"
+                                            - "{{ ceiling_fan_medium_switch }}"
+                                            - "{{ ceiling_fan_high_switch }}"
+                                        continue_on_error: true
+                                default:
+                                  - service: homeassistant.turn_off
+                                    target:
+                                      entity_id: "{{ ceiling_fan_entities }}"
+                                    continue_on_error: true
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ fan_with_ac_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                                    sequence:
+                                      - service: switch.turn_on
+                                        target:
+                                          entity_id: "{{ ceiling_fan_low_switch }}"
+                                        continue_on_error: true
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ ceiling_fan_has_presets }}"
+                                    sequence:
+                                      - service: fan.set_preset_mode
+                                        target:
+                                          entity_id: "{{ ceiling_fan_entities }}"
+                                        data:
+                                          preset_mode: "low"
+                                        continue_on_error: true
+                                default:
+                                  - service: fan.set_percentage
+                                    target:
+                                      entity_id: "{{ ceiling_fan_entities }}"
+                                    data:
+                                      percentage: 33
+                                    continue_on_error: true
+                        # fan_with_ac_mode == 'on': keep fan as-is (no action needed)
 
                   # Capture expected temperature for manual override detection
                   - service: input_number.set_value
