@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.2.0
+  name: Ultimate Smart Climate Control - v8.3.0
 
   description: |
-    **Ultimate Smart Climate Control v8.2.0**
+    **Ultimate Smart Climate Control v8.3.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,12 +60,14 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v8.2.0 - Ceiling Fan Zone Architecture Fix:**
+    **v8.3.0 - Ceiling Fan Zone Architecture Fix:**
     • **CRITICAL FIX**: Ceiling fan code was unreachable (dead code) due to being nested inside stability reset block
-    • Fan zone is BELOW comfort_max (pre-cooling), but stability reset required temp ABOVE comfort_max — mutually exclusive
     • Extracted ceiling fan activation, watchdog, and maintaining to top-level conditions in main choose block
-    • Fixed input descriptions to reflect correct fan zone direction (before AC threshold, not above)
-    • Fan zone now correctly activates: comfort_max - offset → comfort_max (e.g., 24°C → 26°C with offset=2)
+    • **FIX**: Fan zone is now correctly ABOVE comfort_max (comfort_max to comfort_max + offset)
+    • Fan activates when leaving comfort zone, AC activates above zone_max
+    • Example: comfort_max=24, offset=2 → fan zone is 24-26°C, AC activates above 26°C
+    • Moved computed ceiling fan variables after dependency definitions (comfort_max_temp, current_temp, last_mode) to fix UndefinedError
+    • Renamed ceiling_fan_zone_start to ceiling_fan_zone_max to reflect correct semantics
 
     **v8.1.0 - Ceiling Fan Speed Control Modes:**
     • Replaced simple on/off speed toggle with 3 modes: Static, Auto, Custom
@@ -3003,9 +3005,9 @@ blueprint:
         fan_cooling_offset:
           name: Fan Cooling Offset
           description: |
-            **Temperature range before AC activation where fans handle cooling alone.**
+            **Temperature range above comfort max where fans handle cooling alone.**
 
-            Example: If comfort max is 25°C and offset is 3°C, fans activate at 22°C. If fans can't keep up by 25°C, AC takes over.
+            Example: If comfort max is 25°C and offset is 3°C, fans will handle 25-28°C. Above 28°C, AC activates immediately.
 
             **Recommendations:**
             - **2°C:** Conservative - AC kicks in sooner
@@ -3818,47 +3820,6 @@ variables:
       false
     {% endif %}
 
-  # Resolve ceiling fan target speed based on mode and current temperature
-  # Returns: "low", "medium", or "high"
-  # Calculate fan speed based on how far into the fan zone we are
-  # Fan zone goes from ceiling_fan_zone_start to comfort_max
-  # Bands split the offset into thirds: low (0-33%), medium (33-66%), high (66-100%)
-  ceiling_fan_target_speed: >
-    {% set delta = (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) %}
-    {% set offset = fan_cooling_offset | float(3) %}
-    {% set third = offset / 3.0 %}
-    {% if ceiling_fan_speed_mode == 'static' %}
-      {{ ceiling_fan_static_speed }}
-    {% elif ceiling_fan_speed_mode == 'custom' %}
-      {% if delta <= third %}
-        {{ ceiling_fan_band_1_speed }}
-      {% elif delta <= (third * 2) %}
-        {{ ceiling_fan_band_2_speed }}
-      {% else %}
-        {{ ceiling_fan_band_3_speed }}
-      {% endif %}
-    {% else %}
-      {# Auto mode: low → medium → high across the fan zone #}
-      {% if delta <= third %}
-        low
-      {% elif delta <= (third * 2) %}
-        medium
-      {% else %}
-        high
-      {% endif %}
-    {% endif %}
-
-  # Map speed preset to percentage (fallback for fans without preset_mode support)
-  ceiling_fan_target_pct: >
-    {% set speed = ceiling_fan_target_speed %}
-    {% if speed == 'low' %}
-      33
-    {% elif speed == 'medium' %}
-      66
-    {% else %}
-      100
-    {% endif %}
-
   # Check if fan entity supports preset modes
   ceiling_fan_has_presets: >
     {% if ceiling_fan_configured and ceiling_fan_domain == 'fan' %}
@@ -3866,44 +3827,6 @@ variables:
     {% else %}
       false
     {% endif %}
-
-  # Fan zone detection: temp is between (comfort_max - offset) and comfort_max
-  # Fan activates BEFORE the AC threshold as a preventative measure
-  # Example: comfort_max=26, offset=2 → fan zone is 24-26°C, AC activates above 26°C
-  ceiling_fan_zone_start: "{{ (comfort_max_temp | float(0)) - (fan_cooling_offset | float(3)) }}"
-  in_ceiling_fan_zone: >
-    {{ ceiling_fan_configured
-       and enable_cooling
-       and (current_temp | float(0)) >= (ceiling_fan_zone_start | float(0))
-       and (current_temp | float(0)) <= (comfort_max_temp | float(0)) }}
-
-  # Check if ceiling fan mode was escalated to AC (watchdog triggered)
-  # Uses helper_mode to track - if last_mode is 'ceiling_fan_cooling', fan is active
-  # If last_mode is 'cooling' after being 'ceiling_fan_cooling', watchdog escalated
-  ceiling_fan_mode_active: "{{ last_mode == 'ceiling_fan_cooling' }}"
-
-  # Calculate how long ceiling fan has been running (for watchdog)
-  ceiling_fan_runtime_minutes: >
-    {% if ceiling_fan_mode_active and helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-      {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) }}
-    {% else %}
-      0
-    {% endif %}
-
-  # Get the temperature when ceiling fan mode was entered (stored in helper_temp_history)
-  ceiling_fan_entry_temp: >
-    {% if ceiling_fan_mode_active and helper_temp_history not in [none, '', 'unavailable', 'unknown'] %}
-      {{ states(helper_temp_history) | float(0) }}
-    {% else %}
-      0
-    {% endif %}
-
-  # Watchdog: should we escalate from ceiling fan to AC?
-  # Escalate if: fan has been running >= timeout AND temp has risen >= 0.5°C from entry
-  ceiling_fan_should_escalate: >
-    {{ ceiling_fan_mode_active
-       and (ceiling_fan_runtime_minutes | float(0)) >= (fan_escalation_timeout | float(10))
-       and (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
 
   # Swing mode validation - maps user input to AC's actual swing mode names
   # User selects lowercase (vertical, horizontal, both, off) but ACs may need different case
@@ -5080,7 +5003,89 @@ action:
       comfort_max_temp: "{{ base_comfort_max | round(1) }}"
       cooling_target_temp: "{{ base_cooling_target | round(1) }}"
       heating_target_temp: "{{ base_heating_target | round(1) }}"
-      
+
+      # =====================================================
+      # CEILING FAN COMPUTED VARIABLES (v8.3.0)
+      # Must be after comfort_max_temp and current_temp are defined
+      # =====================================================
+
+      # Fan zone: comfort_max to comfort_max + offset
+      # Fan activates when leaving comfort zone, AC activates above zone_max
+      # Example: comfort_max=24, offset=2 → fan zone is 24-26°C, AC above 26°C
+      ceiling_fan_zone_max: "{{ (comfort_max_temp | float(0)) + (fan_cooling_offset | float(3)) }}"
+      in_ceiling_fan_zone: >
+        {{ ceiling_fan_configured
+           and enable_cooling
+           and (current_temp | float(0)) > (comfort_max_temp | float(0))
+           and (current_temp | float(0)) <= (ceiling_fan_zone_max | float(0)) }}
+
+      # Resolve ceiling fan target speed based on mode and current temperature
+      # Returns: "low", "medium", or "high"
+      # Calculate fan speed based on how far into the fan zone we are
+      # Fan zone goes from comfort_max to ceiling_fan_zone_max
+      # Bands split the offset into thirds: low (0-33%), medium (33-66%), high (66-100%)
+      ceiling_fan_target_speed: >
+        {% set delta = (current_temp | float(0)) - (comfort_max_temp | float(0)) %}
+        {% set offset = fan_cooling_offset | float(3) %}
+        {% set third = offset / 3.0 %}
+        {% if ceiling_fan_speed_mode == 'static' %}
+          {{ ceiling_fan_static_speed }}
+        {% elif ceiling_fan_speed_mode == 'custom' %}
+          {% if delta <= third %}
+            {{ ceiling_fan_band_1_speed }}
+          {% elif delta <= (third * 2) %}
+            {{ ceiling_fan_band_2_speed }}
+          {% else %}
+            {{ ceiling_fan_band_3_speed }}
+          {% endif %}
+        {% else %}
+          {# Auto mode: low → medium → high across the fan zone #}
+          {% if delta <= third %}
+            low
+          {% elif delta <= (third * 2) %}
+            medium
+          {% else %}
+            high
+          {% endif %}
+        {% endif %}
+
+      # Map speed preset to percentage (fallback for fans without preset_mode support)
+      ceiling_fan_target_pct: >
+        {% set speed = ceiling_fan_target_speed %}
+        {% if speed == 'low' %}
+          33
+        {% elif speed == 'medium' %}
+          66
+        {% else %}
+          100
+        {% endif %}
+
+      # Check if ceiling fan mode was escalated to AC (watchdog triggered)
+      ceiling_fan_mode_active: "{{ last_mode == 'ceiling_fan_cooling' }}"
+
+      # Calculate how long ceiling fan has been running (for watchdog)
+      ceiling_fan_runtime_minutes: >
+        {% if ceiling_fan_mode_active and helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
+          {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) / 60) | round(1) }}
+        {% else %}
+          0
+        {% endif %}
+
+      # Get the temperature when ceiling fan mode was entered (stored in helper_temp_history)
+      ceiling_fan_entry_temp: >
+        {% if ceiling_fan_mode_active and helper_temp_history not in [none, '', 'unavailable', 'unknown'] %}
+          {{ states(helper_temp_history) | float(0) }}
+        {% else %}
+          0
+        {% endif %}
+
+      # Watchdog: should we escalate from ceiling fan to AC?
+      # Escalate if: fan has been running >= timeout AND temp has risen >= 0.5°C from entry
+      ceiling_fan_should_escalate: >
+        {{ ceiling_fan_mode_active
+           and (ceiling_fan_runtime_minutes | float(0)) >= (fan_escalation_timeout | float(10))
+           and (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
+
       # Check window sensors
       window_open: >
         {% if enable_window_detection %}
@@ -10086,7 +10091,7 @@ action:
 
           # Activate ceiling fan with appropriate speed
           - variables:
-              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) }}"
+              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
 
           - choose:
               # Fan entity with speed control
@@ -10132,8 +10137,8 @@ action:
                 🌀 {{ room_name | upper }} CEILING FAN PRE-COOLING ACTIVATED
                 • Current Temp: {{ current_temp }}°C
                 • Comfort Max: {{ comfort_max_temp }}°C
-                • Fan Zone Start: {{ ceiling_fan_zone_start }}°C
-                • Temp Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C into fan zone
+                • Fan Zone Max: {{ ceiling_fan_zone_max }}°C
+                • Temp Delta: +{{ ceiling_fan_temp_delta | round(1) }}°C above comfort
                 • Speed Mode: {{ ceiling_fan_speed_mode }}
                 • Target Speed: {{ ceiling_fan_target_speed }} ({{ ceiling_fan_target_pct }}%)
                 • Has Presets: {{ ceiling_fan_has_presets }}
@@ -10275,7 +10280,7 @@ action:
         sequence:
           # Update fan speed based on current temp delta (only for fan entities, not switches)
           - variables:
-              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (ceiling_fan_zone_start | float(0)) }}"
+              ceiling_fan_temp_delta: "{{ (current_temp | float(0)) - (comfort_max_temp | float(0)) }}"
 
           - if:
               - condition: template
