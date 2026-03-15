@@ -60,12 +60,14 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v8.9.5 - Ceiling Fan Stall Escalation Fix:**
+    **v8.9.5 - Ceiling Fan Stall Escalation + Fan-with-AC Fix:**
     • **CRITICAL FIX**: Ceiling fan could run indefinitely without escalating to AC when temp was stable but hot
     • Root cause: Watchdog only escalated if temp ROSE ≥0.5°C from entry, but not if fan simply couldn't cool the room
     • Example: Fan starts at 27.5°C, runs 4 hours, temp stays at 27.6°C → never escalated because 27.6 < 27.5 + 0.5
     • Fix: Escalate to AC if fan has run for the configured timeout and temp hasn't dropped below entry temp
     • Now respects user's `fan_escalation_timeout` setting directly (5min = escalates after 5min if no progress)
+    • **FIX**: `fan_with_ac_mode: on` now actively turns on ceiling fan during cooling if it's off
+    • Previously only "kept fan as-is" which meant if fan was off when AC started, it stayed off
 
     **v8.9.4 - Ceiling Fan Presence Fix:**
     • **CRITICAL FIX**: Ceiling fan ran indefinitely in empty rooms in Smart mode
@@ -10035,6 +10037,26 @@ action:
                       entity_id: "{{ ceiling_fan_entities }}"
                     data:
                       percentage: 33
+                    continue_on_error: true
+
+          # v8.9.5: Turn ON ceiling fan if fan_with_ac_mode is "on" and fan isn't running
+          - if:
+              - condition: template
+                value_template: "{{ ceiling_fan_configured and not ceiling_fan_is_on and fan_with_ac_mode == 'on' }}"
+            then:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_high_switch }}"
+                        continue_on_error: true
+                default:
+                  - service: homeassistant.turn_on
+                    target:
+                      entity_id: "{{ ceiling_fan_entities }}"
                     continue_on_error: true
 
           # v5.0.3: ALWAYS SEND - Let integration handle deduplication
