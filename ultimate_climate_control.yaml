@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.4
+  name: Ultimate Smart Climate Control - v8.9.5
 
   description: |
-    **Ultimate Smart Climate Control v8.9.3**
+    **Ultimate Smart Climate Control v8.9.5**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,13 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v8.9.5 - Ceiling Fan Stall Escalation Fix:**
+    • **CRITICAL FIX**: Ceiling fan could run indefinitely without escalating to AC when temp was stable but hot
+    • Root cause: Watchdog only escalated if temp ROSE ≥0.5°C from entry, but not if fan simply couldn't cool the room
+    • Example: Fan starts at 27.5°C, runs 4 hours, temp stays at 27.6°C → never escalated because 27.6 < 27.5 + 0.5
+    • Fix: Escalate to AC if fan has run for the configured timeout and temp hasn't dropped below entry temp
+    • Now respects user's `fan_escalation_timeout` setting directly (5min = escalates after 5min if no progress)
 
     **v8.9.4 - Ceiling Fan Presence Fix:**
     • **CRITICAL FIX**: Ceiling fan ran indefinitely in empty rooms in Smart mode
@@ -5210,12 +5217,19 @@ action:
         {% endif %}
 
       # Watchdog: should we escalate from ceiling fan to AC?
-      # Escalate if: fan has been running >= timeout AND temp has risen >= 0.5°C from entry
+      # Escalate if fan has been running >= timeout AND either:
+      #   1. Temp has risen >= 0.5°C from entry (fan making things worse)
+      #   2. Temp hasn't dropped below entry (fan can't cool the room)
+      # Both use the same timeout - if the fan can't cool in N minutes, escalate to AC
       ceiling_fan_should_escalate: >
+        {% set runtime = ceiling_fan_runtime_minutes | float(0) %}
+        {% set timeout = fan_escalation_timeout | float(10) %}
+        {% set entry = ceiling_fan_entry_temp | float(0) %}
+        {% set temp = current_temp | float(0) %}
         {{ enable_fan_escalation
            and ceiling_fan_mode_active
-           and (ceiling_fan_runtime_minutes | float(0)) >= (fan_escalation_timeout | float(10))
-           and (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
+           and runtime >= timeout
+           and temp >= entry }}
 
       # Check window sensors
       window_open: >
@@ -10582,7 +10596,7 @@ action:
                     • Speed Mode: {{ ceiling_fan_speed_mode }} | Target: {{ ceiling_fan_target_speed }}
                     • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} min
                     • Escalation: {{ 'Enabled (' ~ fan_escalation_timeout ~ ' min) | ' ~ ceiling_fan_runtime_minutes | round(1) ~ '/' ~ fan_escalation_timeout ~ ' min' if enable_fan_escalation else 'Disabled' }}
-                    • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, rising={{ (current_temp | float(0)) >= ((ceiling_fan_entry_temp | float(0)) + 0.5) }}
+                    • Watchdog: entry={{ ceiling_fan_entry_temp }}°C, no_progress={{ (current_temp | float(0)) >= (ceiling_fan_entry_temp | float(0)) }}, should_escalate={{ ceiling_fan_should_escalate }}
                   level: debug
                   logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
