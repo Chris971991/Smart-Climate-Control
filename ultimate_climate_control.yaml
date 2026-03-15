@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.5
+  name: Ultimate Smart Climate Control - v8.9.6
 
   description: |
-    **Ultimate Smart Climate Control v8.9.5**
+    **Ultimate Smart Climate Control v8.9.6**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,7 +60,7 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v8.9.5 - Ceiling Fan Stall Escalation + Fan-with-AC Fix:**
+    **v8.9.6 - Ceiling Fan Stall Escalation + Fan-with-AC Fix:**
     • **CRITICAL FIX**: Ceiling fan could run indefinitely without escalating to AC when temp was stable but hot
     • Root cause: Watchdog only escalated if temp ROSE ≥0.5°C from entry, but not if fan simply couldn't cool the room
     • Example: Fan starts at 27.5°C, runs 4 hours, temp stays at 27.6°C → never escalated because 27.6 < 27.5 + 0.5
@@ -10039,7 +10039,7 @@ action:
                       percentage: 33
                     continue_on_error: true
 
-          # v8.9.5: Turn ON ceiling fan if fan_with_ac_mode is "on" and fan isn't running
+          # v8.9.6: Turn ON ceiling fan if fan_with_ac_mode is "on" and fan isn't running
           - if:
               - condition: template
                 value_template: "{{ ceiling_fan_configured and not ceiling_fan_is_on and fan_with_ac_mode == 'on' }}"
