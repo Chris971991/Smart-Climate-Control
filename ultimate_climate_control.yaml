@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.6
+  name: Ultimate Smart Climate Control - v8.9.7
 
   description: |
-    **Ultimate Smart Climate Control v8.9.6**
+    **Ultimate Smart Climate Control v8.9.7**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,6 +60,13 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
+    **v8.9.7 - Fix presence confirmation delay bypassed under mode:restart:**
+    • **CRITICAL FIX**: Presence validation helper could get stuck ON when leaving a room
+    • Root cause: Validation turn-off code was ~3000 lines deep in the action sequence; with `mode:restart`, frequent triggers (periodic_check, temp changes) killed the run before it could execute
+    • Result: Confirmation delay completely bypassed — ceiling fan/AC activated instantly on room entry
+    • Fix: Moved presence validation state update to immediately after variables block (earliest safe point)
+    • Same logic, same conditions — just executes within ~100ms of trigger instead of seconds later
+
     **v8.9.6 - Ceiling Fan Stall Escalation + Fan-with-AC Fix:**
     • **CRITICAL FIX**: Ceiling fan could run indefinitely without escalating to AC when temp was stable but hot
     • Root cause: Watchdog only escalated if temp ROSE ≥0.5°C from entry, but not if fan simply couldn't cool the room
@@ -68,145 +75,6 @@ blueprint:
     • Now respects user's `fan_escalation_timeout` setting directly (5min = escalates after 5min if no progress)
     • **FIX**: `fan_with_ac_mode: on` now actively turns on ceiling fan during cooling if it's off
     • Previously only "kept fan as-is" which meant if fan was off when AC started, it stayed off
-
-    **v8.9.4 - Ceiling Fan Presence Fix:**
-    • **CRITICAL FIX**: Ceiling fan ran indefinitely in empty rooms in Smart mode
-    • Root cause: 10-minute compressor runtime protection blocked vacancy turn-off for ceiling fans
-    • Root cause: mode:restart race condition allowed fan to reactivate after vacancy turn-off
-    • Fix: Ceiling fan mode (`ceiling_fan_cooling`) now bypasses AC runtime protection in vacancy block
-    • Fix: Added explicit `room_presence_detected` guard to ceiling fan activation and escalation blocks
-
-    **v8.9.0 - Multi-Fan Support:**
-    • All ceiling fan inputs now accept multiple entities (for rooms with multiple fans)
-    • Speed switches, fan entities, and turn-on/off calls all support entity lists natively
-
-    **v8.4.0 - Ceiling Fan Speed Switch Support:**
-    • **NEW**: Support for fans with separate speed switch entities (low/medium/high switches)
-    • 3 new inputs: ceiling_fan_low_switch, ceiling_fan_medium_switch, ceiling_fan_high_switch
-    • Auto-detects switch-based fans and uses switch.turn_on/off instead of fan.set_preset_mode
-    • All fan speed control and turn-off locations updated to support both methods
-
-    **v8.3.0 - Ceiling Fan Zone Architecture Fix:**
-    • **CRITICAL FIX**: Ceiling fan code was unreachable (dead code) due to being nested inside stability reset block
-    • Extracted ceiling fan activation, watchdog, and maintaining to top-level conditions in main choose block
-    • **FIX**: Fan zone is now correctly ABOVE comfort_max (comfort_max to comfort_max + offset)
-    • Fan activates when leaving comfort zone, AC activates above zone_max
-    • Example: comfort_max=24, offset=2 → fan zone is 24-26°C, AC activates above 26°C
-    • Moved computed ceiling fan variables after dependency definitions (comfort_max_temp, current_temp, last_mode) to fix UndefinedError
-    • Renamed ceiling_fan_zone_start to ceiling_fan_zone_max to reflect correct semantics
-
-    **v8.1.0 - Ceiling Fan Speed Control Modes:**
-    • Replaced simple on/off speed toggle with 3 modes: Static, Auto, Custom
-    • Static: fixed speed (Low/Medium/High) that never changes
-    • Auto: speed scales with temperature (Low → Medium → High)
-    • Custom: user defines speed per temperature band (0-1°C, 1-2°C, 2°C+)
-    • Uses fan preset modes (low/medium/high) with percentage fallback for compatibility
-
-    **v8.0.0 - Ceiling Fan Pre-Cooling:**
-    • **NEW**: Ceiling fan integration with hybrid cooling strategy
-    • Rooms with ceiling fans can try fan cooling before activating AC (saves energy for mild warmth)
-    • Threshold-based fan zones: fans activate before AC threshold (within configurable offset below comfort max)
-    • Watchdog timer: auto-escalates to AC if fan can't keep up (temp still rising after timeout)
-    • Eco transition: optionally replace AC with ceiling fan when target temp is reached
-    • Fully configurable: fan behavior with AC, at target temp, during bed comfort, pre-conditioning, and vacancy
-    • Supports both `fan` entities (speed control) and `switch` entities (on/off)
-    • Auto fan speed scaling based on temperature delta (low/medium/high)
-
-    **v7.3.9 - Bed Sensor Respects Presence Confirmation Delay:**
-    • **BUG**: Walking into empty bedroom and lying in bed turns AC on instantly, bypassing the 5-minute presence confirmation delay
-    • **ROOT CAUSE**: `bed_occupied` check in `smart_presence_active` returned `true` immediately without consulting `presence_confirmation_delay` — the bed sensor was a backdoor past the delay
-    • **FIX**: Bed sensor now requires confirmation delay for initial activation (empty room → bed). If AC is already running in a bed comfort mode, bed_occupied keeps it on without delay (sleeping continuity preserved)
-
-    **v7.3.8 - Fix Bed Eco Cooling Past Fan-Only Target:**
-    • **BUG**: AC in bed eco mode cools to 20°C instead of transitioning to fan_only at ~22°C
-    • **ROOT CAUSE**: Dynamic escalation and outside temp compensation lower the AC setpoint aggressively during bed_comfort_eco, causing the room to blow past the narrow fan_only trigger window (0.5°C) between polling intervals
-    • **FIX**: Skip both dynamic escalation and outside temp compensation during bed comfort modes (bed_comfort_eco, bed_comfort_quiet, bed_eco_fan_only) — these modes should use the raw target_temp for gentle cooling, then transition to fan_only
-
-    **v7.3.7 - Fix Google Home / Voice Commands Not Triggering Override:**
-    • **FIX**: Google Home and HA UI commands to turn off AC no longer bypass manual override detection
-    • **ROOT CAUSE 1**: The v6.7.0 `likely_automation_change` check treated ALL recent commands as automation-confirmed,
-      including user-initiated ones (Google Home, HA UI), because the integration sets `expected_hvac_mode` and
-      `last_command_time` for all callers. Added `and not state_change_from_user` exclusion.
-    • **ROOT CAUSE 2**: Override activation required `trigger.id == 'climate_state_change'` (v5.3.10), but with
-      `mode:restart`, a `periodic_check` trigger can replace the original trigger before override activates.
-      The `helper_last_ui_click` mechanism (v6.4.0) correctly detected the click but couldn't activate override
-      because of the trigger restriction. Now allows `periodic_check` to also activate override.
-    • **ROOT CAUSE 3**: Periodic check used integration's `expected_hvac_mode` (polluted by Google Home/UI via `_set()`)
-      instead of `helper_expected_hvac` (only set by automation). Now uses the helper with fallback to integration attr.
-
-    **v7.3.4 - Auto-Off Grace Periods + Family-Friendly Logic:**
-    • **NEW**: Entry delay — sensors must be triggered for X minutes before auto-off activates (prevents brief bed-sits)
-    • **NEW**: Exit delay — sensors must be cleared for X minutes before AC resumes (prevents toilet-trip cycling)
-    • **NEW**: Optional "Auto-Off People" override — leave empty to use People to Track, or set explicitly (e.g., adults only)
-    • **FIX**: Threshold logic uses "not everyone home" vs "everyone home" — correct for families of any size
-    • **FIX**: manual_override_detection string truthiness bug (| bool filter)
-    • **Condition 1**: Not everyone home → ANY sensor ON triggers; Everyone home → ALL sensors must be ON
-    • **Condition 2**: Scheduled time window with overnight support (e.g., 22:00-06:00)
-    • Works in Auto and Smart control modes, respects Override/Manual, compressor protection, and all existing safeguards
-
-    **v7.1.6 - Fix Bed Comfort Cycling (5-10 min ON/OFF loop):**
-    • **🐛 BUG**: AC cycles ON/OFF every 5-10 minutes when bed comfort mode is active
-    • **📝 ROOT CAUSE 1**: Target-reached turn-off block had broken bed guard (`bed_eco_fan_only_mode == true` compared string to boolean - always false)
-    • **📝 SCENARIO**: Cooling reaches target → choose block activates bed ECO → post-choose still sees stale `last_mode='cooling'` → turns AC OFF → temp rises → cooling restarts → repeat
-    • **✅ FIX 1**: Changed guard to `bed_comfort_mode != 'off'` - now correctly prevents turn-off when user is in bed with bed comfort enabled
-    • **📝 ROOT CAUSE 2**: Temperature Stability Auto-Off didn't exclude bed comfort modes
-    • **✅ FIX 2**: Added `bed_comfort_eco`, `bed_comfort_quiet`, `bed_eco_fan_only` to stability exclusion lists
-    • **🔄 RESULT**: Bed comfort mode now maintains continuous operation without interruption from target-reached or stability auto-off
-
-    **v7.1.3 - Fix Pre-conditioning Fan Speed + Add Boost Mode:**
-    • **🐛 BUG**: Pre-conditioning uses fan speed 1 instead of configured High/5
-    • **✅ FIX**: Added dedicated "PRE-CONDITIONING FAN CORRECTION" section
-    • **✨ NEW**: Added `precond_boost_enabled` setting (default: ON)
-    • **🔄 RESULT**: Pre-conditioning now uses max fan AND aggressive temperature for fastest results
-
-    **v6.5.5 - Fix False Override on BRP072C Devices During Pre-Conditioning:**
-    • **🐛 BUG**: Automation turning AC OFF falsely triggered "physical remote turn-ON" override
-    • **📝 CAUSE**: STATE SYNC section called BOTH `set_hvac_mode: off` AND `turn_off` in sequence
-    • **📝 ROOT CAUSE**: First command set `_last_known_pow='0'`, second command saw device still at `pow='1'`
-      (device hadn't processed first command yet), triggering false "user turned ON" detection
-    • **✅ FIX**: Remove redundant `climate.turn_off` - `set_hvac_mode: off` alone is sufficient
-    • **🔄 RESULT**: Automation OFF commands no longer trigger false override
-
-    **v6.5.3 - Fix False Override + AC Activating in Empty Room:**
-    • **🐛 BUG 1**: When automation turned AC OFF, it falsely triggered Manual Override
-    • **📝 CAUSE**: `on_to_off` detection ran before checking `expected_hvac` - context.parent_id not propagated
-    • **✅ FIX**: Check `expected_hvac == 'off'` BEFORE `on_to_off` fallback in override detection
-    • **🐛 BUG 2**: After clearing override, AC turned back ON in empty room
-    • **📝 CAUSE**: Clearing override (Override→Smart) reset `presence_detected_helper` to NOW, restarting grace period
-    • **✅ FIX**: Don't reset presence timers when clearing override (only when switching from Auto/Manual to Smart)
-    • **🔄 RESULT**: Clearing override no longer allows AC to activate in empty rooms
-
-    **v6.4.0 - UI Click Race Condition Fix:**
-    • **🐛 BUG**: Clicking climate card in HA UI sometimes didn't trigger Override mode
-    • **📝 CAUSE**: `mode:restart` allows periodic triggers to kill UI-initiated automation runs before Override activates
-    • **✅ FIX**: New `helper_last_ui_click` helper records UI clicks IMMEDIATELY (before any conditions)
-    • **✅ FIX**: Even if another trigger kills the run, next run detects the recent UI click (within 10s)
-    • **🔄 RESULT**: Clicking OFF on climate card now ALWAYS activates Override mode immediately
-
-    **v6.1.0 - Comprehensive Override Detection & BRP084 Sequential Calls:**
-    • **✨ NEW**: Detects ALL manual changes: HVAC mode, temperature, fan speed, AND swing mode
-    • **✨ NEW**: Uses integration's `expected_fan_mode` and `expected_swing_mode` attributes
-    • **✨ NEW**: Case-insensitive fan/swing comparison (handles "Quiet" vs "quiet")
-    • **✨ NEW**: Temperature tolerance (0.5°C) to prevent false positives from rounding
-    • **✨ FIX**: Extended command timeout (BRP084=15s, others=10s) for sequential 500ms delays
-    • **✨ FIX**: All climate service calls now use 500ms delays for BRP084 semaphore compatibility
-    • **🔄 RESULT**: Remote control fan/temp/swing changes now properly detected as manual overrides
-
-    **v6.0.4 - Device-Aware Override Detection:**
-    • **✨ NEW**: Adaptive command timeout based on device type (BRP084=8s, BRP072C/BRP069=5s)
-    • **✨ NEW**: Uses integration's `device_type` attribute for firmware-aware detection
-    • **🔄 RESULT**: BRP084 (firmware 2.8.0) devices with power verification no longer cause false overrides
-
-    **v6.0.2 - Fix False Positives from Delayed State Updates:**
-    • **🐛 BUG**: When optimistic state timed out, integration cleared expected values causing false override detection
-    • **✅ FIX**: Integration now preserves expected state; blueprint compares expected vs actual even after timeout
-    • **🔄 RESULT**: Delayed coordinator updates no longer trigger false positives
-
-    **v6.0.1 - Fix Automation Feedback Loop:**
-    • **🐛 BUG**: climate_state_change trigger caused infinite loop
-    • **✅ FIX**: Early exit for automation-triggered state changes
-
-    ---
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -7063,6 +6931,119 @@ action:
 
   # Continue to next actions - variables calculated successfully
 
+  # v8.9.7: PRESENCE VALIDATION STATE UPDATE (MOVED HERE FROM LATER IN SEQUENCE)
+  # =============================================================================
+  # CRITICAL: With mode:restart, triggers firing frequently (periodic_check every 1 min,
+  # temp/presence changes, etc.) can kill the automation run before reaching late-stage
+  # action blocks. Moving this to right after variables ensures the validation helper
+  # stays in sync with actual presence state even under frequent restarts.
+  # =============================================================================
+
+  # v3.16.0: PRESENCE VALIDATION STATE TRANSITION TRACKING
+  # =============================================================
+  # Track validation state transitions (FALSE → TRUE / TRUE → FALSE)
+  # Reset timer ONLY when validation state changes from OFF to ON
+  # Timer only accumulates when FULL validation continuously met
+  # =============================================================
+
+  # Update presence validation state helper when room_presence_detected changes
+  - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ room_presence_detected and is_state(presence_validation_helper, 'off') }}"
+        then:
+          # FALSE → TRUE transition detected: Set validation helper to ON and reset timer
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ presence_validation_helper }}"
+            continue_on_error: true
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ presence_detected_helper }}"
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
+
+          # v5.3.4: Debug log for presence detected
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: "✅ {{ room_name | upper }} PRESENCE TIMER: Reset to NOW (presence detected, validation ON)"
+                  level: debug
+
+      - if:
+          - condition: template
+            value_template: "{{ not room_presence_detected and is_state(presence_validation_helper, 'on') }}"
+        then:
+          # TRUE → FALSE transition detected: Set validation helper to OFF and expire timer
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ presence_validation_helper }}"
+            continue_on_error: true
+
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: "{{ presence_detected_helper }}"
+            data:
+              # v4.0.4 FIX: Set to NOW when presence lost (allows grace period to work)
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+            continue_on_error: true
+
+          # v5.3.4: Debug log for grace period start
+          - if:
+              - condition: template
+                value_template: "{{ debug_enabled }}"
+            then:
+              - service: system_log.write
+                data:
+                  message: "⏱️ {{ room_name | upper }} GRACE PERIOD: Started (presence lost, {{ presence_timeout }} min timeout)"
+                  level: debug
+
+  # LEGACY FALLBACK: For automations created before v3.16.0 without presence_validation_helper
+  - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: >
+          {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
+            {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
+            {% set current_timestamp = as_timestamp(now()) %}
+            {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
+            {{ minutes_since_timer_set >= (presence_timeout + 1) }}
+          {% else %}
+            false
+          {% endif %}
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
+          datetime: "{{ now() }}"
+        continue_on_error: true
+
+  # Legacy fallback for timer expiration when presence lost
+  - if:
+      - condition: template
+        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
+      - condition: template
+        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
+    then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: "{{ presence_detected_helper }}"
+        data:
+          datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
+        continue_on_error: true
+
   # ===========================================
   # v6.6.0: PRE-CONDITIONING MODE MANAGEMENT
   # ===========================================
@@ -7375,130 +7356,6 @@ action:
 
   # DISABLED: No longer auto-switching to Manual mode when manual changes detected
   # The automation will continue to work normally even if user manually adjusts AC
-
-  # v3.16.0: NEW PRESENCE VALIDATION STATE TRANSITION TRACKING
-  # =============================================================
-  # This fixes the bug where presence timer accumulates time when only PARTIAL validation is met
-  # (e.g., bed sensor + mmWave active but no BLE in ble_smart mode)
-  #
-  # OLD BEHAVIOR (BROKEN):
-  # - Timer accumulated time whenever room_presence_detected was TRUE
-  # - BLE_SMART: Bed + mmWave (no BLE) would set timer, then BLE arrival would use old timer
-  # - Result: Confirmation delay bypassed, AC activates too early
-  #
-  # NEW BEHAVIOR (FIXED):
-  # - Track validation state transitions (FALSE → TRUE)
-  # - Reset timer ONLY when validation state changes from OFF to ON
-  # - Timer only accumulates when FULL validation continuously met
-  #
-  # EXAMPLE WITH BLE_SMART (your scenario):
-  # 1. Julia in bed + mmWave (no BLE) → validation_helper = OFF, timer expired
-  # 2. Chris BLE enters → validation changes OFF → ON → Timer RESETS to NOW
-  # 3. 10 min later → Timer shows 10 min → AC can activate
-  # 4. Chris BLE leaves → validation changes ON → OFF → Timer expires
-  # =============================================================
-
-  # Update presence validation state helper when room_presence_detected changes
-  - if:
-      - condition: template
-        value_template: "{{ presence_validation_helper not in [none, '', 'unavailable', 'unknown'] }}"
-    then:
-      - if:
-          - condition: template
-            value_template: "{{ room_presence_detected and is_state(presence_validation_helper, 'off') }}"
-        then:
-          # FALSE → TRUE transition detected: Set validation helper to ON and reset timer
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ presence_validation_helper }}"
-            continue_on_error: true
-
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ presence_detected_helper }}"
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
-
-          # v5.3.4: Debug log for presence detected
-          - if:
-              - condition: template
-                value_template: "{{ debug_enabled }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: "✅ {{ room_name | upper }} PRESENCE TIMER: Reset to NOW (presence detected, validation ON)"
-                  level: debug
-
-      - if:
-          - condition: template
-            value_template: "{{ not room_presence_detected and is_state(presence_validation_helper, 'on') }}"
-        then:
-          # TRUE → FALSE transition detected: Set validation helper to OFF and expire timer
-          - service: input_boolean.turn_off
-            target:
-              entity_id: "{{ presence_validation_helper }}"
-            continue_on_error: true
-
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ presence_detected_helper }}"
-            data:
-              # v4.0.4 FIX: Set to NOW when presence lost (allows grace period to work)
-              # Grace period counts minutes_since_presence from this timestamp
-              # Sentinel value set later if user stays gone beyond threshold
-              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
-            continue_on_error: true
-
-          # v5.3.4: Debug log for grace period start
-          - if:
-              - condition: template
-                value_template: "{{ debug_enabled }}"
-            then:
-              - service: system_log.write
-                data:
-                  message: "⏱️ {{ room_name | upper }} GRACE PERIOD: Started (presence lost, {{ presence_timeout }} min timeout)"
-                  level: debug
-
-  # LEGACY FALLBACK: For automations created before v3.16.0 without presence_validation_helper
-  # This preserves the old (buggy) behavior for backward compatibility
-  # Users should add the new helper to get the fixed behavior
-  - if:
-      - condition: template
-        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
-      - condition: template
-        value_template: "{{ room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
-      - condition: template
-        value_template: >
-          {% if presence_detected_helper and states(presence_detected_helper) not in ['unknown', 'unavailable', ''] %}
-            {% set last_presence_timestamp = as_timestamp(states(presence_detected_helper)) %}
-            {% set current_timestamp = as_timestamp(now()) %}
-            {% set minutes_since_timer_set = (current_timestamp - last_presence_timestamp) / 60 %}
-            {{ minutes_since_timer_set >= (presence_timeout + 1) }}
-          {% else %}
-            false
-          {% endif %}
-    then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ presence_detected_helper }}"
-        data:
-          datetime: "{{ now() }}"
-        continue_on_error: true
-
-  # Legacy fallback for timer expiration when presence lost
-  - if:
-      - condition: template
-        value_template: "{{ presence_validation_helper in [none, '', 'unavailable', 'unknown'] }}"
-      - condition: template
-        value_template: "{{ not room_presence_detected and presence_detected_helper not in [none, '', 'unavailable', 'unknown'] }}"
-    then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: "{{ presence_detected_helper }}"
-        data:
-          datetime: "{{ (now() - timedelta(minutes=presence_timeout + 1)).strftime('%Y-%m-%d %H:%M:%S') }}"
-        continue_on_error: true
 
   # v6.3.2: INSTANT PHYSICAL REMOTE OVERRIDE DETECTION (SYMMETRIC)
   # ===============================================================
