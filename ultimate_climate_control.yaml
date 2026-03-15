@@ -1,5 +1,5 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v8.9.3
+  name: Ultimate Smart Climate Control - v8.9.4
 
   description: |
     **Ultimate Smart Climate Control v8.9.3**
@@ -59,6 +59,13 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v8.9.4 - Ceiling Fan Presence Fix:**
+    • **CRITICAL FIX**: Ceiling fan ran indefinitely in empty rooms in Smart mode
+    • Root cause: 10-minute compressor runtime protection blocked vacancy turn-off for ceiling fans
+    • Root cause: mode:restart race condition allowed fan to reactivate after vacancy turn-off
+    • Fix: Ceiling fan mode (`ceiling_fan_cooling`) now bypasses AC runtime protection in vacancy block
+    • Fix: Added explicit `room_presence_detected` guard to ceiling fan activation and escalation blocks
 
     **v8.9.0 - Multi-Fan Support:**
     • All ceiling fan inputs now accept multiple entities (for rooms with multiple fans)
@@ -10251,6 +10258,9 @@ action:
       - conditions:
           - condition: template
             value_template: >
+              {# v8.9.4 FIX: Added explicit room_presence_detected check for Smart mode #}
+              {# Defense-in-depth: should_activate covers this, but mode:restart race conditions #}
+              {# can cause should_activate to evaluate inconsistently during state transitions #}
               {{ ceiling_fan_configured
                  and should_activate
                  and enable_cooling
@@ -10260,6 +10270,7 @@ action:
                  and actual_ac_state != 'on'
                  and last_mode not in ['cooling', 'heating']
                  and (control_mode != 'Smart' or smart_presence_active)
+                 and (control_mode != 'Smart' or room_presence_detected)
                  and not (is_precond_mode and fan_precondition_mode == 'skip')
                  and not (bed_occupied and fan_bed_comfort_mode == 'off') }}
         sequence:
@@ -10372,11 +10383,13 @@ action:
       - conditions:
           - condition: template
             value_template: >
+              {# v8.9.4 FIX: Added room_presence_detected guard for Smart mode #}
               {{ ceiling_fan_configured
                  and ceiling_fan_mode_active
                  and ceiling_fan_should_escalate
                  and should_activate
-                 and enable_cooling }}
+                 and enable_cooling
+                 and (control_mode != 'Smart' or room_presence_detected) }}
         sequence:
           # Turn off ceiling fan (or set per fan_with_ac_mode)
           - choose:
@@ -14543,8 +14556,9 @@ action:
             value_template: "{{ proximity_zone == 'home' or anyone_home }}"
           # v5.3.2 FIX: Use time_in_current_mode for consistency with should_activate runtime protection
           # Previously used time_since_change which resets on every climate command
+          # v8.9.4 FIX: Ceiling fans don't need compressor runtime protection - allow immediate turn-off
           - condition: template
-            value_template: "{{ (time_in_current_mode | float(0)) >= (runtime_min | float(0)) }}"
+            value_template: "{{ last_mode == 'ceiling_fan_cooling' or (time_in_current_mode | float(0)) >= (runtime_min | float(0)) }}"
         sequence:
           - if:
               - condition: template
