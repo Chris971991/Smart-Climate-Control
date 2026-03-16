@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.0.1
+  name: Ultimate Smart Climate Control - v9.0.2
 
   description: |
-    **Ultimate Smart Climate Control v9.0.1**
+    **Ultimate Smart Climate Control v9.0.2**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -73,6 +73,11 @@ blueprint:
     • Works with switch entities, fan entities, and speed switch configurations
     • Integrates with existing override timeout, dashboard indicators, and clear button
     • New helper required per room: `input_text.climate_expected_ceiling_fan_[roomname]`
+
+    **v9.0.2 - Fix ceiling fan/AC instant activation on room entry:**
+    • **CRITICAL FIX**: Ceiling fan (and AC) activated instantly when entering room despite 2-min confirmation delay
+    • Root cause: Variables calculate BEFORE validation helper update. When you re-enter a room, validation is still OFF at variable-calculation time, but `minutes_with_presence` used the stale "leave" timestamp (set to NOW when you left). If you left 10 min ago, it showed 10 min of "presence" — bypassing the 2-min delay.
+    • Fix: When validation is configured but OFF, `minutes_with_presence` now returns 0 (not confirmed yet). Only returns real minutes when validation is ON (actively tracking continuous presence).
 
     **v8.9.7 - Fix presence confirmation delay bypassed under mode:restart:**
     • **CRITICAL FIX**: Presence validation helper could get stuck ON when leaving a room
@@ -6397,7 +6402,14 @@ action:
                   {{ minutes }}  {# Trust timer completely - no 2-hour limit #}
                 {% endif %}
 
-              {# Legacy mode or validation OFF: apply 2-hour safety threshold #}
+              {# v8.9.8 FIX: When validation is configured but OFF, presence is NOT confirmed #}
+              {# The old code returned stale minutes from the "leave" timestamp, bypassing #}
+              {# confirmation delay on re-entry. Variables calculate BEFORE validation update #}
+              {# runs, so validation is still OFF at variable time = must return 0. #}
+              {% elif has_validation and not validation_is_on %}
+                0  {# Validation configured but OFF - not yet confirmed #}
+
+              {# Legacy mode (no validation helper): apply 2-hour safety threshold #}
               {% else %}
                 {% if minutes > 120 %}
                   0  {# Stale timestamp #}
