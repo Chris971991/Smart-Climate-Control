@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.0.3
+  name: Ultimate Smart Climate Control - v9.0.4
 
   description: |
-    **Ultimate Smart Climate Control v9.0.3**
+    **Ultimate Smart Climate Control v9.0.4**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -74,7 +74,7 @@ blueprint:
     • Integrates with existing override timeout, dashboard indicators, and clear button
     • New helper required per room: `input_text.climate_expected_ceiling_fan_[roomname]`
 
-    **v9.0.3 - Fix ceiling fan/AC instant activation on room entry:**
+    **v9.0.4 - Fix ceiling fan/AC instant activation on room entry:**
     • **CRITICAL FIX**: Ceiling fan (and AC) activated instantly when entering room despite 2-min confirmation delay
     • Root cause: Variables calculate BEFORE validation helper update. When you re-enter a room, validation is still OFF at variable-calculation time, but `minutes_with_presence` used the stale "leave" timestamp (set to NOW when you left). If you left 10 min ago, it showed 10 min of "presence" — bypassing the 2-min delay.
     • Fix: When validation is configured but OFF, `minutes_with_presence` now returns 0 (not confirmed yet). Only returns real minutes when validation is ON (actively tracking continuous presence).
@@ -16006,7 +16006,7 @@ action:
     then:
       - service: system_log.write
         data:
-          message: "🔍 {{ room_name | upper }} TURN-OFF CHECK: ac={{ actual_ac_state }}, mode={{ control_mode }}, smart_presence={{ smart_presence_active }}, room_presence={{ room_presence_detected }}, last_mode={{ last_mode }}, time_in_mode={{ time_in_current_mode }}, runtime_min={{ runtime_min }}, RESULT={{ actual_ac_state == 'on' and control_mode == 'Smart' and smart_presence_active | string | lower in ['false', 'none', ''] and not room_presence_detected and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] and ((last_mode in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= 1) or (last_mode not in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)))) }}"
+          message: "🔍 {{ room_name | upper }} TURN-OFF CHECK: ac={{ actual_ac_state }}, mode={{ control_mode }}, smart_presence={{ smart_presence_active }}, room_presence={{ room_presence_detected }}, last_mode={{ last_mode }}, time_in_mode={{ time_in_current_mode }}, runtime_min={{ runtime_min }}, RESULT={{ actual_ac_state == 'on' and control_mode == 'Smart' and smart_presence_active | string | lower in ['false', 'none', ''] and not room_presence_detected and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)) }}"
           level: warning
 
   - if:
@@ -16018,10 +16018,7 @@ action:
               smart_presence_active | string | lower in ['false', 'none', ''] and
               not room_presence_detected and
               last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] and
-              (
-                (last_mode in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= 1) or
-                (last_mode not in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)))
-              )
+              (time_in_current_mode | float(0)) >= (runtime_min | float(0))
             }}
     then:
       # Log the turn-off action
@@ -16203,7 +16200,7 @@ action:
 
       # Turn off the AC
       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
-      # v9.0.3 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
+      # v9.0.4 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
       - if:
           - condition: template
             value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
@@ -16253,7 +16250,7 @@ action:
                             • Switching from {{ last_mode }} to fan_only mode
                       level: warning
 
-              # v9.0.3 FIX: Move ALL helper updates BEFORE climate commands to survive mode:restart
+              # v9.0.4 FIX: Move ALL helper updates BEFORE climate commands to survive mode:restart
               # When climate.set_temperature changes HVAC mode (cool→fan_only), climate_state_change
               # triggers mode:restart, killing any code after the service call. By updating helpers
               # first, helper_last_mode correctly reflects "comfort_fan_only" and prevents stuck loop.
@@ -16365,7 +16362,7 @@ action:
               datetime: "{{ now() }}"
             continue_on_error: true
 
-          # v9.0.3 FIX: Moved snapshot updates BEFORE climate.turn_off to survive mode:restart
+          # v9.0.4 FIX: Moved snapshot updates BEFORE climate.turn_off to survive mode:restart
           # (same pattern as "SMART MODE NO PRESENCE" path and v7.2.0 helper updates above)
           - if:
               - condition: template
@@ -16619,7 +16616,7 @@ action:
             value_template: "{{ not should_be_running }}"
         then:
           # v3.13.2 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
-          # v9.0.3 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
+          # v9.0.4 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
           - if:
               - condition: template
                 value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
