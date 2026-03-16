@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.0.4
+  name: Ultimate Smart Climate Control - v9.1.0
 
   description: |
-    **Ultimate Smart Climate Control v9.0.4**
+    **Ultimate Smart Climate Control v9.1.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,11 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v9.1.0 - Ceiling Fan Max Speed In Bed:**
+    • **NEW**: `ceiling_fan_bed_max_speed` option caps ceiling fan speed when bed is occupied
+    • Prevents fan ramping to high speed while sleeping (default: medium)
+    • Works with all speed modes (auto, static, custom)
 
     **v9.0.1 - Ceiling Fan Speed Escalation Within Fan Zone:**
     • **FIX**: Ceiling fan speed now updates as temperature rises within the fan zone (low → medium → high)
@@ -3177,6 +3182,28 @@ blueprint:
                 - label: "Unchanged - Keep current speed"
                   value: "unchanged"
 
+        ceiling_fan_bed_max_speed:
+          name: Max Ceiling Fan Speed In Bed
+          description: |
+            **Maximum ceiling fan speed allowed when someone is in bed.**
+
+            When bed is occupied, the ceiling fan will never exceed this speed —
+            even if temperature bands would normally call for a higher speed.
+
+            - **Low:** Cap at low speed (quietest)
+            - **Medium:** Cap at medium speed (balanced)
+            - **High:** No cap — allow full speed range
+          default: "medium"
+          selector:
+            select:
+              options:
+                - label: "Low - Quietest for sleeping"
+                  value: "low"
+                - label: "Medium - Balanced comfort (recommended)"
+                  value: "medium"
+                - label: "High - No cap, full speed allowed"
+                  value: "high"
+
         fan_on_vacancy:
           name: Fan When Room Empty
           description: |
@@ -3778,6 +3805,7 @@ variables:
   fan_at_target_temp: !input fan_at_target_temp
   fan_precondition_mode: !input fan_precondition_mode
   fan_bed_comfort_mode: !input fan_bed_comfort_mode
+  ceiling_fan_bed_max_speed: !input ceiling_fan_bed_max_speed
   fan_on_vacancy: !input fan_on_vacancy
   ceiling_fan_low_switch_input: !input ceiling_fan_low_switch
   ceiling_fan_medium_switch_input: !input ceiling_fan_medium_switch
@@ -5075,25 +5103,33 @@ action:
         {% set delta = (current_temp | float(0)) - (comfort_max_temp | float(0)) %}
         {% set offset = fan_cooling_offset | float(3) %}
         {% set third = offset / 3.0 %}
+        {% set speed_rank = {'low': 1, 'medium': 2, 'high': 3} %}
+        {% set ns = namespace(raw='medium') %}
         {% if ceiling_fan_speed_mode == 'static' %}
-          {{ ceiling_fan_static_speed }}
+          {% set ns.raw = ceiling_fan_static_speed %}
         {% elif ceiling_fan_speed_mode == 'custom' %}
           {% if delta <= third %}
-            {{ ceiling_fan_band_1_speed }}
+            {% set ns.raw = ceiling_fan_band_1_speed %}
           {% elif delta <= (third * 2) %}
-            {{ ceiling_fan_band_2_speed }}
+            {% set ns.raw = ceiling_fan_band_2_speed %}
           {% else %}
-            {{ ceiling_fan_band_3_speed }}
+            {% set ns.raw = ceiling_fan_band_3_speed %}
           {% endif %}
         {% else %}
           {# Auto mode: low → medium → high across the fan zone #}
           {% if delta <= third %}
-            low
+            {% set ns.raw = 'low' %}
           {% elif delta <= (third * 2) %}
-            medium
+            {% set ns.raw = 'medium' %}
           {% else %}
-            high
+            {% set ns.raw = 'high' %}
           {% endif %}
+        {% endif %}
+        {# v9.1.0: Cap ceiling fan speed when bed is occupied #}
+        {% if bed_occupied and speed_rank.get(ns.raw, 2) > speed_rank.get(ceiling_fan_bed_max_speed, 3) %}
+          {{ ceiling_fan_bed_max_speed }}
+        {% else %}
+          {{ ns.raw }}
         {% endif %}
 
       # Map speed preset to percentage (fallback for fans without preset_mode support)
