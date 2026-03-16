@@ -177,6 +177,13 @@ HELPER_DEFINITIONS = {
         "initial": "unknown",
         "max_length": 50,
     },
+    "expected_ceiling_fan": {
+        "domain": "input_text",
+        "name": "{room} Climate Expected Ceiling Fan State",
+        "icon": "mdi:ceiling-fan",
+        "initial": "",
+        "max_length": 50,
+    },
 
     # ========================================
     # STATE MACHINE HELPERS (v5.0.0 Redesign)
@@ -264,7 +271,7 @@ FEATURE_HELPERS = {
     "manual_override": [
         # Keep old helpers for backward compatibility (v5.0.0 - v6.0.0)
         "manual_override", "mode_before_override", "override_time", "override_timeout",
-        "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac",
+        "proximity_override", "expected_temp", "expected_fan", "expected_swing", "expected_hvac", "expected_ceiling_fan",
         # Add new state machine helpers (v5.0.0+)
         "state_machine", "state_start", "last_command", "state_checksum",
         # v6.4.0: UI click tracking for race condition prevention
@@ -1672,6 +1679,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
             helpers["helper_expected_swing"] = f"input_text.climate_expected_swing_{sanitized_name}"
             helpers["helper_expected_hvac"] = f"input_text.climate_expected_hvac_{sanitized_name}"
+            helpers["helper_expected_ceiling_fan"] = f"input_text.climate_expected_ceiling_fan_{sanitized_name}"
             # v5.0.0: Add new state machine helpers
             helpers["helper_state_machine"] = f"input_select.climate_state_machine_{sanitized_name}"
             helpers["helper_state_start"] = f"input_datetime.climate_state_start_{sanitized_name}"
@@ -2866,6 +2874,7 @@ card_mod:
                 f"input_text.climate_expected_fan_{sanitized_name}",
                 f"input_text.climate_expected_swing_{sanitized_name}",
                 f"input_text.climate_expected_hvac_{sanitized_name}",
+                f"input_text.climate_expected_ceiling_fan_{sanitized_name}",
             ])
 
         if config_entry.data.get("enable_dynamic_adaptation", True):
