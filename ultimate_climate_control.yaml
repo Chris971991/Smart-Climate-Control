@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.2.0
+  name: Ultimate Smart Climate Control - v9.2.1
 
   description: |
-    **Ultimate Smart Climate Control v9.2.0**
+    **Ultimate Smart Climate Control v9.2.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -3999,12 +3999,7 @@ variables:
   enable_manual_override_detection: "{{ enable_ac_override_detection or enable_ceiling_fan_override_detection }}"
 
   # v9.2.0: Override source tracking
-  override_source: >
-    {% if helper_override_source not in [none, '', 'unavailable', 'unknown'] %}
-      {{ states(helper_override_source) | default('none') }}
-    {% else %}
-      none
-    {% endif %}
+  override_source: "{{ (states(helper_override_source) | default('none') | trim) if helper_override_source not in [none, '', 'unavailable', 'unknown'] else 'none' }}"
 
   # v9.2.0: Computed override flags
   fan_override_active: "{{ override_source in ['fan', 'both'] }}"
@@ -7777,12 +7772,7 @@ action:
             target:
               entity_id: "{{ helper_override_source }}"
             data:
-              value: >
-                {% if override_behavior == 'independent' %}
-                  {% if fan_override_active %}both{% else %}ac{% endif %}
-                {% else %}
-                  both
-                {% endif %}
+              value: "{% if override_behavior == 'independent' %}{% if fan_override_active %}both{% else %}ac{% endif %}{% else %}both{% endif %}"
             continue_on_error: true
 
       # Turn on visual indicator for dashboard
@@ -7922,12 +7912,7 @@ action:
             target:
               entity_id: "{{ helper_override_source }}"
             data:
-              value: >
-                {% if override_behavior == 'independent' %}
-                  {% if fan_override_active %}both{% else %}ac{% endif %}
-                {% else %}
-                  both
-                {% endif %}
+              value: "{% if override_behavior == 'independent' %}{% if fan_override_active %}both{% else %}ac{% endif %}{% else %}both{% endif %}"
             continue_on_error: true
 
       # Turn on visual indicator for dashboard
