@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.0.2
+  name: Ultimate Smart Climate Control - v9.0.3
 
   description: |
-    **Ultimate Smart Climate Control v9.0.2**
+    **Ultimate Smart Climate Control v9.0.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -74,7 +74,7 @@ blueprint:
     • Integrates with existing override timeout, dashboard indicators, and clear button
     • New helper required per room: `input_text.climate_expected_ceiling_fan_[roomname]`
 
-    **v9.0.2 - Fix ceiling fan/AC instant activation on room entry:**
+    **v9.0.3 - Fix ceiling fan/AC instant activation on room entry:**
     • **CRITICAL FIX**: Ceiling fan (and AC) activated instantly when entering room despite 2-min confirmation delay
     • Root cause: Variables calculate BEFORE validation helper update. When you re-enter a room, validation is still OFF at variable-calculation time, but `minutes_with_presence` used the stale "leave" timestamp (set to NOW when you left). If you left 10 min ago, it showed 10 min of "presence" — bypassing the 2-min delay.
     • Fix: When validation is configured but OFF, `minutes_with_presence` now returns 0 (not confirmed yet). Only returns real minutes when validation is ON (actively tracking continuous presence).
@@ -16006,7 +16006,7 @@ action:
     then:
       - service: system_log.write
         data:
-          message: "🔍 {{ room_name | upper }} TURN-OFF CHECK: ac={{ actual_ac_state }}, mode={{ control_mode }}, smart_presence={{ smart_presence_active }}, room_presence={{ room_presence_detected }}, last_mode={{ last_mode }}, time_in_mode={{ time_in_current_mode }}, runtime_min={{ runtime_min }}, RESULT={{ actual_ac_state == 'on' and control_mode == 'Smart' and smart_presence_active | string | lower in ['false', 'none', ''] and not room_presence_detected and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)) }}"
+          message: "🔍 {{ room_name | upper }} TURN-OFF CHECK: ac={{ actual_ac_state }}, mode={{ control_mode }}, smart_presence={{ smart_presence_active }}, room_presence={{ room_presence_detected }}, last_mode={{ last_mode }}, time_in_mode={{ time_in_current_mode }}, runtime_min={{ runtime_min }}, RESULT={{ actual_ac_state == 'on' and control_mode == 'Smart' and smart_presence_active | string | lower in ['false', 'none', ''] and not room_presence_detected and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] and ((last_mode in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= 1) or (last_mode not in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)))) }}"
           level: warning
 
   - if:
@@ -16017,8 +16017,11 @@ action:
               control_mode == 'Smart' and
               smart_presence_active | string | lower in ['false', 'none', ''] and
               not room_presence_detected and
-              last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only'] and
-              (time_in_current_mode | float(0)) >= (runtime_min | float(0))
+              last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] and
+              (
+                (last_mode in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= 1) or
+                (last_mode not in ['comfort_fan_only', 'stability_fan_only'] and (time_in_current_mode | float(0)) >= (runtime_min | float(0)))
+              )
             }}
     then:
       # Log the turn-off action
@@ -16194,20 +16197,23 @@ action:
                     • Current: {{ current_temp }}°C
                     • Target: {{ cooling_target_temp if last_mode == 'cooling' else heating_target_temp }}°C
                     • Mode: {{ last_mode }}
-                    • Runtime: {{ time_since_change | round(1) }}min (min: {{ runtime_min }}min)
+                    • Runtime: {{ time_in_current_mode | round(1) }}min (min: {{ runtime_min }}min)
                     • Action: Turning AC OFF (target achieved)
               level: warning
 
       # Turn off the AC
       # v3.11.13 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
-      - condition: template
-        value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: !input helper_last_change
-        data:
-          datetime: "{{ now() }}"
-        continue_on_error: true
+      # v9.0.3 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
+      - if:
+          - condition: template
+            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: !input helper_last_change
+            data:
+              datetime: "{{ now() }}"
+            continue_on_error: true
 
       # Update expected_hvac BEFORE turn_off (this is correct - tells detection what we expect)
       - if:
@@ -16247,8 +16253,62 @@ action:
                             • Switching from {{ last_mode }} to fan_only mode
                       level: warning
 
-              # v5.1.2 FIX: Use MANDATORY rapid batched service call pattern for BRP069/BRP084
-              # CRITICAL: Must follow exact pattern from CLAUDE.md to avoid firmware issues
+              # v9.0.3 FIX: Move ALL helper updates BEFORE climate commands to survive mode:restart
+              # When climate.set_temperature changes HVAC mode (cool→fan_only), climate_state_change
+              # triggers mode:restart, killing any code after the service call. By updating helpers
+              # first, helper_last_mode correctly reflects "comfort_fan_only" and prevents stuck loop.
+              # (Same v7.2.0 pattern used in the default turn-off branch below)
+
+              # Update expected_hvac to fan_only (overrides the blanket "off" set before choose block)
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                then:
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_expected_hvac }}"
+                    data:
+                      value: "fan_only"
+                    continue_on_error: true
+
+              # Update expected fan helper for fan_only mode
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_expected_fan
+                data:
+                  value: "{{ selected_fan_only_fan_mode }}"
+                continue_on_error: true
+
+              # Update mode helper to track fan_only state
+              - service: input_text.set_value
+                target:
+                  entity_id: !input helper_last_mode
+                data:
+                  value: "comfort_fan_only"
+                continue_on_error: true
+
+              # Update snapshot for fan_only mode
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_last_command not in [none, 'unavailable', 'unknown'] }}"
+                then:
+                  - variables:
+                      fan_snapshot: "hvac=fan_only,temp=0,fan=unknown,swing=unknown"
+                      fan_checksum: "5"
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_last_command }}"
+                    data:
+                      value: "{{ fan_snapshot }}"
+                    continue_on_error: true
+                  - service: input_number.set_value
+                    target:
+                      entity_id: "{{ helper_state_checksum }}"
+                    data:
+                      value: "{{ fan_checksum }}"
+                    continue_on_error: true
+
+              # NOW send climate commands (mode:restart may kill after this, but helpers are safe)
               - repeat:
                   for_each: "{{ climate_list }}"
                   sequence:
@@ -16286,43 +16346,6 @@ action:
                         swing_mode: "{{ validated_swing_mode }}"
                       continue_on_error: true
 
-              # Update expected fan helper for fan_only mode
-              - service: input_text.set_value
-                target:
-                  entity_id: !input helper_expected_fan
-                data:
-                  value: "{{ selected_fan_only_fan_mode }}"
-                continue_on_error: true
-
-              # Update mode helper to track fan_only state
-              - service: input_text.set_value
-                target:
-                  entity_id: !input helper_last_mode
-                data:
-                  value: "comfort_fan_only"
-                continue_on_error: true
-
-              # v5.1.2 FIX: Update snapshot for fan_only mode
-              - if:
-                  - condition: template
-                    value_template: "{{ helper_last_command not in [none, 'unavailable', 'unknown'] }}"
-                then:
-                  - variables:
-                      fan_snapshot: "hvac=fan_only,temp=0,fan=unknown,swing=unknown"
-                      fan_checksum: "5"
-                  - service: input_text.set_value
-                    target:
-                      entity_id: "{{ helper_last_command }}"
-                    data:
-                      value: "{{ fan_snapshot }}"
-                    continue_on_error: true
-                  - service: input_number.set_value
-                    target:
-                      entity_id: "{{ helper_state_checksum }}"
-                    data:
-                      value: "{{ fan_checksum }}"
-                    continue_on_error: true
-
         # Default: Turn OFF (original behavior)
         default:
           # v7.2.0 FIX: Move helper updates BEFORE climate.turn_off to survive mode:restart
@@ -16342,12 +16365,8 @@ action:
               datetime: "{{ now() }}"
             continue_on_error: true
 
-          - service: climate.turn_off
-            target:
-              entity_id: !input climate_entities
-            continue_on_error: true
-
-          # v5.1.2 FIX: Update snapshot after turn_off to prevent false override detection
+          # v9.0.3 FIX: Moved snapshot updates BEFORE climate.turn_off to survive mode:restart
+          # (same pattern as "SMART MODE NO PRESENCE" path and v7.2.0 helper updates above)
           - if:
               - condition: template
                 value_template: "{{ helper_last_command not in [none, 'unavailable', 'unknown'] }}"
@@ -16388,6 +16407,11 @@ action:
                         📸 {{ room_name | upper }} SNAPSHOT UPDATED (Target Reached - Turn OFF)
                             • New Snapshot: {{ update_snapshot }}
                       level: warning
+
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entities
+            continue_on_error: true
 
       # v5.2.4 FIX: Update mode_start_time for off-time protection - MUST be unconditional
       - service: input_datetime.set_datetime
@@ -16595,14 +16619,17 @@ action:
             value_template: "{{ not should_be_running }}"
         then:
           # v3.13.2 FIX: Update helper_change BEFORE turn_off to prevent false Override detection
-          - condition: template
-            value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: !input helper_last_change
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
+          # v9.0.3 FIX: Wrapped in if/then - bare condition was gating entire turn-off sequence
+          - if:
+              - condition: template
+                value_template: "{{ helper_change not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: !input helper_last_change
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
 
           # v3.13.17 FIX: Update helpers BEFORE turn_off to prevent false override
           - if:
