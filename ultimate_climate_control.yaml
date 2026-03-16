@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.1.0
+  name: Ultimate Smart Climate Control - v9.2.0
 
   description: |
-    **Ultimate Smart Climate Control v9.1.0**
+    **Ultimate Smart Climate Control v9.2.0**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,14 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v9.2.0 - Separate AC & Ceiling Fan Override Detection:**
+    • **NEW**: AC and ceiling fan manual override detection can now be enabled/disabled independently
+    • **NEW**: `override_behavior` setting: **Linked** (default, original behavior) or **Independent** (override each device separately)
+    • Independent mode: Overriding the ceiling fan only pauses fan automation — AC continues normally
+    • Independent mode: Overriding the AC pauses AC automation — ceiling fan stays at current state
+    • New optional helper: `input_text.climate_override_source_[roomname]` (tracks what triggered the override)
+    • Fully backward compatible — defaults to linked mode with identical behavior to v9.1.0
 
     **v9.1.0 - Ceiling Fan Max Speed In Bed:**
     • **NEW**: `ceiling_fan_bed_max_speed` option caps ceiling fan speed when bed is occupied
@@ -142,18 +150,18 @@ blueprint:
       icon: mdi:hand-back-right
       collapsed: true
       input:
-        enable_manual_override_detection:
-          name: Enable Manual Override Detection
+        enable_ac_override_detection:
+          name: Enable AC Manual Override Detection
           description: |
-            **Detect when you manually change AC settings** and temporarily pause automation.
+            **Detect when you manually change AC settings** and temporarily pause AC automation.
 
             **How it works:**
             When you change temperature, fan speed, or turn AC on/off via HA app, dashboard,
             or physical remote, automation detects this and enters **Override mode**.
 
             **Override mode:**
-            • Pauses temperature/fan adjustments for the configured timeout
-            • Respects your manual settings
+            • Pauses AC adjustments for the configured timeout
+            • Respects your manual AC settings
             • Automatically returns to previous mode after timeout
 
             **When to disable:**
@@ -165,6 +173,47 @@ blueprint:
           default: true
           selector:
             boolean:
+
+        enable_ceiling_fan_override_detection:
+          name: Enable Ceiling Fan Manual Override Detection
+          description: |
+            **Detect when you manually change ceiling fan settings** and temporarily pause fan automation.
+
+            **How it works:**
+            When you toggle the ceiling fan via wall switch, HA dashboard, or app,
+            automation detects this and pauses ceiling fan control.
+
+            Only applies if a ceiling fan entity is configured.
+
+            **When to disable:**
+            • If you have other automations controlling the ceiling fan
+            • If you're getting false fan override detections
+
+            **Recommended:** Keep enabled if ceiling fan is configured.
+          default: true
+          selector:
+            boolean:
+
+        override_behavior:
+          name: Override Behavior
+          description: |
+            **How should manual overrides work when you have both AC and ceiling fan?**
+
+            **Linked (default):** Override either device → pause BOTH AC and ceiling fan automation.
+            This is the safest option and the original behavior.
+
+            **Independent:** Override each device separately. Overriding the AC only pauses
+            AC automation; ceiling fan continues. And vice versa.
+
+            Note: If only AC is configured (no ceiling fan), this setting has no effect.
+          default: "linked"
+          selector:
+            select:
+              options:
+                - label: "Linked (override either → pause both)"
+                  value: "linked"
+                - label: "Independent (override each device separately)"
+                  value: "independent"
 
         override_timeout:
           name: Override Timeout (hours)
@@ -3407,6 +3456,21 @@ blueprint:
               filter:
                 domain: input_text
 
+        helper_override_source:
+          name: Override Source Helper
+          description: |
+            Tracks what device triggered the current override (ac, fan, both, or none).
+            Only needed if using Independent override behavior.
+
+            Create: Settings > Helpers > Text
+            Naming: input_text.climate_override_source_[roomname]
+            Initial value: none
+          default: {}
+          selector:
+            entity:
+              filter:
+                domain: input_text
+
         # --- State Machine Helpers (v5.0.0+) ---
         helper_state_machine:
           name: Climate State Machine
@@ -3707,6 +3771,7 @@ variables:
   helper_expected_swing: !input helper_expected_swing
   helper_expected_hvac: !input helper_expected_hvac
   helper_expected_ceiling_fan: !input helper_expected_ceiling_fan
+  helper_override_source: !input helper_override_source
 
   # v5.0.0: State Machine helpers
   helper_state_machine: !input helper_state_machine
@@ -3925,8 +3990,25 @@ variables:
   helper_effectiveness: !input helper_effectiveness_score
   last_mode: "{{ states(helper_mode) | default('off') }}"
 
-  # Manual Override Detection settings
-  enable_manual_override_detection: !input enable_manual_override_detection
+  # Manual Override Detection settings (v9.2.0: separate AC and ceiling fan)
+  enable_ac_override_detection: !input enable_ac_override_detection
+  enable_ceiling_fan_override_detection: !input enable_ceiling_fan_override_detection
+  override_behavior: !input override_behavior
+
+  # Backward compatible derived variable (OR of both toggles)
+  enable_manual_override_detection: "{{ enable_ac_override_detection or enable_ceiling_fan_override_detection }}"
+
+  # v9.2.0: Override source tracking
+  override_source: >
+    {% if helper_override_source not in [none, '', 'unavailable', 'unknown'] %}
+      {{ states(helper_override_source) | default('none') }}
+    {% else %}
+      none
+    {% endif %}
+
+  # v9.2.0: Computed override flags
+  fan_override_active: "{{ override_source in ['fan', 'both'] }}"
+  ac_override_active: "{{ override_source in ['ac', 'both'] }}"
 
   # Time since last helper change (used for state tracking)
   time_since_change: >
@@ -4661,6 +4743,18 @@ action:
                   value: "{{ from_mode }}"
                 continue_on_error: true
 
+      # v9.2.0: Clear override source when leaving Override mode
+      - if:
+          - condition: template
+            value_template: "{{ from_mode == 'Override' and helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: "none"
+            continue_on_error: true
+
       # Clear last_mode when switching modes (fresh start)
       - service: input_text.set_value
         target:
@@ -4744,12 +4838,49 @@ action:
 
   # v3.11.0: Handle user clicking "Clear Override" button in dashboard
   # v5.0.4: Removed control_mode == 'Override' check - timing issue where mode already changed to Smart
+  # v9.2.0: Also handles fan-only override clear (independent mode)
   - if:
       - condition: template
         value_template: "{{ trigger.id == 'override_cleared_by_user' }}"
       - condition: template
         value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
     then:
+      # v9.2.0: Handle fan-only override clear (independent mode - not in Override mode)
+      - if:
+          - condition: template
+            value_template: "{{ fan_override_active and control_mode != 'Override' }}"
+        then:
+          # Clear override source
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_override_source }}"
+                data:
+                  value: "none"
+                continue_on_error: true
+          # Sync expected ceiling fan state
+          - if:
+              - condition: template
+                value_template: "{{ helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] and ceiling_fan_configured }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_expected_ceiling_fan }}"
+                data:
+                  value: "{{ states(ceiling_fan_entity) }}"
+                continue_on_error: true
+          - service: system_log.write
+            data:
+              message: >
+                ✅ {{ room_name | upper }} FAN OVERRIDE CLEARED BY USER (INDEPENDENT MODE)
+                • Ceiling fan automation resuming
+                • AC was not affected
+              level: warning
+          - stop: "Fan-only override cleared by user"
+
       - variables:
           return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else 'Auto' }}"
 
@@ -4865,6 +4996,18 @@ action:
               entity_id: "{{ helper_mode }}"
             data:
               value: "{{ sync_last_mode }}"
+            continue_on_error: true
+
+      # v9.2.0: Clear override source on user clear
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: "none"
             continue_on_error: true
 
       # v5.3.13 FIX: Update helper_change (last command time) to NOW when clearing override
@@ -6626,7 +6769,7 @@ action:
       # ===================================
       manual_override_detection: >
         {# Step 0: Quick validation checks #}
-        {% if not enable_manual_override_detection %}
+        {% if not enable_ac_override_detection %}
           false
         {% elif control_mode in ['Override', 'Manual', 'Pre-conditioning'] %}
           {# v6.6.0: Exclude Pre-conditioning mode from override detection #}
@@ -6847,7 +6990,7 @@ action:
       # Uses the same Override mode as AC override - pauses ALL automation.
       ceiling_fan_override_detection: >
         {# Only check if fan is configured and override detection is enabled #}
-        {% if not ceiling_fan_configured or not enable_manual_override_detection %}
+        {% if not ceiling_fan_configured or not enable_ceiling_fan_override_detection %}
           false
         {% elif control_mode in ['Override', 'Manual', 'Pre-conditioning'] %}
           false
@@ -7513,7 +7656,7 @@ action:
       - condition: template
         value_template: "{{ trigger.event.data.entity_id in climate_list }}"
       - condition: template
-        value_template: "{{ enable_manual_override_detection }}"
+        value_template: "{{ enable_ac_override_detection }}"
       - condition: template
         value_template: "{{ control_mode not in ['Manual', 'Override'] }}"
       - condition: template
@@ -7625,6 +7768,23 @@ action:
           option: "Override"
         continue_on_error: true
 
+      # v9.2.0: Track override source
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: >
+                {% if override_behavior == 'independent' %}
+                  {% if fan_override_active %}both{% else %}ac{% endif %}
+                {% else %}
+                  both
+                {% endif %}
+            continue_on_error: true
+
       # Turn on visual indicator for dashboard
       - if:
           - condition: template
@@ -7647,11 +7807,12 @@ action:
               value: "{{ override_timeout }}"
             continue_on_error: true
 
-      # v8.0.0: Turn off ceiling fan on physical remote override
+      # v8.0.0: Turn off ceiling fan on physical remote override (only in linked mode)
       # v9.0.0: Track expected ceiling fan state for override detection
+      # v9.2.0: Only turn off fan in linked mode - independent mode leaves fan as-is
       - if:
           - condition: template
-            value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ override_behavior == 'linked' and ceiling_fan_configured and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
         then:
           - service: input_text.set_value
             target:
@@ -7661,7 +7822,7 @@ action:
             continue_on_error: true
       - if:
           - condition: template
-            value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on }}"
+            value_template: "{{ override_behavior == 'linked' and ceiling_fan_configured and ceiling_fan_is_on }}"
         then:
           - choose:
               - conditions:
@@ -7714,7 +7875,7 @@ action:
   # v4.7.2 CRITICAL FIX: Only detect override when USER manually changed AC (check context.user_id)
   - if:
       - condition: template
-        value_template: "{{ enable_manual_override_detection }}"
+        value_template: "{{ enable_ac_override_detection }}"
       - condition: template
         value_template: >
           {{
@@ -7751,6 +7912,23 @@ action:
         data:
           option: "Override"
         continue_on_error: true
+
+      # v9.2.0: Track override source
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: >
+                {% if override_behavior == 'independent' %}
+                  {% if fan_override_active %}both{% else %}ac{% endif %}
+                {% else %}
+                  both
+                {% endif %}
+            continue_on_error: true
 
       # Turn on visual indicator for dashboard
       - if:
@@ -7929,12 +8107,13 @@ action:
 
   # ===================================
   # v9.0.0: CEILING FAN MANUAL OVERRIDE DETECTION
+  # v9.2.0: Split into linked (Override mode) vs independent (fan-only pause) behavior
   # ===================================
   # Detects when someone physically changes ceiling fan state (wall switch, HA UI)
-  # while automation is controlling it. Activates same Override mode as AC override.
+  # while automation is controlling it.
   - if:
       - condition: template
-        value_template: "{{ enable_manual_override_detection }}"
+        value_template: "{{ enable_ceiling_fan_override_detection }}"
       - condition: template
         value_template: >
           {{
@@ -7947,77 +8126,151 @@ action:
       - condition: template
         value_template: "{{ trigger.id == 'ceiling_fan_state_change' }}"
     then:
-      # Change mode to Override (same as AC override)
-      - service: input_select.select_option
-        target:
-          entity_id: "{{ control_mode_helper }}"
-        data:
-          option: "Override"
-        continue_on_error: true
-
-      # Turn on visual indicator for dashboard
+      # v9.2.0: Independent mode - DON'T set Override mode, just pause fan automation
       - if:
           - condition: template
-            value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+            value_template: "{{ override_behavior == 'independent' }}"
         then:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: "{{ helper_override_flag }}"
-            continue_on_error: true
+          # Track override source (fan only)
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_override_source }}"
+                data:
+                  value: "fan"
+                continue_on_error: true
 
-      # Store timeout duration for dashboard countdown
-      - if:
-          - condition: template
-            value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
-        then:
-          - service: input_number.set_value
-            target:
-              entity_id: "{{ helper_override_timeout_storage }}"
+          # Turn on visual indicator for dashboard
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: "{{ helper_override_flag }}"
+                continue_on_error: true
+
+          # Set timestamp for timeout tracking
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_timestamp not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_override_timestamp }}"
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
+          # Store timeout duration for dashboard countdown
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_override_timeout_storage }}"
+                data:
+                  value: "{{ override_timeout }}"
+                continue_on_error: true
+
+          # Log
+          - service: system_log.write
             data:
-              value: "{{ override_timeout }}"
+              message: >
+                🌀🚨 {{ room_name | upper }} CEILING FAN OVERRIDE (INDEPENDENT MODE)
+                • Fan changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
+                • Fan entity: {{ trigger.entity_id }}
+                • Expected state: {{ states(helper_expected_ceiling_fan) | default('unknown') }}
+                • Detection source: {{ 'HA UI click' if (trigger.to_state.context.user_id is not none and trigger.to_state.context.parent_id is none) else 'Physical wall switch' }}
+                • Override Duration: {{ override_timeout }}h
+                • Ceiling fan automation PAUSED, AC automation CONTINUES
+              level: warning
+
+          - service: system_log.write
+            data:
+              message: >
+                [OVERRIDE_LOG] CEILING FAN OVERRIDE (INDEPENDENT) - {{ room_name | upper }} - {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
+                [OVERRIDE_LOG] TRIGGER: id={{ trigger.id }} | from={{ trigger.from_state.state }} | to={{ trigger.to_state.state }}
+                [OVERRIDE_LOG] FAN: entity={{ trigger.entity_id }} | expected={{ states(helper_expected_ceiling_fan) | default('N/A') }}
+                [OVERRIDE_LOG] BEHAVIOR: independent | override_source=fan | control_mode={{ control_mode }} (unchanged)
+              level: error
             continue_on_error: true
 
-      # Log the ceiling fan override event
-      - service: system_log.write
-        data:
-          message: >
-            🌀🚨 {{ room_name | upper }} CEILING FAN MANUAL OVERRIDE DETECTED
+          - stop: "Ceiling fan override (independent) - fan paused, AC continues"
 
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            📊 FAN OVERRIDE INFO (v9.0.0):
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            • Fan changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
-            • Fan entity: {{ trigger.entity_id }}
-            • Expected state: {{ states(helper_expected_ceiling_fan) | default('unknown') }}
-            • Context: user_id={{ trigger.to_state.context.user_id | default('none') }}, parent_id={{ trigger.to_state.context.parent_id | default('none') }}
-            • Detection source: {{ 'HA UI click' if (trigger.to_state.context.user_id is not none and trigger.to_state.context.parent_id is none) else 'Physical wall switch' }}
-            • Control Mode: {{ control_mode }} → Override Mode
-            • Override Duration: {{ override_timeout }}h
-            • Last mode: {{ last_mode | default('unknown') }}
-            • Ceiling fan was on: {{ ceiling_fan_is_on }}
+        # Linked mode (or already in Override): set Override mode (original behavior)
+        else:
+          # Change mode to Override (same as AC override)
+          - service: input_select.select_option
+            target:
+              entity_id: "{{ control_mode_helper }}"
+            data:
+              option: "Override"
+            continue_on_error: true
 
-            🎮 Automation Response:
-            • ALL automation paused (AC + ceiling fan)
-            • Will automatically resume after {{ override_timeout }}h timeout
-            • Or manually clear override via dashboard button
-          level: warning
+          # v9.2.0: Track override source
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_text.set_value
+                target:
+                  entity_id: "{{ helper_override_source }}"
+                data:
+                  value: "both"
+                continue_on_error: true
 
-      # v9.0.0: Write override event with [OVERRIDE_LOG] prefix for easy grepping
-      - service: system_log.write
-        data:
-          message: >
-            [OVERRIDE_LOG] ===============================================================================
-            [OVERRIDE_LOG] CEILING FAN OVERRIDE - {{ room_name | upper }} - {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
-            [OVERRIDE_LOG] ===============================================================================
-            [OVERRIDE_LOG] TRIGGER: id={{ trigger.id }} | from={{ trigger.from_state.state }} | to={{ trigger.to_state.state }}
-            [OVERRIDE_LOG] CONTEXT: user_id={{ trigger.to_state.context.user_id | default('none') }} | parent_id={{ trigger.to_state.context.parent_id | default('none') }}
-            [OVERRIDE_LOG] FAN: entity={{ trigger.entity_id }} | expected={{ states(helper_expected_ceiling_fan) | default('N/A') }} | last_mode={{ last_mode | default('N/A') }}
-            [OVERRIDE_LOG] LOGIC: fan_override={{ ceiling_fan_override_detection }} | control_mode={{ control_mode }} | ceiling_fan_is_on={{ ceiling_fan_is_on }}
-            [OVERRIDE_LOG] ===============================================================================
-          level: error
-        continue_on_error: true
+          # Turn on visual indicator for dashboard
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: "{{ helper_override_flag }}"
+                continue_on_error: true
 
-      - stop: "Ceiling fan manual override detected - automation paused"
+          # Store timeout duration for dashboard countdown
+          - if:
+              - condition: template
+                value_template: "{{ helper_override_timeout_storage not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_number.set_value
+                target:
+                  entity_id: "{{ helper_override_timeout_storage }}"
+                data:
+                  value: "{{ override_timeout }}"
+                continue_on_error: true
+
+          # Log the ceiling fan override event
+          - service: system_log.write
+            data:
+              message: >
+                🌀🚨 {{ room_name | upper }} CEILING FAN MANUAL OVERRIDE DETECTED (LINKED MODE)
+                • Fan changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state }}
+                • Fan entity: {{ trigger.entity_id }}
+                • Expected state: {{ states(helper_expected_ceiling_fan) | default('unknown') }}
+                • Detection source: {{ 'HA UI click' if (trigger.to_state.context.user_id is not none and trigger.to_state.context.parent_id is none) else 'Physical wall switch' }}
+                • Control Mode: {{ control_mode }} → Override Mode
+                • Override Duration: {{ override_timeout }}h
+                • ALL automation paused (AC + ceiling fan)
+              level: warning
+
+          - service: system_log.write
+            data:
+              message: >
+                [OVERRIDE_LOG] CEILING FAN OVERRIDE (LINKED) - {{ room_name | upper }} - {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
+                [OVERRIDE_LOG] TRIGGER: id={{ trigger.id }} | from={{ trigger.from_state.state }} | to={{ trigger.to_state.state }}
+                [OVERRIDE_LOG] FAN: entity={{ trigger.entity_id }} | expected={{ states(helper_expected_ceiling_fan) | default('N/A') }}
+                [OVERRIDE_LOG] BEHAVIOR: linked | override_source=both | control_mode={{ control_mode }} → Override
+              level: error
+            continue_on_error: true
+
+          - stop: "Ceiling fan manual override detected (linked) - all automation paused"
 
   # v9.0.0: Early exit for automation-triggered ceiling fan state changes
   # Same pattern as climate_state_change - prevent feedback loops
@@ -8085,6 +8338,18 @@ action:
         data:
           option: "{{ return_to_mode }}"
         continue_on_error: true
+
+      # v9.2.0: Clear override source
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: "none"
+            continue_on_error: true
 
       # Sync expected values to prevent re-detection
       - if:
@@ -8222,6 +8487,18 @@ action:
               value: "{{ states(ceiling_fan_entity) }}"
             continue_on_error: true
 
+      # v9.2.0: Clear override source on timeout
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: "none"
+            continue_on_error: true
+
       # Debug log
       - if:
           - condition: template
@@ -8233,8 +8510,70 @@ action:
                 ✅ {{ room_name | upper }} OVERRIDE AUTO-CLEARED
                 • Reason: Timeout expired ({{ override_timeout }}h)
                 • Returning to: {{ return_to_mode }} mode
+                • Override source cleared
                 • Automation resuming
               level: warning
+
+  # v9.2.0: AUTO-CLEAR Fan-Only Override (independent mode) - not in Override mode
+  - if:
+      - condition: template
+        value_template: "{{ fan_override_active and control_mode != 'Override' and override_timeout > 0 }}"
+      - condition: template
+        value_template: >
+          {% if helper_override_timestamp and states(helper_override_timestamp) not in ['unknown', 'unavailable', ''] %}
+            {% set override_time = as_timestamp(states(helper_override_timestamp)) %}
+            {% if override_time %}
+              {% set time_since_override = (as_timestamp(now()) - override_time) / 3600 %}
+              {{ time_since_override >= override_timeout }}
+            {% else %}
+              false
+            {% endif %}
+          {% else %}
+            false
+          {% endif %}
+    then:
+      # Clear override source
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_override_source }}"
+            data:
+              value: "none"
+            continue_on_error: true
+
+      # Turn off visual indicator
+      - if:
+          - condition: template
+            value_template: "{{ helper_override_flag not in [none, '', 'unavailable', 'unknown'] }}"
+        then:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ helper_override_flag }}"
+            continue_on_error: true
+
+      # Sync expected ceiling fan state
+      - if:
+          - condition: template
+            value_template: "{{ helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] and ceiling_fan_configured }}"
+        then:
+          - service: input_text.set_value
+            target:
+              entity_id: "{{ helper_expected_ceiling_fan }}"
+            data:
+              value: "{{ states(ceiling_fan_entity) }}"
+            continue_on_error: true
+
+      - service: system_log.write
+        data:
+          message: >
+            ✅ {{ room_name | upper }} FAN OVERRIDE AUTO-CLEARED (INDEPENDENT MODE)
+            • Reason: Timeout expired ({{ override_timeout }}h)
+            • Ceiling fan automation resuming
+            • AC was not affected
+          level: warning
 
   # Update temperature stability tracking - record when temp became stable
   # v5.3.19 FIX: Wrapped in if/then to prevent blocking rest of automation when helpers unavailable
@@ -8888,10 +9227,13 @@ action:
                     • Override Since: {{ states(helper_override_timestamp) if helper_override_timestamp else 'unknown' }}
                     • Timeout: {{ override_timeout }} hour(s)
                     • Previous mode: {{ states(helper_mode_before_override) if helper_mode_before_override else 'unknown' }}
+                    • Override source: {{ override_source }}
+                    • Override behavior: {{ override_behavior }}
 
                 🔒 Respecting User Control:
                     • Last mode (helper): {{ states(helper_mode) | default('off') }}
                     • Actual AC state: {{ actual_ac_state }}
+                    • Fan override active: {{ fan_override_active }}
                     • All automation actions blocked until override clears
 
                 ℹ️ Override will clear automatically after {{ override_timeout }} hour(s)
@@ -10125,7 +10467,7 @@ action:
           # v9.0.0: Track expected ceiling fan state for override detection
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_with_ac_mode in ['off', 'low'] and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on and fan_with_ac_mode in ['off', 'low'] and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
             then:
               - service: input_text.set_value
                 target:
@@ -10135,7 +10477,7 @@ action:
                 continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_with_ac_mode == 'off' }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on and fan_with_ac_mode == 'off' }}"
             then:
               - choose:
                   - conditions:
@@ -10156,7 +10498,7 @@ action:
                     continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_with_ac_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on and fan_with_ac_mode == 'low' and (ceiling_fan_domain == 'fan' or ceiling_fan_has_speed_switches) }}"
             then:
               - choose:
                   - conditions:
@@ -10188,7 +10530,7 @@ action:
           # v8.9.6: Turn ON ceiling fan if fan_with_ac_mode is "on" and fan isn't running
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and not ceiling_fan_is_on and fan_with_ac_mode == 'on' and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and not ceiling_fan_is_on and fan_with_ac_mode == 'on' and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
             then:
               - service: input_text.set_value
                 target:
@@ -10198,7 +10540,7 @@ action:
                 continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and not ceiling_fan_is_on and fan_with_ac_mode == 'on' }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and not ceiling_fan_is_on and fan_with_ac_mode == 'on' }}"
             then:
               - choose:
                   - conditions:
@@ -10454,6 +10796,7 @@ action:
               {# Defense-in-depth: should_activate covers this, but mode:restart race conditions #}
               {# can cause should_activate to evaluate inconsistently during state transitions #}
               {{ ceiling_fan_configured
+                 and not fan_override_active
                  and should_activate
                  and enable_cooling
                  and in_ceiling_fan_zone
@@ -10590,6 +10933,7 @@ action:
           - condition: template
             value_template: >
               {{ ceiling_fan_configured
+                 and not fan_override_active
                  and ceiling_fan_mode_active
                  and in_ceiling_fan_zone
                  and not ceiling_fan_should_escalate
@@ -10692,6 +11036,7 @@ action:
             value_template: >
               {# v8.9.4 FIX: Added room_presence_detected guard for Smart mode #}
               {{ ceiling_fan_configured
+                 and not fan_override_active
                  and ceiling_fan_mode_active
                  and ceiling_fan_should_escalate
                  and should_activate
@@ -10847,6 +11192,7 @@ action:
           - condition: template
             value_template: >
               {{ ceiling_fan_configured
+                 and not fan_override_active
                  and ceiling_fan_mode_active
                  and not ceiling_fan_should_escalate
                  and in_ceiling_fan_zone
@@ -11683,7 +12029,7 @@ action:
                   # v9.0.0: Track expected ceiling fan state for override detection
                   - if:
                       - condition: template
-                        value_template: "{{ ceiling_fan_configured and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                        value_template: "{{ ceiling_fan_configured and not fan_override_active and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
                     then:
                       - service: input_text.set_value
                         target:
@@ -11694,7 +12040,7 @@ action:
                   # v8.9.0: Handle ceiling fan when AC activates directly (respects fan_with_ac_mode)
                   - if:
                       - condition: template
-                        value_template: "{{ ceiling_fan_configured and fan_with_ac_mode != 'on' }}"
+                        value_template: "{{ ceiling_fan_configured and not fan_override_active and fan_with_ac_mode != 'on' }}"
                     then:
                       - choose:
                           - conditions:
@@ -12747,7 +13093,7 @@ action:
           # v9.0.0: Track expected ceiling fan state for override detection
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and fan_bed_comfort_mode != 'unchanged' and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on and fan_bed_comfort_mode != 'unchanged' and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
             then:
               - service: input_text.set_value
                 target:
@@ -12757,7 +13103,7 @@ action:
                 continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on }}"
             then:
               - choose:
                   - conditions:
@@ -13298,7 +13644,7 @@ action:
           - if:
               - condition: template
                 value_template: >
-                  {{ ceiling_fan_configured and ceiling_fan_is_on
+                  {{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on
                      and (fan_at_target_temp != 'replace_ac' or comfort_zone_action == 'fan_only')
                      and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}
             then:
@@ -13311,7 +13657,7 @@ action:
           - if:
               - condition: template
                 value_template: >
-                  {{ ceiling_fan_configured and ceiling_fan_is_on
+                  {{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on
                      and (fan_at_target_temp != 'replace_ac' or comfort_zone_action == 'fan_only') }}
             then:
               - choose:
@@ -14281,6 +14627,7 @@ action:
                   - condition: template
                     value_template: >
                       {{ ceiling_fan_configured
+                         and not fan_override_active
                          and fan_at_target_temp == 'replace_ac'
                          and last_mode in ['cooling', 'ceiling_fan_cooling'] }}
                 sequence:
@@ -14944,7 +15291,7 @@ action:
           # v9.0.0: Track expected ceiling fan state for override detection
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and fan_on_vacancy == 'off' and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and fan_on_vacancy == 'off' and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
             then:
               - service: input_text.set_value
                 target:
@@ -14954,7 +15301,7 @@ action:
                 continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and fan_on_vacancy == 'off' and ceiling_fan_is_on }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and fan_on_vacancy == 'off' and ceiling_fan_is_on }}"
             then:
               - choose:
                   - conditions:
@@ -15290,7 +15637,7 @@ action:
           # v9.0.0: Track expected ceiling fan state for override detection
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
             then:
               - service: input_text.set_value
                 target:
@@ -15300,7 +15647,7 @@ action:
                 continue_on_error: true
           - if:
               - condition: template
-                value_template: "{{ ceiling_fan_configured and ceiling_fan_is_on }}"
+                value_template: "{{ ceiling_fan_configured and not fan_override_active and ceiling_fan_is_on }}"
             then:
               - choose:
                   - conditions:
