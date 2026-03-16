@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.0.0
+  name: Ultimate Smart Climate Control - v9.0.1
 
   description: |
-    **Ultimate Smart Climate Control v9.0.0**
+    **Ultimate Smart Climate Control v9.0.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -59,6 +59,12 @@ blueprint:
     ---
 
     **📋 VERSION UPDATES:**
+
+    **v9.0.1 - Ceiling Fan Speed Escalation Within Fan Zone:**
+    • **FIX**: Ceiling fan speed now updates as temperature rises within the fan zone (low → medium → high)
+    • Previously, fan speed was only set once on entry and never adjusted as temp changed
+    • Speed recalculates each cycle based on position within the zone (auto/custom/static modes)
+    • Also de-escalates if temp drops back within the zone
 
     **v9.0.0 - Ceiling Fan Manual Override Detection:**
     • **NEW**: Detects when someone physically changes the ceiling fan (wall switch, HA UI) while automation is controlling it
@@ -10527,6 +10533,109 @@ action:
                 • AC stays OFF - ceiling fan handling mild warmth
               level: warning
               logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
+
+      # v9.0.1: UPDATE ceiling fan speed as temperature changes within fan zone
+      # The activation block only fires once (not ceiling_fan_mode_active).
+      # This block runs on subsequent cycles to escalate/de-escalate fan speed
+      # as temp rises or falls within the fan zone.
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ ceiling_fan_configured
+                 and ceiling_fan_mode_active
+                 and in_ceiling_fan_zone
+                 and not ceiling_fan_should_escalate
+                 and should_activate
+                 and (control_mode != 'Smart' or room_presence_detected) }}
+        sequence:
+          # Determine current fan speed and compare to calculated target
+          - variables:
+              current_fan_speed: >
+                {% if ceiling_fan_has_speed_switches %}
+                  {% if is_state(ceiling_fan_high_switch, 'on') %}
+                    high
+                  {% elif is_state(ceiling_fan_medium_switch, 'on') %}
+                    medium
+                  {% elif is_state(ceiling_fan_low_switch, 'on') %}
+                    low
+                  {% else %}
+                    off
+                  {% endif %}
+                {% elif ceiling_fan_domain == 'fan' %}
+                  {% if ceiling_fan_has_presets %}
+                    {{ state_attr(ceiling_fan_entity, 'preset_mode') | default('unknown') | lower }}
+                  {% else %}
+                    {% set pct = state_attr(ceiling_fan_entity, 'percentage') | int(0) %}
+                    {% if pct <= 33 %}low{% elif pct <= 66 %}medium{% else %}high{% endif %}
+                  {% endif %}
+                {% else %}
+                  unknown
+                {% endif %}
+              speed_changed: "{{ current_fan_speed | trim != ceiling_fan_target_speed | trim }}"
+
+          - if:
+              - condition: template
+                value_template: "{{ speed_changed }}"
+            then:
+              # v9.0.0: Track expected ceiling fan state for override detection
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown'] }}"
+                then:
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_expected_ceiling_fan }}"
+                    data:
+                      value: "on"
+                    continue_on_error: true
+
+              # Apply new speed
+              - choose:
+                  # Speed switches (separate switch entities for each speed)
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_has_speed_switches }}"
+                    sequence:
+                      - service: switch.turn_on
+                        target:
+                          entity_id: "{{ ceiling_fan_target_switch }}"
+                        continue_on_error: true
+                  # Fan entity with speed control
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ ceiling_fan_domain == 'fan' }}"
+                    sequence:
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ ceiling_fan_has_presets }}"
+                            sequence:
+                              - service: fan.set_preset_mode
+                                target:
+                                  entity_id: "{{ ceiling_fan_entities }}"
+                                data:
+                                  preset_mode: "{{ ceiling_fan_target_speed }}"
+                                continue_on_error: true
+                        default:
+                          - service: fan.set_percentage
+                            target:
+                              entity_id: "{{ ceiling_fan_entities }}"
+                            data:
+                              percentage: "{{ ceiling_fan_target_pct }}"
+                            continue_on_error: true
+
+              - service: system_log.write
+                data:
+                  message: >
+                    🌀⬆️ {{ room_name | upper }} CEILING FAN SPEED UPDATE
+                    • Speed: {{ current_fan_speed }} → {{ ceiling_fan_target_speed }}
+                    • Current Temp: {{ current_temp }}°C
+                    • Comfort Max: {{ comfort_max_temp }}°C
+                    • Fan Zone Max: {{ ceiling_fan_zone_max }}°C
+                    • Speed Mode: {{ ceiling_fan_speed_mode }}
+                    • Runtime: {{ ceiling_fan_runtime_minutes | round(1) }} min
+                  level: warning
+                  logger: "blueprints.climate_control.{{ room_name | lower | replace(' ', '_') }}"
 
       # v8.0.0: CEILING FAN WATCHDOG ESCALATION
       # Fan has been running but temp is still rising - escalate to AC
