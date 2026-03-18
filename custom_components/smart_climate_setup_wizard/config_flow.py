@@ -1528,6 +1528,52 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                         }
                     ]
                 },
+                f"climate_clear_ac_override_{sanitized_name}": {
+                    "alias": f"Clear AC Override - {room_name}",
+                    "description": f"Clear only the AC override, leave fan override intact for {room_name}",
+                    "sequence": [
+                        {
+                            "service": "input_boolean.turn_off",
+                            "target": {
+                                "entity_id": f"input_boolean.climate_manual_override_{sanitized_name}"
+                            }
+                        },
+                        {
+                            "service": "input_select.select_option",
+                            "data": {
+                                "entity_id": f"input_select.climate_control_mode_{sanitized_name}",
+                                "option": "Smart"
+                            }
+                        },
+                        {
+                            "service": "input_text.set_value",
+                            "data": {
+                                "entity_id": f"input_text.climate_override_source_{sanitized_name}",
+                                "value": "{{% if states('input_text.climate_override_source_{sn}') == 'both' %}}fan{{% else %}}none{{% endif %}}".format(sn=sanitized_name)
+                            }
+                        }
+                    ]
+                },
+                f"climate_clear_fan_override_{sanitized_name}": {
+                    "alias": f"Clear Fan Override - {room_name}",
+                    "description": f"Clear only the ceiling fan override, leave AC override intact for {room_name}",
+                    "sequence": [
+                        {
+                            "service": "input_text.set_value",
+                            "data": {
+                                "entity_id": f"input_text.climate_override_source_{sanitized_name}",
+                                "value": "{{% if states('input_text.climate_override_source_{sn}') == 'both' %}}ac{{% else %}}none{{% endif %}}".format(sn=sanitized_name)
+                            }
+                        },
+                        {
+                            "service": "input_text.set_value",
+                            "data": {
+                                "entity_id": f"input_text.climate_expected_ceiling_fan_{sanitized_name}",
+                                "value": "{{{{ states('fan.{sn}_ceiling_fan') }}}}".format(sn=sanitized_name)
+                            }
+                        }
+                    ]
+                },
                 f"climate_set_override_{sanitized_name}": {
                     "alias": f"Set Override - {room_name}",
                     "description": f"Activate manual override mode for {room_name}",
@@ -2232,8 +2278,64 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
 
-        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script)
+        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script, v9.3.0: Separate AC/fan overrides)
         if has_manual_override:
+            override_source_entity = f"input_text.climate_override_source_{sanitized_name}"
+            fan_override_secondary = (
+                "{{% set timeout = states('input_number.climate_override_timeout_{sn}') | float(0) %}}"
+                "{{% set override_time = state_attr('input_datetime.climate_override_time_{sn}', 'timestamp') | float(0) %}}"
+                "{{% if override_time > 0 and timeout > 0 %}}"
+                "{{% set elapsed = (as_timestamp(now()) - override_time) / 3600 %}}"
+                "{{% set remaining = (timeout - elapsed) | float %}}"
+                "{{% if remaining > 0 %}}"
+                "{{% set hours = (remaining | int) %}}"
+                "{{% set minutes = ((remaining - hours) * 60) | int %}}"
+                "Fan Override {{{{ hours }}}}h {{{{ minutes }}}}m • Tap to Clear"
+                "{{% else %}}"
+                "Fan Override Expired - Tap to Clear"
+                "{{% endif %}}"
+                "{{% else %}}"
+                "Fan Override - Tap to Clear"
+                "{{% endif %}}"
+            ).format(sn=sanitized_name)
+            fan_override_card_style = (
+                "          ha-card {{\n"
+                "          background-color: rgba(0,0,0,0) !important;\n"
+                "          border-radius: 20px !important;\n"
+                "          border: none !important;\n"
+                "          height: 56px !important;\n"
+                "          min-height: 56px !important;\n"
+                "        }}\n"
+                "        .primary {{\n"
+                "          color: white !important;\n"
+                "        }}\n"
+                "        .secondary {{\n"
+                "          color: rgb(0, 188, 212) !important;\n"
+                "          font-weight: 500 !important;\n"
+                "        }}\n"
+                "        mushroom-shape-icon {{\n"
+                "          --icon-color: rgb(0, 188, 212) !important;\n"
+                "          --shape-color: rgba(0, 188, 212, 0.2) !important;\n"
+                "          animation: fan-alert-pulse 1.5s ease-in-out infinite;\n"
+                "          display: flex;\n"
+                "        }}\n"
+                "        @keyframes fan-alert-pulse {{\n"
+                "          0%, 100% {{\n"
+                "            opacity: 1;\n"
+                "            transform: scale(1) rotate(0deg);\n"
+                "          }}\n"
+                "          25% {{\n"
+                "            transform: scale(1.1) rotate(90deg);\n"
+                "          }}\n"
+                "          50% {{\n"
+                "            opacity: 0.6;\n"
+                "            transform: scale(1.15) rotate(180deg);\n"
+                "          }}\n"
+                "          75% {{\n"
+                "            transform: scale(1.1) rotate(270deg);\n"
+                "          }}\n"
+                "        }}"
+            )
             card_yaml = f"""type: vertical-stack
 cards:
   - type: conditional
@@ -2269,12 +2371,13 @@ cards:
       fill_container: false
       tap_action:
         action: call-service
-        service: script.climate_clear_override_{sanitized_name}
+        service: script.climate_clear_ac_override_{sanitized_name}
       card_mod:
         style: |
           ha-card {{
-          background-color: rgba(0,0,0,0.35) !important;
+          background-color: rgba(0,0,0,0) !important;
           border-radius: 20px !important;
+          border: none !important;
           height: 56px !important;
           min-height: 56px !important;
         }}
@@ -2304,8 +2407,48 @@ cards:
 
   - type: conditional
     conditions:
+      - entity: {override_source_entity}
+        state: fan
+    card:
+      type: custom:mushroom-template-card
+      primary: Ceiling Fan
+      secondary: >
+        {fan_override_secondary}
+      icon: mdi:fan-alert
+      icon_color: cyan
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: script.climate_clear_fan_override_{sanitized_name}
+      card_mod:
+        style: |
+{fan_override_card_style}
+
+  - type: conditional
+    conditions:
+      - entity: {override_source_entity}
+        state: both
+    card:
+      type: custom:mushroom-template-card
+      primary: Ceiling Fan
+      secondary: >
+        {fan_override_secondary}
+      icon: mdi:fan-alert
+      icon_color: cyan
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: script.climate_clear_fan_override_{sanitized_name}
+      card_mod:
+        style: |
+{fan_override_card_style}
+
+  - type: conditional
+    conditions:
       - entity: {control_mode_entity}
-        state_not: Override
+        state_not: __never__
     card:
       type: custom:mushroom-select-card
       entity: {control_mode_entity}
@@ -2635,8 +2778,64 @@ Copy this YAML and add it to your dashboard:
         # Check if manual override is enabled
         has_manual_override = config.get("enable_manual_override", True)
 
-        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script)
+        # Generate card with conditional cards if manual override is enabled (v3.13.1: Uses script, v9.3.0: Separate AC/fan overrides)
         if has_manual_override:
+            override_source_entity = f"input_text.climate_override_source_{sanitized_name}"
+            fan_override_secondary = (
+                "{{% set timeout = states('input_number.climate_override_timeout_{sn}') | float(0) %}}"
+                "{{% set override_time = state_attr('input_datetime.climate_override_time_{sn}', 'timestamp') | float(0) %}}"
+                "{{% if override_time > 0 and timeout > 0 %}}"
+                "{{% set elapsed = (as_timestamp(now()) - override_time) / 3600 %}}"
+                "{{% set remaining = (timeout - elapsed) | float %}}"
+                "{{% if remaining > 0 %}}"
+                "{{% set hours = (remaining | int) %}}"
+                "{{% set minutes = ((remaining - hours) * 60) | int %}}"
+                "Fan Override {{{{ hours }}}}h {{{{ minutes }}}}m • Tap to Clear"
+                "{{% else %}}"
+                "Fan Override Expired - Tap to Clear"
+                "{{% endif %}}"
+                "{{% else %}}"
+                "Fan Override - Tap to Clear"
+                "{{% endif %}}"
+            ).format(sn=sanitized_name)
+            fan_override_card_style = (
+                "          ha-card {{\n"
+                "          background-color: rgba(0,0,0,0) !important;\n"
+                "          border-radius: 20px !important;\n"
+                "          border: none !important;\n"
+                "          height: 56px !important;\n"
+                "          min-height: 56px !important;\n"
+                "        }}\n"
+                "        .primary {{\n"
+                "          color: white !important;\n"
+                "        }}\n"
+                "        .secondary {{\n"
+                "          color: rgb(0, 188, 212) !important;\n"
+                "          font-weight: 500 !important;\n"
+                "        }}\n"
+                "        mushroom-shape-icon {{\n"
+                "          --icon-color: rgb(0, 188, 212) !important;\n"
+                "          --shape-color: rgba(0, 188, 212, 0.2) !important;\n"
+                "          animation: fan-alert-pulse 1.5s ease-in-out infinite;\n"
+                "          display: flex;\n"
+                "        }}\n"
+                "        @keyframes fan-alert-pulse {{\n"
+                "          0%, 100% {{\n"
+                "            opacity: 1;\n"
+                "            transform: scale(1) rotate(0deg);\n"
+                "          }}\n"
+                "          25% {{\n"
+                "            transform: scale(1.1) rotate(90deg);\n"
+                "          }}\n"
+                "          50% {{\n"
+                "            opacity: 0.6;\n"
+                "            transform: scale(1.15) rotate(180deg);\n"
+                "          }}\n"
+                "          75% {{\n"
+                "            transform: scale(1.1) rotate(270deg);\n"
+                "          }}\n"
+                "        }}"
+            )
             card_yaml = f"""type: vertical-stack
 cards:
   - type: conditional
@@ -2672,12 +2871,13 @@ cards:
       fill_container: false
       tap_action:
         action: call-service
-        service: script.climate_clear_override_{sanitized_name}
+        service: script.climate_clear_ac_override_{sanitized_name}
       card_mod:
         style: |
           ha-card {{
-          background-color: rgba(0,0,0,0.35) !important;
+          background-color: rgba(0,0,0,0) !important;
           border-radius: 20px !important;
+          border: none !important;
           height: 56px !important;
           min-height: 56px !important;
         }}
@@ -2707,8 +2907,48 @@ cards:
 
   - type: conditional
     conditions:
+      - entity: {override_source_entity}
+        state: fan
+    card:
+      type: custom:mushroom-template-card
+      primary: Ceiling Fan
+      secondary: >
+        {fan_override_secondary}
+      icon: mdi:fan-alert
+      icon_color: cyan
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: script.climate_clear_fan_override_{sanitized_name}
+      card_mod:
+        style: |
+{fan_override_card_style}
+
+  - type: conditional
+    conditions:
+      - entity: {override_source_entity}
+        state: both
+    card:
+      type: custom:mushroom-template-card
+      primary: Ceiling Fan
+      secondary: >
+        {fan_override_secondary}
+      icon: mdi:fan-alert
+      icon_color: cyan
+      layout: horizontal
+      fill_container: false
+      tap_action:
+        action: call-service
+        service: script.climate_clear_fan_override_{sanitized_name}
+      card_mod:
+        style: |
+{fan_override_card_style}
+
+  - type: conditional
+    conditions:
       - entity: {control_mode_entity}
-        state_not: Override
+        state_not: __never__
     card:
       type: custom:mushroom-select-card
       entity: {control_mode_entity}
