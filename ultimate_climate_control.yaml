@@ -1,5 +1,5 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.2.1
+  name: Ultimate Smart Climate Control - v9.2.2
 
   description: |
     **Ultimate Smart Climate Control v9.2.1**
@@ -6286,11 +6286,14 @@ action:
       # Was pre-conditioning triggered by automation (vs manually selected by user)?
       # If precond_start_time has a valid recent timestamp (within last 2 hours), it was automation-triggered
       # v7.1.2 FIX: Also check timestamp is RECENT - old stale timestamps shouldn't cause auto-exit
+      # v9.2.2 FIX: Staleness window must exceed max runtime, otherwise auto-exit
+      # stops working after 2 hours even if max_runtime is longer.
+      # Use max(max_runtime + 1hr buffer, 4 hours) so the safety timeout can always fire.
       precond_was_automation_triggered: >
         {% set start_ts = precond_start_timestamp | float(0) %}
         {% set epoch_1971 = 31536000 %}
-        {% set max_age_hours = 2 %}
-        {% set max_age_seconds = max_age_hours * 3600 %}
+        {% set configured_max_minutes = precond_max_runtime | float(60) %}
+        {% set max_age_seconds = [((configured_max_minutes + 60) * 60) | int, 4 * 3600] | max %}
         {% set age = (as_timestamp(now()) - start_ts) | abs if start_ts > epoch_1971 else 999999 %}
         {{ start_ts > epoch_1971 and age < max_age_seconds }}
 
@@ -7404,7 +7407,9 @@ action:
           {% set epoch_1971 = 31536000 %}
           {% set runtime_seconds = (as_timestamp(now()) - fresh_start_ts) if fresh_start_ts > epoch_1971 else 0 %}
           {% set min_runtime_met = runtime_seconds >= min_runtime_seconds %}
-          {% set fresh_was_automation_triggered = fresh_start_ts > epoch_1971 and (as_timestamp(now()) - fresh_start_ts) < (2 * 3600) %}
+          {% set configured_max_minutes = precond_max_runtime | float(60) %}
+          {% set max_age_seconds = [((configured_max_minutes + 60) * 60) | int, 4 * 3600] | max %}
+          {% set fresh_was_automation_triggered = fresh_start_ts > epoch_1971 and (as_timestamp(now()) - fresh_start_ts) < max_age_seconds %}
           {% set fresh_should_end = fresh_grace_expired or (precond_temp_reached and min_runtime_met) or precond_safety_timeout_exceeded %}
           {{ is_precond_mode and fresh_was_automation_triggered and fresh_should_end and
              control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}
@@ -12312,6 +12317,12 @@ action:
 
           # v6.6.0: ENTER PRE-CONDITIONING MODE
           # Store previous mode and switch to Pre-conditioning control mode
+          # v9.2.2 FIX: Set ALL helpers BEFORE changing mode, because mode change
+          # fires mode_change trigger which restarts automation (mode: restart).
+          # If another trigger (periodic_check, temp_change) fires at nearly the
+          # same time, the mode_change restart gets overridden and the precond
+          # helper setup code (which checks trigger.id == 'mode_change') never runs.
+          # By setting helpers first, they're guaranteed to be in place.
 
           # STEP 0a: Store previous mode BEFORE switching (for restoration later)
           - if:
@@ -12325,19 +12336,8 @@ action:
                   value: "{{ control_mode }}"
                 continue_on_error: true
 
-          # STEP 0b: Set control mode to Pre-conditioning
-          - if:
-              - condition: template
-                value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
-            then:
-              - service: input_select.select_option
-                target:
-                  entity_id: "{{ control_mode_helper }}"
-                data:
-                  option: "Pre-conditioning"
-                continue_on_error: true
-
-          # STEP 0c: Record pre-conditioning start time
+          # STEP 0b: Record pre-conditioning start time
+          # (moved before mode change to avoid race condition with mode: restart)
           - if:
               - condition: template
                 value_template: "{{ helper_precond_start not in [none, '', 'unavailable', 'unknown'] }}"
@@ -12349,7 +12349,7 @@ action:
                   datetime: "{{ now() }}"
                 continue_on_error: true
 
-          # STEP 0d: Clear arrival time (will be set when someone arrives)
+          # STEP 0c: Clear arrival time (will be set when someone arrives)
           - if:
               - condition: template
                 value_template: "{{ helper_precond_arrival not in [none, '', 'unavailable', 'unknown'] }}"
@@ -12359,6 +12359,19 @@ action:
                   entity_id: "{{ helper_precond_arrival }}"
                 data:
                   datetime: "1970-01-01 00:00:00"
+                continue_on_error: true
+
+          # STEP 0d: Set control mode to Pre-conditioning
+          # MUST BE LAST - this triggers mode_change which restarts the automation
+          - if:
+              - condition: template
+                value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
+            then:
+              - service: input_select.select_option
+                target:
+                  entity_id: "{{ control_mode_helper }}"
+                data:
+                  option: "Pre-conditioning"
                 continue_on_error: true
 
           # v4.3.0 FIX: Update ALL helpers BEFORE service calls to prevent manual override false positives
