@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.3.2
+  name: Ultimate Smart Climate Control - v9.3.3
 
   description: |
-    **Ultimate Smart Climate Control v9.3.2**
+    **Ultimate Smart Climate Control v9.3.3**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,9 +60,10 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v9.3.2 - Comprehensive Blueprint Audit & Bug Fixes:**
+    **v9.3.3 - Comprehensive Blueprint Audit & Bug Fixes:**
     • **CRITICAL FIX**: Fan-only mode now activates after ceiling fan pre-cooling (`ceiling_fan_cooling` added to whitelist)
     • **CRITICAL FIX**: Missing `helper_expected_hvac` update before turn_off in sanity check block caused false override detection
+    • **CRITICAL FIX**: Bare condition in stability reset blocked cooling/heating reactivation when dynamic adaptation disabled
     • **FIX**: Pre-conditioning no longer exits prematurely when AC is off (`precond_temp_reached` returned true before AC started)
     • **FIX**: Pre-conditioning staleness window increased from 4hr to 24hr + added 8hr hard absolute safety timeout
     • **FIX**: Pre-conditioning AC commands now execute before mode change (mode:restart was killing them)
@@ -70,6 +71,8 @@ blueprint:
     • **FIX**: Fan zone boundary hysteresis added (0.3C buffer prevents rapid on/off cycling at comfort_max)
     • **FIX**: Override timestamp now updates on AC override when fan override already active (independent mode)
     • **FIX**: Smart mode OFF now updates `helper_mode` before `climate.turn_off` (mode:restart race condition)
+    • **FIX**: Division-by-zero guard added to effectiveness calculation when progress rate is zero
+    • **FIX**: Temperature averaging parentheses made explicit for safety
     • Removed ~200 lines deprecated dead code and duplicate variable definition
 
     **v9.3.0 - Separate Override Clearing & Bed Presence Fix:**
@@ -5027,7 +5030,7 @@ action:
             {% if temps.values | length > 0 %}
               {% if use_avg %}
                 {# User explicitly requested average - honor that setting #}
-                {{ (temps.values | sum / temps.values | length) | round(1) }}
+                {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}
               {% elif enable_cooling and not enable_heating %}
                 {# Cooling: Use MAX temp (warmest room drives cooling) #}
                 {{ temps.values | max | round(1) }}
@@ -5036,7 +5039,7 @@ action:
                 {{ temps.values | min | round(1) }}
               {% else %}
                 {# Both or neither: Use AVERAGE #}
-                {{ (temps.values | sum / temps.values | length) | round(1) }}
+                {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}
               {% endif %}
             {% else %}
               25
@@ -5051,7 +5054,7 @@ action:
             {% endif %}
           {% endfor %}
           {% if temps.values | length > 0 %}
-            {{ (temps.values | sum / temps.values | length) | round(1) }}
+            {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}
           {% else %}
             25
           {% endif %}
@@ -5167,13 +5170,14 @@ action:
         {% endif %}
 
       # Adjusted progress rate when heat sources active (reduces expected rate so system is more patient)
+      # v9.3.2 FIX: Added floor of 0.001 to prevent division-by-zero in effectiveness calculation
       effective_min_progress_rate: >
         {% if heat_source_active %}
           {% set base_rate = min_progress_rate | float(0.03) %}
           {% set reduction = heat_source_progress_reduction | float(50) / 100 %}
-          {{ (base_rate * (1 - reduction)) | round(4) }}
+          {{ [(base_rate * (1 - reduction)) | round(4), 0.001] | max }}
         {% else %}
-          {{ min_progress_rate | float(0.03) }}
+          {{ [min_progress_rate | float(0.03), 0.001] | max }}
         {% endif %}
 
       # v4.0.0: Comfort zones (tier thresholds removed)
@@ -11906,15 +11910,19 @@ action:
                   level: warning
 
           # Update mode start time for effectiveness tracking (only if mode changed OR AC was off)
-          - condition: template
-            value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode not in ['cooling', 'heating', 'off'] }}"
-          - service: input_datetime.set_datetime
-            target:
-              entity_id: "{{ helper_mode_time }}"
-            data:
-              datetime: "{{ now() }}"
-            continue_on_error: true
-          
+          # v9.3.2 FIX: Wrapped in if/then - bare condition was blocking ALL subsequent steps
+          # (stability reset + cooling/heating reactivation) when dynamic_enabled=false
+          - if:
+              - condition: template
+                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and last_mode not in ['cooling', 'heating', 'off'] }}"
+            then:
+              - service: input_datetime.set_datetime
+                target:
+                  entity_id: "{{ helper_mode_time }}"
+                data:
+                  datetime: "{{ now() }}"
+                continue_on_error: true
+
           # Clear the stability timestamp to reset the feature
           # Don't use 1970 as it causes calculation issues - use current time instead
           - choose:
