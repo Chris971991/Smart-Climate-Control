@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.3.0
+  name: Ultimate Smart Climate Control - v9.3.1
 
   description: |
-    **Ultimate Smart Climate Control v9.3.0**
+    **Ultimate Smart Climate Control v9.3.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -4012,13 +4012,7 @@ variables:
   fan_override_active: "{{ override_source in ['fan', 'both'] }}"
   ac_override_active: "{{ override_source in ['ac', 'both'] }}"
 
-  # Time since last helper change (used for state tracking)
-  time_since_change: >
-    {% if helper_change and states(helper_change) not in ['unknown', 'unavailable', ''] %}
-      {{ ((as_timestamp(now()) - as_timestamp(states(helper_change))) if states(helper_change) | as_timestamp else 0) }}
-    {% else %}
-      999
-    {% endif %}
+  # v9.3.1: Removed duplicate time_since_change definition (was in seconds, overridden by minutes version in action block)
 
   # Check actual AC state using hvac_action (compressor activity), not just HVAC mode
   # CRITICAL: An AC in "cool" mode at 18°C target with 28°C current = IDLE (not running)
@@ -6272,6 +6266,9 @@ action:
         {% endif %}
 
       # Has temperature target been reached?
+      # v9.3.1 FIX: Return false when AC is off - can't have reached target if AC hasn't started
+      # Previously the 'off' fallback would return true if room was already near target,
+      # causing premature pre-conditioning exit before AC even started cooling
       precond_temp_reached: >
         {% if precond_expiry_mode == 'Timer Only' %}
           false
@@ -6284,32 +6281,42 @@ action:
             {{ current <= (target + threshold) }}
           {% elif hvac_mode == 'heat' %}
             {{ current >= (target - threshold) }}
+          {% elif hvac_mode == 'off' %}
+            {# AC is off - can't have reached target yet #}
+            false
           {% else %}
-            {# For other modes or unknown, check if within threshold of target #}
+            {# For other modes (fan_only, dry, auto), check if within threshold of target #}
             {{ (current >= (target - threshold)) and (current <= (target + threshold)) }}
           {% endif %}
         {% endif %}
 
       # Was pre-conditioning triggered by automation (vs manually selected by user)?
-      # If precond_start_time has a valid recent timestamp (within last 2 hours), it was automation-triggered
+      # If precond_start_time has a valid recent timestamp, it was automation-triggered
       # v7.1.2 FIX: Also check timestamp is RECENT - old stale timestamps shouldn't cause auto-exit
       # v9.2.2 FIX: Staleness window must exceed max runtime, otherwise auto-exit
       # stops working after 2 hours even if max_runtime is longer.
-      # Use max(max_runtime + 1hr buffer, 4 hours) so the safety timeout can always fire.
+      # v9.3.1 FIX: Increased staleness window to 24 hours. The old 4-hour cap caused
+      # precond_was_automation_triggered to become false after 4 hours, permanently
+      # disabling auto-exit and trapping pre-conditioning in "manual mode" forever.
       precond_was_automation_triggered: >
         {% set start_ts = precond_start_timestamp | float(0) %}
         {% set epoch_1971 = 31536000 %}
         {% set configured_max_minutes = precond_max_runtime | float(60) %}
-        {% set max_age_seconds = [((configured_max_minutes + 60) * 60) | int, 4 * 3600] | max %}
+        {% set max_age_seconds = [((configured_max_minutes + 60) * 60) | int, 24 * 3600] | max %}
         {% set age = (as_timestamp(now()) - start_ts) | abs if start_ts > epoch_1971 else 999999 %}
         {{ start_ts > epoch_1971 and age < max_age_seconds }}
 
       # Should pre-conditioning end? (Master check combining all conditions)
       # ONLY auto-ends if pre-conditioning was automation-triggered
       # If user manually selected Pre-conditioning mode, it stays until they change it
+      # v9.3.1 FIX: Added 8-hour hard absolute timeout as ultimate safety net
+      # This prevents pre-conditioning from running forever in any edge case
       precond_should_end: >
         {% if not is_precond_mode %}
           false
+        {% elif precond_runtime_minutes >= 480 %}
+          {# v9.3.1: HARD 8-HOUR ABSOLUTE TIMEOUT - no pre-conditioning should ever run this long #}
+          true
         {% elif not precond_was_automation_triggered %}
           {# User manually set Pre-conditioning mode - respect their choice, don't auto-exit #}
           false
@@ -9990,6 +9997,19 @@ action:
                   datetime: "{{ now() }}"
                 continue_on_error: true
 
+              # v9.3.1 FIX: Update helper_expected_hvac BEFORE turn_off to prevent false override
+              # Without this, periodic_check sees stale expected_hvac='cool' + actual='off' = false override
+              - if:
+                  - condition: template
+                    value_template: "{{ helper_expected_hvac not in [none, '', 'unavailable', 'unknown'] }}"
+                then:
+                  - service: input_text.set_value
+                    target:
+                      entity_id: "{{ helper_expected_hvac }}"
+                    data:
+                      value: "off"
+                    continue_on_error: true
+
               # NOW send the turn_off command (after snapshot and helpers are updated)
               - service: climate.turn_off
                 target:
@@ -12777,216 +12797,7 @@ action:
                   datetime: "{{ now() }}"
                 continue_on_error: true
 
-      # Medium cooling - DEPRECATED (unified cooling mode)
-      # This section is now handled by unified cooling logic
-      # Kept for backwards compatibility but should not activate
-      - conditions:
-          - condition: template
-            value_template: "{{ false }}"
-          - condition: template
-            value_template: >
-              {% if last_mode == 'cooling' %}
-                {# Same cooling mode - allow escalation, enforce runtime for de-escalation #}
-                {{ (final_escalation_level | int(0)) > 0 or (time_in_current_mode | float(0)) > (runtime_min | float(0)) }}
-              {% elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime %}
-                {# Starting from OFF - enforce off-time if enabled #}
-                {# Check BOTH helper mode AND actual AC state to catch mode change scenarios #}
-                {{ (time_in_current_mode | float(0)) > (offtime_min | float(0)) }}
-              {% else %}
-                {# Switching from heating/eco OR off-time protection disabled #}
-                true
-              {% endif %}
-        sequence:
-          - service: system_log.write
-            data:
-              message: >
-                {% set current_mode = states(helper_mode) | default('off') %}
-                {% set temp_gap = (current_temp - target_temp) | round(1) %}
-                {% set eta_minutes = (temp_gap / temp_change_rate) | round(0) if temp_change_rate > 0 else 99 %}
-                {% set effectiveness = current_effectiveness if dynamic_enabled else 75 %}
-                {% set escalation = escalation_level if dynamic_enabled else 0 %}
-                {% set deescalation = deescalation_level if dynamic_enabled else 0 %}
-                {% set temp_gap_adjusted = temp_gap | abs | round(1) %}
-                {% set distance_adjusted = temp_gap | abs | round(1) %}
-                {% set esc_display = 'L' ~ escalation if escalation > 0 else 'None' %}
-                {% set current_fan = state_attr(climate_list[0], 'fan_mode') | default('Auto') %}
-
-                {% if current_mode == 'cooling' and current_temp > comfort_max_temp %}
-                  {% if temp_gap <= 0.5 %}
-                    🎯 {{ room_name | upper }} MEDIUM COOLING - FINAL APPROACH
-                    📊 CONTINUE MODE: Temperature {{ current_temp }}°C nearly at {{ adjusted_target }}°C target ({{ temp_gap_adjusted }}°C remaining)
-                    ⏱️ ETA: ~{{ eta_minutes }}min {% if effectiveness >= 85 %}| ❄️ OPTIMAL EFFICIENCY{% elif effectiveness >= 65 %}| ⚡ GOOD EFFECTIVENESS ({{ effectiveness }}%){% else %}| 🔧 ADJUSTING ({{ effectiveness }}% effective){% endif %}
-                  {% elif temp_gap <= 2.0 %}
-                    ❄️ {{ room_name | upper }} MEDIUM COOLING - STEADY PROGRESS
-                    📊 CONTINUE MODE: Cooling {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to go)
-                    ⏱️ ETA: ~{{ eta_minutes }}min | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}{% if escalation > 0 %} | 🔼 ESCALATING L{{ escalation }}{% elif deescalation > 0 %} | 🔽 DE-ESCALATING L{{ deescalation }}{% endif %}
-                  {% else %}
-                    ❄️ {{ room_name | upper }} MEDIUM COOLING - SUSTAINED MODE
-                    📊 CONTINUE MODE: Working gap {{ current_temp }}°C → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool)
-                    ⚙️ Balanced power until target | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }} | Effectiveness: {{ effectiveness }}%
-                  {% endif %}
-                {% else %}
-                  {% if temp_gap >= 4.0 %}
-                    ❄️ {{ room_name | upper }} MEDIUM COOLING - INTENSIVE START
-                    🚀 START MODE: Significant heat {{ current_temp }}°C > {{ comfort_max_temp }}°C ({{ distance_adjusted }}°C excess)
-                    ⚡ Steady cooling power engaged | Target: {{ adjusted_target }}°C | ETA: ~{{ eta_minutes }}min
-                  {% elif temp_gap >= 1.5 %}
-                    ❄️ {{ room_name | upper }} MEDIUM COOLING - STANDARD COOL-DOWN
-                    🚀 START MODE: Moderate heat {{ current_temp }}°C > {{ comfort_max_temp }}°C threshold
-                    ⚙️ Balanced cooling → {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C to cool) | ⚡ Escalation: {{ esc_display }} | Fan: {{ current_fan }}
-                  {% else %}
-                    ❄️ {{ room_name | upper }} MEDIUM COOLING - GENTLE MODE
-                    🚀 START MODE: Minor adjustment {{ current_temp }}°C > {{ comfort_max_temp }}°C
-                    🎯 Comfort cooling to {{ adjusted_target }}°C ({{ temp_gap_adjusted }}°C remaining) | ETA: ~{{ eta_minutes }}min
-                  {% endif %}
-                {% endif %}
-                • Last Mode: {{ current_mode }}
-              level: warning
-          
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-                    available_modes: "{{ state_attr(repeat.item, 'hvac_modes') | list }}"
-                    
-                    # Smart cooling mode selection
-                    # v3.10.0: Only use auto/heat_cool if heating is also enabled
-                    selected_hvac_mode: >
-                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
-                      {# For cooling, try cooling-capable modes #}
-                      {% if 'cool' in modes %}
-                        cool
-                        {% elif 'Cool' in modes %}
-                        Cool
-                        {% elif enable_heating and 'auto' in modes %}
-                        auto
-                        {% elif enable_heating and 'Auto' in modes %}
-                        Auto
-                        {% elif enable_heating and 'heat_cool' in modes %}
-                        heat_cool
-                        {% elif enable_heating and 'Heat/Cool' in modes %}
-                        Heat/Cool
-                        {% else %}
-                        off
-                      {% endif %}
-
-                # Capture expected values for enhanced manual override detection (v3.3.0)
-                - service: input_text.set_value
-                  target:
-                    entity_id: "{{ helper_expected_hvac }}"
-                  data:
-                    value: "{{ selected_hvac_mode }}"
-                  continue_on_error: true
-
-          # Capture expected temperature for manual override detection
-          - service: input_number.set_value
-            target:
-              entity_id: "{{ helper_expected_temp }}"
-            data:
-              value: "{{ cooling_target_temp }}"
-            continue_on_error: true
-
-          # v5.1.2 FIX: Use MANDATORY rapid batched service call pattern for BRP069/BRP084
-          - repeat:
-              for_each: "{{ climate_list }}"
-              sequence:
-                - variables:
-                    current_entity: "{{ repeat.item }}"
-
-                    # v5.3.5 FIX: Add selected_hvac_mode to this scope (was hardcoded "cool")
-                    selected_hvac_mode: >
-                      {% set modes = state_attr(repeat.item, 'hvac_modes') | list %}
-                      {% if 'cool' in modes %}
-                        cool
-                      {% elif 'Cool' in modes %}
-                        Cool
-                      {% elif enable_heating and 'auto' in modes %}
-                        auto
-                      {% elif enable_heating and 'Auto' in modes %}
-                        Auto
-                      {% elif enable_heating and 'heat_cool' in modes %}
-                        heat_cool
-                      {% elif enable_heating and 'Heat/Cool' in modes %}
-                        Heat/Cool
-                      {% else %}
-                        cool
-                      {% endif %}
-
-                # FIRST: Set temperature + HVAC mode together (turns AC ON atomically)
-                - service: climate.set_temperature
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    temperature: "{{ cooling_target_temp }}"
-                    hvac_mode: "{{ selected_hvac_mode }}"
-                  continue_on_error: false  # FAIL LOUDLY
-
-                # v7.0.0: Use unified fan control system
-                # Capture expected fan value for manual override detection
-                - service: input_text.set_value
-                  target:
-                    entity_id: "{{ helper_expected_fan }}"
-                  data:
-                    value: "{{ new_fan_mode }}"
-                  continue_on_error: true
-
-                # v5.4.0: Delay for BRP084 semaphore compatibility
-                - delay:
-                    milliseconds: 500
-
-                # SECOND: Set fan mode sequentially
-                - service: climate.set_fan_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    fan_mode: "{{ new_fan_mode }}"
-                  continue_on_error: false  # FAIL LOUDLY
-
-                # v5.4.0: Delay for BRP084 semaphore compatibility
-                - delay:
-                    milliseconds: 500
-
-                # THIRD: Set swing mode sequentially (optional feature)
-                - service: climate.set_swing_mode
-                  target:
-                    entity_id: "{{ current_entity }}"
-                  data:
-                    swing_mode: "{{ validated_swing_mode }}"
-                  continue_on_error: true  # OK to fail (not all devices support)
-
-                # Debug logging (after service calls)
-                - if:
-                    - condition: template
-                      value_template: "{{ debug_enabled }}"
-                  then:
-                    - service: system_log.write
-                      data:
-                        message: >
-                          🔍 SMART ECO - MEDIUM COOLING: {{ repeat.item }}
-                          • HVAC Mode: {{ selected_hvac_mode }}
-                          • Fan Mode: {{ selected_fan_mode }}
-                          • Temperature: {{ cooling_target_temp }}°C
-                          • Reason: Medium cooling mode for balanced temperature control
-                        level: debug
-
-          - service: input_text.set_value
-            target:
-              entity_id: !input helper_last_mode
-            data:
-              value: "cooling"
-
-          # v5.3.19 FIX: Wrapped in if/then to prevent blocking subsequent code
-          - if:
-              - condition: template
-                value_template: "{{ dynamic_enabled and helper_mode_time not in [none, '', 'unavailable', 'unknown', []] and helper_mode_time is string and helper_mode_time != '' and (last_mode != 'cooling' or actual_ac_state == 'off') }}"
-            then:
-              - service: input_datetime.set_datetime
-                target:
-                  entity_id: "{{ helper_mode_time }}"
-                data:
-                  datetime: "{{ now() }}"
-                continue_on_error: true
+      # v9.3.1: Removed deprecated medium cooling block (~200 lines of dead code)
 
       # =====================================
       # BED COMFORT MODE - Ultra-quiet operation when in bed (v3.12.0)
@@ -13946,8 +13757,8 @@ action:
                         🎯 Which block will match?
                             • comfort_zone_action == 'off': {{ comfort_zone_action == 'off' }}
                             • comfort_zone_action == 'eco': {{ comfort_zone_action == 'eco' }}
-                            • comfort_zone_action == 'fan_only' AND last_mode in active modes: {{ comfort_zone_action == 'fan_only' and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] }}
-                            • comfort_zone_action == 'fan_only' AND last_mode NOT in active modes: {{ comfort_zone_action == 'fan_only' and last_mode not in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] }}
+                            • comfort_zone_action == 'fan_only' AND last_mode in active modes: {{ comfort_zone_action == 'fan_only' and last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}
+                            • comfort_zone_action == 'fan_only' AND last_mode NOT in active modes: {{ comfort_zone_action == 'fan_only' and last_mode not in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}
                       level: warning
 
               # v3.19.0: Debug logging when fan-only is blocked due to no prior cooling/heating
@@ -13956,7 +13767,7 @@ action:
                     value_template: "{{ comfort_zone_action == 'fan_only' }}"
                   - condition: template
                     value_template: >
-                      {{ last_mode not in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] }}
+                      {{ last_mode not in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}
                 sequence:
                   # v4.7.2: Check if AC is already in fan mode - if so, sync helper instead of turning off
                   # v5.2.3 FIX: Don't sync to comfort_fan_only if helper shows smart_off/off - this indicates
@@ -14110,7 +13921,7 @@ action:
                     value_template: "{{ comfort_zone_action == 'fan_only' }}"
                   - condition: template
                     value_template: >
-                      {{ last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only'] }}
+                      {{ last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only', 'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}
                 sequence:
                   # v3.18.0: Fan-only mode when comfort zone reached
 
@@ -15373,17 +15184,18 @@ action:
                           value: "0"
                         continue_on_error: true
 
-                  - service: climate.turn_off
-                    target:
-                      entity_id: !input climate_entities
-                    continue_on_error: true
-
-                  # v4.2.1: Update mode helper AFTER turn_off completes to prevent false override detection
+                  # v9.3.1 FIX: Move helper_mode update BEFORE turn_off to survive mode:restart
+                  # (v4.2.1 originally placed this AFTER, but v7.2.0 pattern requires BEFORE)
                   - service: input_text.set_value
                     target:
                       entity_id: "{{ helper_mode }}"
                     data:
                       value: "smart_off"
+                    continue_on_error: true
+
+                  - service: climate.turn_off
+                    target:
+                      entity_id: !input climate_entities
                     continue_on_error: true
 
                   # v5.2.4 FIX: Update mode_start_time for off-time protection
