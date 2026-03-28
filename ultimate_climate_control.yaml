@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.3.6
+  name: Ultimate Smart Climate Control - v9.3.7
 
   description: |
-    **Ultimate Smart Climate Control v9.3.6**
+    **Ultimate Smart Climate Control v9.3.7**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,14 +60,15 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v9.3.6 - Stale Helper Prevention:**
-    • **FIX**: Stopped clearing `precond_previous_mode` helper on pre-conditioning exit — clearing it to empty forced fallback defaults and caused mode restoration bugs
-    • Helper is overwritten on each pre-conditioning entry, so clearing on exit served no purpose
+    **v9.3.7 - Fan Override + Stale Helper Fixes:**
+    • **FIX**: Fan override now detected when AC is already in Override mode (independent mode) — previously fan changes were silently ignored
+    • **FIX**: Override source correctly set to `both` when fan overridden after AC (and vice versa)
+    • **FIX**: Stopped clearing `precond_previous_mode` on exit — no longer forces stale fallback defaults
 
     **v9.3.5 - Default Control Mode & Overcooling Fix:**
-    • **NEW**: Configurable `Default Control Mode` input (Smart or Auto) - controls what mode the system restores to when previous mode is unknown
-    • **CRITICAL FIX**: Override/Pre-conditioning exit was hardcoded to fall back to `Auto` mode, which runs unsupervised without presence checks. Rooms could run AC all night with nobody present.
-    • **FIX**: Outside temperature compensation now scales proportionally to distance from target (prevents overcooling 1-2°C past setpoint on hot days)
+    • **NEW**: Configurable `Default Control Mode` input (Smart or Auto per room)
+    • **CRITICAL FIX**: Mode restoration fallback changed from hardcoded `Auto` to configurable default
+    • **FIX**: Outside temp compensation scales proportionally near target (prevents overcooling)
 
     📖 **[Full Changelog & Version History](https://github.com/Chris971991/Smart-Climate-Control/releases)**
 
@@ -4258,7 +4259,7 @@ variables:
   ac_minimum_temp: !input ac_minimum_temp
   ac_maximum_temp: !input ac_maximum_temp
 
-  # Default control mode for restoration fallbacks (v9.3.6)
+  # Default control mode for restoration fallbacks (v9.3.7)
   default_control_mode: !input default_control_mode
 
   # Override Mode timeout (renamed from adaptive_override_timeout)
@@ -4854,7 +4855,7 @@ action:
           - stop: "Fan-only override cleared by user"
 
       - variables:
-          # v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto'
+          # v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto'
           return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else default_control_mode }}"
 
       # Return to previous mode
@@ -6085,7 +6086,7 @@ action:
 
         {# Step 1: Apply outside temperature compensation if enabled #}
         {# v7.2.0: Skip outside compensation in bed comfort modes - use raw target for gentle cooling #}
-        {# v9.3.6 FIX: Scale compensation proportionally to distance from target #}
+        {# v9.3.7 FIX: Scale compensation proportionally to distance from target #}
         {# Full compensation when far away (aggressive approach), zero at target (no overshoot) #}
         {% if enable_outside_temp_compensation and (is_cooling or is_heating) and not in_bed_comfort %}
           {% set outdoor = outdoor_temperature | float(25) %}
@@ -6193,7 +6194,7 @@ action:
         {{ (final_escalation_level | int(0)) > 0 }}
       
       # Smart mode calculations
-      # v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto'
+      # v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto'
       control_mode: >
         {% if control_mode_helper %}
           {{ states(control_mode_helper) | default(default_control_mode) }}
@@ -6330,7 +6331,7 @@ action:
         {% endif %}
 
       # What was the previous mode before pre-conditioning?
-      # v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto'
+      # v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto'
       precond_previous_mode_value: >
         {% if helper_precond_previous_mode and states(helper_precond_previous_mode) not in ['unknown', 'unavailable', ''] %}
           {{ states(helper_precond_previous_mode) }}
@@ -6634,7 +6635,7 @@ action:
         {% endif %}
       
       smart_presence_active: >
-        {# v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto' #}
+        {# v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto' #}
         {% set effective_mode = control_mode if control_mode != 'Override' else (states(helper_mode_before_override) if helper_mode_before_override else default_control_mode) %}
         {# v5.3.5 FIX: REMOVED can_bypass_delay - it was defeating the turn-off logic! #}
         {# The exit grace period (presence_timeout) already handles "leave and come back" scenarios #}
@@ -7490,7 +7491,7 @@ action:
               datetime: "1970-01-01 00:00:00"
             continue_on_error: true
 
-      # v9.3.6: Removed clearing of precond_previous_mode on exit.
+      # v9.3.7: Removed clearing of precond_previous_mode on exit.
       # Clearing it to "" caused the fallback to kick in next time, which was
       # hardcoded to 'Auto'. The helper is overwritten on each precond entry
       # anyway, so clearing serves no purpose and only creates stale state.
@@ -8131,8 +8132,10 @@ action:
         value_template: >
           {{
             ceiling_fan_override_detection | bool
-            and control_mode not in ['Manual', 'Override']
+            and control_mode not in ['Manual']
             and override_timeout > 0
+            and not (control_mode == 'Override' and override_behavior != 'independent')
+            and not fan_override_active
           }}
       - condition: template
         value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
@@ -8144,7 +8147,7 @@ action:
           - condition: template
             value_template: "{{ override_behavior == 'independent' }}"
         then:
-          # Track override source (fan only)
+          # v9.3.7 FIX: Track override source - set to 'both' if AC already overridden
           - if:
               - condition: template
                 value_template: "{{ helper_override_source not in [none, '', 'unavailable', 'unknown'] }}"
@@ -8153,7 +8156,7 @@ action:
                 target:
                   entity_id: "{{ helper_override_source }}"
                 data:
-                  value: "fan"
+                  value: "{{ 'both' if ac_override_active else 'fan' }}"
                 continue_on_error: true
 
           # Turn on visual indicator for dashboard
@@ -8209,7 +8212,7 @@ action:
                 [OVERRIDE_LOG] CEILING FAN OVERRIDE (INDEPENDENT) - {{ room_name | upper }} - {{ now().strftime('%Y-%m-%d %H:%M:%S') }}
                 [OVERRIDE_LOG] TRIGGER: id={{ trigger.id }} | from={{ trigger.from_state.state }} | to={{ trigger.to_state.state }}
                 [OVERRIDE_LOG] FAN: entity={{ trigger.entity_id }} | expected={{ states(helper_expected_ceiling_fan) | default('N/A') }}
-                [OVERRIDE_LOG] BEHAVIOR: independent | override_source=fan | control_mode={{ control_mode }} (unchanged)
+                [OVERRIDE_LOG] BEHAVIOR: independent | override_source={{ 'both' if ac_override_active else 'fan' }} | control_mode={{ control_mode }} (unchanged)
               level: error
             continue_on_error: true
 
@@ -8343,7 +8346,7 @@ action:
         value_template: "{{ control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}"
     then:
       - variables:
-          # v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto'
+          # v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto'
           return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else default_control_mode }}"
 
       - service: input_select.select_option
@@ -8421,7 +8424,7 @@ action:
     then:
       # Return to previous mode
       - variables:
-          # v9.3.6: Use configurable default_control_mode instead of hardcoded 'Auto'
+          # v9.3.7: Use configurable default_control_mode instead of hardcoded 'Auto'
           return_to_mode: "{{ states(helper_mode_before_override) if helper_mode_before_override and states(helper_mode_before_override) in ['Auto', 'Smart'] else default_control_mode }}"
 
       # v3.11.17 FIX: Update helper_change timestamp BEFORE switching modes
