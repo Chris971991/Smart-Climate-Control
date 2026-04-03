@@ -1,8 +1,8 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.4.0
+  name: Ultimate Smart Climate Control - v9.4.1
 
   description: |
-    **Ultimate Smart Climate Control v9.4.0**
+    **Ultimate Smart Climate Control v9.4.1**
 
     🌡️ The most advanced Home Assistant climate automation with intelligent presence detection, dynamic fan control, outside temperature compensation, and 40-60% energy savings.
 
@@ -60,9 +60,11 @@ blueprint:
 
     **📋 VERSION UPDATES:**
 
-    **v9.4.0 - Fan Presence Activation Mode:**
-    • **NEW**: `Fan Presence Activation` setting — choose **Instant** (fan starts on first presence detection) or **Respect timers** (fan waits for Presence Confirmation Delay like AC)
-    • Instant mode gives quick comfort while system confirms occupancy; only affects Smart mode
+    **v9.4.1 - Fan Presence Entry/Exit Modes:**
+    • **NEW**: `Fan Presence Entry` — choose **Instant** (fan starts on first detection) or **Respect timers** (wait for confirmation delay like AC)
+    • **NEW**: `Fan Presence Exit` — choose **Instant** (fan stops immediately) or **Respect timers** (stay on during grace period like AC)
+    • Default: instant entry + respect timers exit (quick comfort, no annoying shutoffs for brief absences)
+    • Only affects Smart mode — Auto mode always bypasses presence checks
 
     **v9.3.7 - Fan Override + Stale Helper Fixes:**
     • **FIX**: Fan override now detected when AC is already in Override mode (independent mode) — previously fan changes were silently ignored
@@ -3254,8 +3256,8 @@ blueprint:
                 - label: "Unchanged - Keep running for air circulation"
                   value: "unchanged"
 
-        fan_presence_mode:
-          name: Fan Presence Activation
+        fan_presence_entry:
+          name: Fan Presence Entry
           description: |
             **When should the ceiling fan activate in Smart mode?**
 
@@ -3271,6 +3273,25 @@ blueprint:
                 - label: "Instant - Activate on first presence detection"
                   value: "instant"
                 - label: "Respect timers - Wait for confirmation delay like AC"
+                  value: "respect_timers"
+
+        fan_presence_exit:
+          name: Fan Presence Exit
+          description: |
+            **When should the ceiling fan turn off after presence is lost in Smart mode?**
+
+            - **Instant:** Fan stops as soon as presence is no longer detected
+            - **Respect timers:** Fan stays on during the Presence Timeout grace period, same as AC (covers bathroom breaks, brief absences)
+
+            Respect timers prevents the fan from turning off every time you leave the room briefly.
+            Only affects Smart mode — Auto mode always bypasses presence checks.
+          default: "respect_timers"
+          selector:
+            select:
+              options:
+                - label: "Instant - Stop immediately when presence lost"
+                  value: "instant"
+                - label: "Respect timers - Stay on during grace period like AC (recommended)"
                   value: "respect_timers"
 
     # ===========================================
@@ -3876,7 +3897,8 @@ variables:
   fan_bed_comfort_mode: !input fan_bed_comfort_mode
   ceiling_fan_bed_max_speed: !input ceiling_fan_bed_max_speed
   fan_on_vacancy: !input fan_on_vacancy
-  fan_presence_mode: !input fan_presence_mode
+  fan_presence_entry: !input fan_presence_entry
+  fan_presence_exit: !input fan_presence_exit
   ceiling_fan_low_switch_input: !input ceiling_fan_low_switch
   ceiling_fan_medium_switch_input: !input ceiling_fan_medium_switch
   ceiling_fan_high_switch_input: !input ceiling_fan_high_switch
@@ -5307,14 +5329,24 @@ action:
       # Check if ceiling fan mode was escalated to AC (watchdog triggered)
       ceiling_fan_mode_active: "{{ last_mode == 'ceiling_fan_cooling' }}"
 
-      # v9.4.0: Fan-specific presence check for instant vs delayed activation
+      # v9.4.0: Fan-specific presence check with separate entry/exit behavior
       fan_presence_ok: >
         {% if control_mode != 'Smart' %}
           true
-        {% elif fan_presence_mode == 'instant' %}
-          {{ room_presence_detected }}
+        {% elif room_presence_detected %}
+          {# Entry: someone is here #}
+          {% if fan_presence_entry == 'instant' %}
+            true
+          {% else %}
+            {{ smart_presence_active }}
+          {% endif %}
         {% else %}
-          {{ smart_presence_active }}
+          {# Exit: presence lost #}
+          {% if fan_presence_exit == 'instant' %}
+            false
+          {% else %}
+            {{ smart_presence_active }}
+          {% endif %}
         {% endif %}
 
       # Calculate how long ceiling fan has been running (for watchdog)
@@ -8890,7 +8922,8 @@ action:
                 • is_on: {{ ceiling_fan_is_on | default('N/A') }}
                 • in_fan_zone: {{ in_ceiling_fan_zone }}
                 • fan_zone_max: {{ ceiling_fan_zone_max }}°C
-                • fan_presence_mode: {{ fan_presence_mode }}
+                • fan_presence_entry: {{ fan_presence_entry }}
+                • fan_presence_exit: {{ fan_presence_exit }}
                 • fan_presence_ok: {{ fan_presence_ok }}
                 • fan_with_ac_mode: {{ fan_with_ac_mode }}
                 • fan_at_target_temp: {{ fan_at_target_temp }}
@@ -10865,7 +10898,7 @@ action:
               {# v9.4.0: fan_presence_ok replaces dual Smart checks; instant mode bypasses should_activate #}
               {{ ceiling_fan_configured
                  and not fan_override_active
-                 and (should_activate or (control_mode == 'Smart' and fan_presence_mode == 'instant' and room_presence_detected and control_mode != 'Override' and not (manual_override_detection | bool)))
+                 and (should_activate or (control_mode == 'Smart' and fan_presence_entry == 'instant' and room_presence_detected and control_mode != 'Override' and not (manual_override_detection | bool)))
                  and enable_cooling
                  and in_ceiling_fan_zone
                  and not ceiling_fan_should_escalate
@@ -11004,7 +11037,7 @@ action:
                  and ceiling_fan_mode_active
                  and in_ceiling_fan_zone
                  and not ceiling_fan_should_escalate
-                 and (should_activate or (control_mode == 'Smart' and fan_presence_mode == 'instant' and room_presence_detected))
+                 and (should_activate or (control_mode == 'Smart' and fan_presence_entry == 'instant' and room_presence_detected))
                  and (control_mode != 'Smart' or room_presence_detected) }}
         sequence:
           # Determine current fan speed and compare to calculated target
