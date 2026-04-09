@@ -5549,8 +5549,8 @@ action:
     then:
     - service: system_log.write
       data:
-        message: "[EVENT] {{ room_name | upper }} | PRECOND_START | from={{ trigger.from_state.state
-          }} | temp={{ current_temp }}°C | target={{ target_temp }}°C"
+        message: "[EVENT] {{ room_name }} ★ | Pre-conditioning Started | From {{ trigger.from_state.state
+          }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C"
         level: warning
   - if:
     - condition: template
@@ -5762,8 +5762,8 @@ action:
     then:
     - service: system_log.write
       data:
-        message: "[EVENT] {{ room_name | upper }} | MODE_CHANGE | {{ from_mode }}→{{
-          to_mode }} | temp={{ current_temp }}°C | ac={{ actual_ac_state }}"
+        message: "[EVENT] {{ room_name }} ★ | Mode Change: {{ from_mode }} → {{
+          to_mode }} | Room {{ current_temp }}°C, AC {{ actual_ac_state }}"
         level: warning
 - if:
   - condition: template
@@ -7347,9 +7347,9 @@ action:
     then:
     - service: system_log.write
       data:
-        message: "[EVENT] {{ room_name | upper }} | PRECOND_END | reason={{ precond_end_reason
-          }} | runtime={{ precond_runtime_minutes }}min | temp={{ current_temp }}°C
-          | restored={{ precond_previous_mode_value }}"
+        message: "[EVENT] {{ room_name }} ★ | Pre-conditioning Complete | {{ precond_end_reason
+          }}, ran {{ precond_runtime_minutes }}min, Room {{ current_temp }}°C, restoring
+          {{ precond_previous_mode_value }}"
         level: warning
   - service: system_log.write
     data:
@@ -9397,8 +9397,8 @@ action:
           then:
           - service: system_log.write
             data:
-              message: "[EVENT] {{ room_name | upper }} | AUTO_OFF | action=off |
-                reason={{ auto_off_trigger_reason }} | temp={{ current_temp }}°C"
+              message: "[EVENT] {{ room_name }} ★ | Auto-Off: Turned Off | {{ auto_off_trigger_reason
+                }}, Room {{ current_temp }}°C"
               level: warning
         - service: system_log.write
           data:
@@ -9480,9 +9480,8 @@ action:
           then:
           - service: system_log.write
             data:
-              message: "[EVENT] {{ room_name | upper }} | AUTO_OFF_ECO | target={{
-                eco_target | round(1) }}°C | reason={{ auto_off_trigger_reason }}
-                | temp={{ current_temp }}°C"
+              message: "[EVENT] {{ room_name }} ★ | Auto-Off: Eco Mode | {{ auto_off_trigger_reason
+                }}, Room {{ current_temp }}°C, Eco target {{ eco_target | round(1) }}°C"
               level: warning
         - service: system_log.write
           data:
@@ -9576,8 +9575,8 @@ action:
           then:
           - service: system_log.write
             data:
-              message: "[EVENT] {{ room_name | upper }} | AUTO_OFF_FAN_ONLY | reason={{
-                auto_off_trigger_reason }} | temp={{ current_temp }}°C"
+              message: "[EVENT] {{ room_name }} ★ | Auto-Off: Fan Only | {{ auto_off_trigger_reason
+                }}, Room {{ current_temp }}°C"
               level: warning
         - service: system_log.write
           data:
@@ -9691,8 +9690,8 @@ action:
         then:
         - service: system_log.write
           data:
-            message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_OFF | reason=ac_takeover
-              | temp={{ current_temp }}°C | fan_with_ac={{ fan_with_ac_mode }}"
+            message: "[EVENT] {{ room_name }} ★ | Ceiling Fan Off | AC taking over, Room
+              {{ current_temp }}°C"
             level: warning
       - choose:
         - conditions:
@@ -9790,9 +9789,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | COOLING_START | temp={{ current_temp
-            }}°C | target={{ adjusted_target }}°C | fan={{ selected_fan_mode }} | hvac={{
-            selected_hvac_mode }} | trigger={{ trigger.id }}"
+          message: "[EVENT] {{ room_name }} ★ | Cooling Started | Room {{ current_temp
+            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            selected_hvac_mode }}"
           level: warning
     - if:
       - condition: template
@@ -10071,8 +10070,8 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_ON | speed={{ ceiling_fan_target_speed
-            }} | temp={{ current_temp }}°C | zone={{ comfort_max_temp }}-{{ ceiling_fan_zone_max
+          message: "[EVENT] {{ room_name }} ★ | Ceiling Fan On | Speed {{ ceiling_fan_target_speed
+            }}, Room {{ current_temp }}°C, Fan zone {{ comfort_max_temp }}-{{ ceiling_fan_zone_max
             }}°C"
           level: warning
     - service: system_log.write
@@ -10243,9 +10242,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_ESCALATE | fan_ran={{
-            ceiling_fan_runtime_minutes | round(1) }}min | entry_temp={{ ceiling_fan_entry_temp
-            }}°C | now={{ current_temp }}°C | activating_ac"
+          message: "[EVENT] {{ room_name }} ★ | Ceiling Fan → AC Escalation | Fan ran {{
+            ceiling_fan_runtime_minutes | round(1) }}min, Entry {{ ceiling_fan_entry_temp
+            }}°C → Now {{ current_temp }}°C, Activating AC"
           level: warning
     - service: system_log.write
       data:
@@ -10644,9 +10643,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | HEATING_START | temp={{ current_temp
-            }}°C | target={{ adjusted_target }}°C | fan={{ selected_fan_mode }} | hvac={{
-            selected_hvac_mode }} | trigger={{ trigger.id }}"
+          message: "[EVENT] {{ room_name }} ★ | Heating Started | Room {{ current_temp
+            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            selected_hvac_mode }}"
           level: warning
     - if:
       - condition: template
@@ -11580,9 +11579,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | BED_COMFORT_ENTRY | mode=bed_comfort_{{
-            bed_comfort_mode }} | from={{ last_mode }} | temp={{ current_temp }}°C
-            | target={{ target_temp }}°C"
+          message: "[EVENT] {{ room_name }} ★ | Bed Comfort {{ bed_comfort_mode | title }} Entered
+            | From {{ last_mode | replace('_', ' ') | title }}, Room {{ current_temp
+            }}°C, Target {{ target_temp }}°C"
           level: warning
     - if:
       - condition: template
@@ -11855,9 +11854,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | BED_ECO_FAN_ONLY | temp={{
-            current_temp }}°C | target={{ target_temp }}°C | rate={{ temp_change_rate
-            }}°C/min | stable={{ bed_eco_temp_stable }} | compressor=OFF | return_if_above={{
+          message: "[EVENT] {{ room_name }} ★ | Bed Eco → Fan Only (Compressor Off) |
+            Room {{ current_temp }}°C, Target {{ target_temp }}°C, Rate {{ temp_change_rate
+            }}°C/min, Stable {{ bed_eco_temp_stable }}, Returns above {{
             (target_temp + bed_eco_return_threshold) | round(1) }}°C"
           level: warning
     - if:
@@ -12007,9 +12006,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | BED_ECO_RETURN | temp={{ current_temp
-            }}°C | threshold={{ (target_temp + bed_eco_return_threshold) | round(1)
-            }}°C | resuming_cooling"
+          message: "[EVENT] {{ room_name }} ★ | Bed Eco → Resuming Cooling | Room {{
+            current_temp }}°C exceeded threshold {{ (target_temp + bed_eco_return_threshold)
+            | round(1) }}°C"
           level: warning
   - conditions:
     - condition: template
@@ -12034,9 +12033,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | COMFORT_ZONE | action={{ comfort_zone_action
-            }} | temp={{ current_temp }}°C | zone={{ comfort_min_temp }}-{{ comfort_max_temp
-            }}°C | from={{ last_mode }}"
+          message: "[EVENT] {{ room_name }} ★ | Comfort Zone Reached: {{ comfort_zone_action
+            | replace('_', ' ') | title }} | Room {{ current_temp }}°C in zone {{ comfort_min_temp
+            }}-{{ comfort_max_temp }}°C, was {{ last_mode | replace('_', ' ') | title }}"
           level: warning
     - if:
       - condition: template
@@ -13358,9 +13357,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | VACANCY | action={{ smart_behavior
-            }} | absent={{ minutes_since_presence | round(0) }}min | was_mode={{ last_mode
-            }} | temp={{ current_temp }}°C"
+          message: "[EVENT] {{ room_name }} ★ | Room Empty: {{ smart_behavior | replace('_',
+            ' ') | title }} | Absent {{ minutes_since_presence | round(0) }}min, was
+            {{ last_mode | replace('_', ' ') | title }}, Room {{ current_temp }}°C"
           level: warning
     - if:
       - condition: template
@@ -13397,8 +13396,8 @@ action:
         then:
         - service: system_log.write
           data:
-            message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_OFF | reason=vacancy
-              | was_mode={{ last_mode }} | temp={{ current_temp }}°C"
+            message: "[EVENT] {{ room_name }} ★ | Ceiling Fan Off | Room empty, was {{
+              last_mode | replace('_', ' ') | title }}, Room {{ current_temp }}°C"
             level: warning
       - choose:
         - conditions:
@@ -13853,8 +13852,9 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "[EVENT] {{ room_name | upper }} | AWAY_MODE | action={{ away_action
-            }} | temp={{ current_temp }}°C | was_mode={{ last_mode }}"
+          message: "[EVENT] {{ room_name }} ★ | Away Mode: {{ away_action | replace('_',
+            ' ') | title }} | Nobody home, Room {{ current_temp }}°C, was {{ last_mode
+            | replace('_', ' ') | title }}"
           level: warning
   - conditions:
     - condition: template
@@ -14332,9 +14332,9 @@ action:
     then:
     - service: system_log.write
       data:
-        message: "[EVENT] {{ room_name | upper }} | TARGET_REACHED | mode={{ last_mode
-          }} | temp={{ current_temp }}°C | target={{ target_temp }}°C | runtime={{
-          time_in_current_mode | round(1) }}min | turning_off"
+        message: "[EVENT] {{ room_name }} ★ | Target Reached, Turning Off | {{ last_mode
+          | replace('_', ' ') | title }} for {{ time_in_current_mode | round(1) }}min,
+          Room {{ current_temp }}°C, Target {{ target_temp }}°C"
         level: warning
   - if:
     - condition: template
@@ -14934,7 +14934,8 @@ action:
         level: warning
 - if:
   - condition: template
-    value_template: '{{ event_logging_enabled }}'
+    value_template: "{{ event_logging_enabled and trigger.id in ['periodic_check',
+      'climate_state_change', 'mode_change'] }}\n"
   then:
   - variables:
       evt_hvac: '{{ states(climate_list[0]) if climate_list | length > 0 else ''unknown''
