@@ -5545,6 +5545,15 @@ action:
   then:
   - if:
     - condition: template
+      value_template: '{{ event_logging_enabled }}'
+    then:
+    - service: system_log.write
+      data:
+        message: "[EVENT] {{ room_name | upper }} | PRECOND_START | from={{ trigger.from_state.state
+          }} | temp={{ current_temp }}°C | target={{ target_temp }}°C"
+        level: warning
+  - if:
+    - condition: template
       value_template: '{{ helper_precond_previous_mode not in [none, '''', ''unavailable'',
         ''unknown''] }}'
     then:
@@ -7332,6 +7341,16 @@ action:
 
           '
       continue_on_error: true
+  - if:
+    - condition: template
+      value_template: '{{ event_logging_enabled }}'
+    then:
+    - service: system_log.write
+      data:
+        message: "[EVENT] {{ room_name | upper }} | PRECOND_END | reason={{ precond_end_reason
+          }} | runtime={{ precond_runtime_minutes }}min | temp={{ current_temp }}°C
+          | restored={{ precond_previous_mode_value }}"
+        level: warning
   - service: system_log.write
     data:
       message: '✅ {{ room_name | upper }} PRE-CONDITIONING COMPLETE: • Reason: {{
@@ -9455,6 +9474,16 @@ action:
               data:
                 swing_mode: '{{ validated_swing_mode }}'
               continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ event_logging_enabled }}'
+          then:
+          - service: system_log.write
+            data:
+              message: "[EVENT] {{ room_name | upper }} | AUTO_OFF_ECO | target={{
+                eco_target | round(1) }}°C | reason={{ auto_off_trigger_reason }}
+                | temp={{ current_temp }}°C"
+              level: warning
         - service: system_log.write
           data:
             message: "\U0001F319 {{ room_name | upper }} AUTO-OFF: Set AC to ECO ({{
@@ -9541,6 +9570,15 @@ action:
             data:
               value: auto_off_off
             continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ event_logging_enabled }}'
+          then:
+          - service: system_log.write
+            data:
+              message: "[EVENT] {{ room_name | upper }} | AUTO_OFF_FAN_ONLY | reason={{
+                auto_off_trigger_reason }} | temp={{ current_temp }}°C"
+              level: warning
         - service: system_log.write
           data:
             message: "\U0001F319 {{ room_name | upper }} AUTO-OFF: Set AC to FAN ONLY
@@ -9647,6 +9685,15 @@ action:
         value_template: '{{ ceiling_fan_configured and not fan_override_active and
           ceiling_fan_is_on and fan_with_ac_mode == ''off'' }}'
       then:
+      - if:
+        - condition: template
+          value_template: '{{ event_logging_enabled }}'
+        then:
+        - service: system_log.write
+          data:
+            message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_OFF | reason=ac_takeover
+              | temp={{ current_temp }}°C | fan_with_ac={{ fan_with_ac_mode }}"
+            level: warning
       - choose:
         - conditions:
           - condition: template
@@ -10599,7 +10646,7 @@ action:
         data:
           message: "[EVENT] {{ room_name | upper }} | HEATING_START | temp={{ current_temp
             }}°C | target={{ adjusted_target }}°C | fan={{ selected_fan_mode }} | hvac={{
-            selected_hvac_mode }}"
+            selected_hvac_mode }} | trigger={{ trigger.id }}"
           level: warning
     - if:
       - condition: template
@@ -11809,7 +11856,9 @@ action:
       - service: system_log.write
         data:
           message: "[EVENT] {{ room_name | upper }} | BED_ECO_FAN_ONLY | temp={{
-            current_temp }}°C | target={{ target_temp }}°C | compressor=OFF"
+            current_temp }}°C | target={{ target_temp }}°C | rate={{ temp_change_rate
+            }}°C/min | stable={{ bed_eco_temp_stable }} | compressor=OFF | return_if_above={{
+            (target_temp + bed_eco_return_threshold) | round(1) }}°C"
           level: warning
     - if:
       - condition: template
@@ -13342,6 +13391,15 @@ action:
         value_template: '{{ ceiling_fan_configured and not fan_override_active and
           fan_on_vacancy == ''off'' and ceiling_fan_is_on }}'
       then:
+      - if:
+        - condition: template
+          value_template: '{{ event_logging_enabled }}'
+        then:
+        - service: system_log.write
+          data:
+            message: "[EVENT] {{ room_name | upper }} | CEILING_FAN_OFF | reason=vacancy
+              | was_mode={{ last_mode }} | temp={{ current_temp }}°C"
+            level: warning
       - choose:
         - conditions:
           - condition: template
@@ -13789,6 +13847,15 @@ action:
           title: Climate Away Mode
           message: '{{ away_action | title }} mode activated - nobody home'
         continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ event_logging_enabled }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "[EVENT] {{ room_name | upper }} | AWAY_MODE | action={{ away_action
+            }} | temp={{ current_temp }}°C | was_mode={{ last_mode }}"
+          level: warning
   - conditions:
     - condition: template
       value_template: '{{ false }}'
@@ -14481,7 +14548,7 @@ action:
         Heating: {{ current_temp }} < {{ comfort_min_temp }} = {{ current_temp < comfort_min_temp
         }}\n    • In Comfort Zone: {{ comfort_min_temp }} ≤ {{ current_temp }} ≤ {{
         comfort_max_temp }} = {{ current_temp >= comfort_min_temp and current_temp
-        <= comfort_max_temp }}\n\n\U0001F504 Continue Cooling WHY NOT:\n    • last_mode in [cooling,bed_eco,bed_quiet]: {{ last_mode in ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] }}\n    • current_temp({{ current_temp }}) > overshoot_target({{ target_temp - target_overshoot }}): {{ current_temp > (target_temp - target_overshoot) }}\n    • current_temp({{ current_temp }}) <= comfort_max({{ comfort_max_temp }}): {{ current_temp <= comfort_max_temp }}\n\n\U0001F525 Start Cooling WHY NOT:\n    {% set bed_eco_active_check = bed_comfort_mode != 'off' and bed_eco_fan_only_mode == 'enabled' and bed_occupied %}{% set bed_eco_max_check = target_temp + bed_eco_return_threshold if bed_eco_active_check else comfort_max_temp %}• current_temp({{ current_temp }}) > activation_threshold({{ bed_eco_max_check }}): {{ current_temp > bed_eco_max_check }}\n    • enable_cooling: {{ enable_cooling }}\n    • not in_ceiling_fan_zone OR escalating: {{ not in_ceiling_fan_zone or ceiling_fan_should_escalate }}\n\n\U0001F6CF️ Bed Eco Debug:\n    • bed_occupied: {{ bed_occupied }}\n    • bed_comfort_mode: {{ bed_comfort_mode }}\n    • bed_eco_at_target: {{ bed_eco_at_target }}\n    • bed_eco_should_fan_only: {{ bed_eco_should_fan_only }}\n    • bed_eco_should_return: {{ bed_eco_should_return }}\n    • bed_eco_fan_only_mode: {{ bed_eco_fan_only_mode }}\n    • bed_eco_temp_stable: {{ bed_eco_temp_stable }}\n    • temp_change_rate: {{ temp_change_rate }}\n    • target_temp: {{ target_temp }}°C\n    • target_overshoot: {{ target_overshoot }}°C\n\n\U0001F6CF️ Bed Comfort Entry WHY NOT:\n    • bed_sensor_on: {{ bed_occupied }}\n    • temp_in_range({{ comfort_min_temp }}-{{ target_temp + bed_eco_return_threshold }}): {{ current_temp >= comfort_min_temp and current_temp <= (target_temp + bed_eco_return_threshold) }}\n    • ac_not_off: {{ actual_ac_state != 'off' }}\n    • time_in_mode({{ time_in_current_mode | round(1) }}) >= runtime({{ runtime_min }}): {{ time_in_current_mode | float(0) >= runtime_min | float(0) }}\n    • last_mode_allows_entry: {% if last_mode == 'bed_eco_fan_only' %}false (in fan_only){% elif last_mode in ['bed_comfort_eco', 'bed_comfort_quiet'] %}false (already in bed comfort){% elif last_mode in ['cooling', 'heating'] %}{{ current_temp <= (target_temp - target_overshoot) if last_mode == 'cooling' else current_temp >= (target_temp + target_overshoot) }} (temp check){% else %}true{% endif %}\n\n\U0001F3E0 Comfort Zone WHY NOT:\n    • in_comfort_zone: {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}\n    • bed_blocking: {{ bed_comfort_mode != 'off' and bed_occupied }}\n    • comfort_zone_action: {{ comfort_zone_action }}\n\n\U0001F6AA Vacancy WHY NOT:\n    • control_mode_smart: {{ control_mode == 'Smart' }}\n    • room_presence: {{ room_presence_detected }}\n    • smart_presence: {{ smart_presence_active }}\n    • bed_occupied: {{ bed_occupied }}\n\n\U0001F6E1️ Override Debug:\n    • manual_override_detection: {{ manual_override_detection }}\n    • ceiling_fan_override_detection: {{ ceiling_fan_override_detection }}\n    • override_source: {{ override_source }}\n    • in_ceiling_fan_zone: {{ in_ceiling_fan_zone }}\n    • ceiling_fan_mode_active: {{ ceiling_fan_mode_active }}\n\n\U0001F3AF Ceiling Fan WHY NOT:\n    • configured: {{ ceiling_fan_configured }}\n    • fan_override_active: {{ fan_override_active }}\n    • in_ceiling_fan_zone: {{ in_ceiling_fan_zone }}\n    • ceiling_fan_should_escalate: {{ ceiling_fan_should_escalate }}\n    • ceiling_fan_mode_active: {{ ceiling_fan_mode_active }}\n    • fan_presence_ok: {{ fan_presence_ok }}\n"
+        <= comfort_max_temp }}\n\n\U0001F504 Continue Cooling WHY NOT:\n    • last_mode in [cooling,bed_eco,bed_quiet]: {{ last_mode in ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] }}\n    • current_temp({{ current_temp }}) > overshoot_target({{ target_temp - target_overshoot }}): {{ current_temp > (target_temp - target_overshoot) }}\n    • current_temp({{ current_temp }}) <= comfort_max({{ comfort_max_temp }}): {{ current_temp <= comfort_max_temp }}\n    • actual_ac_state: {{ actual_ac_state }}\n    • should_activate: {{ should_activate }}\n\n\U0001F525 Start Cooling WHY NOT:\n    {% set bed_eco_active_check = bed_comfort_mode != 'off' and bed_eco_fan_only_mode == 'enabled' and bed_occupied %}{% set bed_eco_max_check = target_temp + bed_eco_return_threshold if bed_eco_active_check else comfort_max_temp %}• current_temp({{ current_temp }}) > activation_threshold({{ bed_eco_max_check }}): {{ current_temp > bed_eco_max_check }}\n    • enable_cooling: {{ enable_cooling }}\n    • should_activate: {{ should_activate }}\n    • not in_ceiling_fan_zone OR escalating: {{ not in_ceiling_fan_zone or ceiling_fan_should_escalate }}\n\n\U0001F6CF️ Bed Eco Debug:\n    • bed_occupied: {{ bed_occupied }}\n    • bed_comfort_mode: {{ bed_comfort_mode }}\n    • bed_eco_at_target: {{ bed_eco_at_target }}\n    • bed_eco_should_fan_only: {{ bed_eco_should_fan_only }}\n    • bed_eco_should_return: {{ bed_eco_should_return }}\n    • bed_eco_fan_only_mode: {{ bed_eco_fan_only_mode }}\n    • bed_eco_fan_only_trigger: {{ bed_eco_fan_only_trigger }}\n    • bed_eco_temp_stable: {{ bed_eco_temp_stable }}\n    • bed_eco_stability_minutes: {{ bed_eco_stability_minutes }}min\n    • bed_eco_stability_rate: {{ bed_eco_stability_rate }}°C/min\n    • temp_change_rate: {{ temp_change_rate }}°C/min\n    • target_temp: {{ target_temp }}°C\n    • target_overshoot: {{ target_overshoot }}°C\n\n\U0001F6CF️ Bed Comfort Entry WHY NOT:\n    • bed_sensor_on: {{ bed_occupied }}\n    • temp_in_range({{ comfort_min_temp }}-{{ target_temp + bed_eco_return_threshold }}): {{ current_temp >= comfort_min_temp and current_temp <= (target_temp + bed_eco_return_threshold) }}\n    • ac_not_off: {{ actual_ac_state != 'off' }}\n    • time_in_mode({{ time_in_current_mode | round(1) }}) >= runtime({{ runtime_min }}): {{ time_in_current_mode | float(0) >= runtime_min | float(0) }}\n    • last_mode_allows_entry: {% if last_mode == 'bed_eco_fan_only' %}false (in fan_only){% elif last_mode in ['bed_comfort_eco', 'bed_comfort_quiet'] %}false (already in bed comfort){% elif last_mode in ['cooling', 'heating'] %}{{ current_temp <= (target_temp - target_overshoot) if last_mode == 'cooling' else current_temp >= (target_temp + target_overshoot) }} (temp check){% else %}true{% endif %}\n\n\U0001F3E0 Comfort Zone WHY NOT:\n    • in_comfort_zone: {{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp }}\n    • overshoot_reached: {% if target_overshoot > 0 and last_mode == 'cooling' %}{{ current_temp <= (target_temp - target_overshoot) }} ({{ current_temp }}°C <= {{ (target_temp - target_overshoot) | round(1) }}°C){% elif target_overshoot > 0 and last_mode == 'heating' %}{{ current_temp >= (target_temp + target_overshoot) }} ({{ current_temp }}°C >= {{ (target_temp + target_overshoot) | round(1) }}°C){% else %}true (no overshoot){% endif %}\n    • time_since_change({{ time_since_change | round(1) }}) > runtime({{ runtime_min }}): {{ time_since_change > runtime_min | float(0) }}\n    • bed_blocking: {{ bed_comfort_mode != 'off' and bed_occupied }}\n    • comfort_zone_action: {{ comfort_zone_action }}\n\n\U0001F6AA Vacancy WHY NOT:\n    • control_mode_smart: {{ control_mode == 'Smart' }}\n    • room_presence: {{ room_presence_detected }}\n    • smart_presence_active: {{ smart_presence_active }}\n    • minutes_since_presence: {{ minutes_since_presence | round(0) }}min (timeout: {{ presence_timeout }}min)\n    • grace_active: {{ minutes_since_presence < presence_timeout }}\n    • bed_occupied: {{ bed_occupied }}\n    • smart_behavior: {{ smart_behavior }}\n\n\U0001F6E1️ Override Debug:\n    • manual_override_detection: {{ manual_override_detection }}\n    • ceiling_fan_override_detection: {{ ceiling_fan_override_detection }}\n    • override_source: {{ override_source }}\n    • override_behavior: {{ override_behavior }}\n    • in_ceiling_fan_zone: {{ in_ceiling_fan_zone }}\n    • ceiling_fan_mode_active: {{ ceiling_fan_mode_active }}\n\n\U0001F3AF Ceiling Fan WHY NOT:\n    • configured: {{ ceiling_fan_configured }}\n    • fan_override_active: {{ fan_override_active }}\n    • current_temp({{ current_temp }}) in zone({{ comfort_max_temp }}-{{ ceiling_fan_zone_max }}°C): {{ in_ceiling_fan_zone }}\n    • ceiling_fan_zone_max: {{ ceiling_fan_zone_max }}°C\n    • runtime: {{ ceiling_fan_runtime_minutes | round(1) }}min (escalation_timeout: {{ fan_escalation_timeout }}min)\n    • ceiling_fan_should_escalate: {{ ceiling_fan_should_escalate }}\n    • ceiling_fan_mode_active: {{ ceiling_fan_mode_active }}\n    • fan_presence_ok: {{ fan_presence_ok }}\n"
       level: warning
 - if:
   - condition: template
@@ -14880,8 +14947,6 @@ action:
         ''unknown''] else ''unknown'' }}'
       evt_prev: '{{ last_mode }}'
       evt_changed: '{{ evt_mode != evt_prev }}'
-      evt_cfan: '{% if ceiling_fan_configured %}{{ ''on'' if ceiling_fan_is_on else
-        ''off'' }}{% else %}N/A{% endif %}'
       evt_is_active: '{{ evt_mode in [''cooling'', ''heating'', ''bed_comfort_eco'',
         ''bed_comfort_quiet''] }}'
       evt_esc: '{% if evt_is_active and final_escalation_level | int(0) > 0 %}L{{
@@ -14890,9 +14955,22 @@ action:
         %}N/A{% endif %}'
       evt_adj_target: '{{ adjusted_target | round(1) if evt_is_active else target_temp
         }}'
+      evt_cfan_speed: '{% if ceiling_fan_configured and ceiling_fan_is_on %}{% if
+        is_state(ceiling_fan_high_switch, ''on'') %}high{% elif is_state(ceiling_fan_medium_switch,
+        ''on'') %}medium{% elif is_state(ceiling_fan_low_switch, ''on'') %}low{% else
+        %}on{% endif %}{% elif ceiling_fan_configured %}off{% else %}N/A{% endif %}'
+      evt_rate: '{{ temp_change_rate | round(3) if temp_change_rate is defined else
+        0 }}'
+      evt_dist: '{{ distance_from_target | round(1) if distance_from_target is defined
+        else 0 }}'
+      evt_deesc: '{{ deescalation_level | int(0) if deescalation_level is defined
+        else 0 }}'
+      evt_outside: '{{ outdoor_temperature | round(1) if outdoor_temperature is defined
+        and outdoor_temperature | float(0) > 0 else ''N/A'' }}'
+      evt_stalling: '{{ is_stalling if is_stalling is defined else false }}'
   - service: system_log.write
     data:
-      message: "[EVENT] {{ room_name | upper }} | {{ trigger.id }} | {{ evt_mode }}{% if evt_changed %} (was:{{ evt_prev }}){% endif %} ({{ time_in_current_mode | round(0) }}min) | room={{ current_temp }}°C | target={{ target_temp }}°C{% if evt_is_active and evt_adj_target != target_temp %}→{{ evt_adj_target }}°C(esc:{{ evt_esc }}){% endif %} | ac={{ evt_hvac }}{% if evt_setpoint not in ['N/A', 'None', none] %}@{{ evt_setpoint }}°C{% endif %} | fan={{ evt_fan }}{% if evt_is_active %} | eff={{ evt_eff }}%{% endif %} | {{ control_mode }}{% if control_mode == 'Smart' %} | pres={{ 'Y' if room_presence_detected else 'N' }}{% endif %}{% if bed_occupied %} | bed=Y{% endif %}{% if ceiling_fan_configured %} | cfan={{ evt_cfan }}{% endif %}{% if manual_override_detection | bool %} | ⚠OVERRIDE{% endif %}{% if evt_changed %} | ★MODE_CHANGE{% endif %}"
+      message: "[EVENT] {{ room_name }}{% if evt_changed %} ★{% endif %} | {{ evt_mode | replace('_', ' ') | title }} ({{ time_in_current_mode | round(0) }}min){% if evt_changed %}, was {{ evt_prev | replace('_', ' ') | title }}{% endif %} | Room {{ current_temp }}°C, {{ evt_rate }}°C/min{% if evt_outside != 'N/A' %}, outside {{ evt_outside }}°C{% endif %} | Target {{ target_temp }}°C{% if evt_is_active %}, {{ evt_dist }}°C away{% endif %}{% if evt_is_active and evt_adj_target | float(0) != target_temp | float(0) %} (esc L{{ final_escalation_level }} → {{ evt_adj_target }}°C){% elif evt_is_active and evt_deesc | int(0) > 0 %} (de-esc L{{ evt_deesc }}){% endif %} | AC: {{ evt_hvac }}{% if evt_setpoint not in ['N/A', 'None', none] %} @ {{ evt_setpoint }}°C{% endif %}, Fan {{ evt_fan }}{% if evt_is_active %}, {{ evt_eff }}% eff{% if evt_stalling | bool %}, STALLING{% endif %}{% endif %} | {{ control_mode }}{% if control_mode == 'Smart' %}, {{ 'present' if room_presence_detected else 'no presence' }}{% if not should_activate %}, INACTIVE{% endif %}{% endif %}{% if bed_occupied %}, in bed{% endif %}{% if ceiling_fan_configured %} | Ceiling fan {{ evt_cfan_speed }}{% endif %}{% if manual_override_detection | bool %} | ⚠️ OVERRIDE DETECTED{% endif %} | trigger={{ trigger.id }}"
       level: warning
 - if:
   - condition: template
