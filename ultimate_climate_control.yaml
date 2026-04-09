@@ -14870,28 +14870,29 @@ action:
     value_template: '{{ event_logging_enabled }}'
   then:
   - variables:
-      evt_actual_hvac: '{{ states(climate_list[0]) if climate_list | length > 0 else
-        ''unknown'' }}'
-      evt_actual_temp: '{{ state_attr(climate_list[0], ''temperature'') | default(''N/A'')
+      evt_hvac: '{{ states(climate_list[0]) if climate_list | length > 0 else ''unknown''
+        }}'
+      evt_setpoint: '{{ state_attr(climate_list[0], ''temperature'') | default(''N/A'')
         if climate_list | length > 0 else ''N/A'' }}'
-      evt_actual_fan: '{{ state_attr(climate_list[0], ''fan_mode'') | default(''N/A'')
-        if climate_list | length > 0 else ''N/A'' }}'
-      evt_current_mode: '{{ states(helper_mode) if helper_mode not in [none, '''',
-        ''unavailable'', ''unknown''] else ''unknown'' }}'
-      evt_prev_mode: '{{ last_mode }}'
-      evt_mode_changed: '{{ evt_current_mode != evt_prev_mode }}'
-      evt_ceiling_fan_state: '{% if ceiling_fan_configured %}{{ ''on'' if ceiling_fan_is_on
-        else ''off'' }}{% else %}N/A{% endif %}'
+      evt_fan: '{{ state_attr(climate_list[0], ''fan_mode'') | default(''N/A'') if
+        climate_list | length > 0 else ''N/A'' }}'
+      evt_mode: '{{ states(helper_mode) if helper_mode not in [none, '''', ''unavailable'',
+        ''unknown''] else ''unknown'' }}'
+      evt_prev: '{{ last_mode }}'
+      evt_changed: '{{ evt_mode != evt_prev }}'
+      evt_cfan: '{% if ceiling_fan_configured %}{{ ''on'' if ceiling_fan_is_on else
+        ''off'' }}{% else %}N/A{% endif %}'
+      evt_is_active: '{{ evt_mode in [''cooling'', ''heating'', ''bed_comfort_eco'',
+        ''bed_comfort_quiet''] }}'
+      evt_esc: '{% if evt_is_active and final_escalation_level | int(0) > 0 %}L{{
+        final_escalation_level }}{% else %}0{% endif %}'
+      evt_eff: '{% if evt_is_active %}{{ current_effectiveness | int(0) }}{% else
+        %}N/A{% endif %}'
+      evt_adj_target: '{{ adjusted_target | round(1) if evt_is_active else target_temp
+        }}'
   - service: system_log.write
     data:
-      message: "[EVENT] {{ room_name | upper }} | trigger={{ trigger.id }} | mode={{
-        evt_current_mode }}{% if evt_mode_changed %} (was={{ evt_prev_mode }}){% endif
-        %} | ac={{ evt_actual_hvac }} | temp={{ current_temp }}°C→{{ evt_actual_temp
-        }}°C | fan={{ evt_actual_fan }} | control={{ control_mode }} | presence={{
-        room_presence_detected }} | bed={{ bed_occupied }}{% if ceiling_fan_configured
-        %} | cfan={{ evt_ceiling_fan_state }}{% endif %}{% if manual_override_detection
-        | bool %} | OVERRIDE_DETECTED{% endif %}{% if evt_mode_changed %} | MODE_CHANGE{%
-        endif %}"
+      message: "[EVENT] {{ room_name | upper }} | {{ trigger.id }} | {{ evt_mode }}{% if evt_changed %} (was:{{ evt_prev }}){% endif %} ({{ time_in_current_mode | round(0) }}min) | room={{ current_temp }}°C | target={{ target_temp }}°C{% if evt_is_active and evt_adj_target != target_temp %}→{{ evt_adj_target }}°C(esc:{{ evt_esc }}){% endif %} | ac={{ evt_hvac }}{% if evt_setpoint not in ['N/A', 'None', none] %}@{{ evt_setpoint }}°C{% endif %} | fan={{ evt_fan }}{% if evt_is_active %} | eff={{ evt_eff }}%{% endif %} | {{ control_mode }}{% if control_mode == 'Smart' %} | pres={{ 'Y' if room_presence_detected else 'N' }}{% endif %}{% if bed_occupied %} | bed=Y{% endif %}{% if ceiling_fan_configured %} | cfan={{ evt_cfan }}{% endif %}{% if manual_override_detection | bool %} | ⚠OVERRIDE{% endif %}{% if evt_changed %} | ★MODE_CHANGE{% endif %}"
       level: warning
 - if:
   - condition: template
