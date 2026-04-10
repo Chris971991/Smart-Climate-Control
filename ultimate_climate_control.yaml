@@ -13331,8 +13331,8 @@ action:
     sequence:
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled and last_mode not in [''smart_off'',
-          ''away_off'', ''auto_off_off''] }}'
+        value_template: '{{ event_logging_enabled and states(helper_mode) not in [''smart_off'',
+          ''away_off'', ''auto_off_off'', ''off''] }}'
       then:
       - service: system_log.write
         data:
