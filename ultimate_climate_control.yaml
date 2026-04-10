@@ -5550,7 +5550,7 @@ action:
     - service: system_log.write
       data:
         message: "[EVENT] {{ room_name }} ★ | Pre-conditioning Started | From {{ trigger.from_state.state
-          }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C"
+          }}, Room {{ state_attr(climate_list[0], 'current_temperature') | default('N/A') }}°C, Target {{ target_temp }}°C"
         level: warning
   - if:
     - condition: template
@@ -5763,7 +5763,7 @@ action:
     - service: system_log.write
       data:
         message: "[EVENT] {{ room_name }} ★ | Mode Change: {{ from_mode }} → {{
-          to_mode }} | Room {{ current_temp }}°C, AC {{ actual_ac_state }}"
+          to_mode }} | Room {{ state_attr(climate_list[0], 'current_temperature') | default('N/A') }}°C, AC {{ states(climate_list[0]) | default('unknown') }}"
         level: warning
 - if:
   - condition: template
