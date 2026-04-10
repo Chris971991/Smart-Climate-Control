@@ -1135,6 +1135,8 @@ blueprint:
                 value: ble_bed
               - label: BLE_SMART - BLE + (Motion OR Bed) - Intelligent
                 value: ble_smart
+              - label: BLE_SMART_BED - Bed overrides BLE, otherwise BLE + Motion
+                value: ble_smart_bed
               - label: MOTION_ONLY - Motion only (may have false triggers)
                 value: motion_only
               - label: BLE_ONLY - BLE only (adjacent room may trigger)
@@ -6668,6 +6670,12 @@ action:
       awake (BLE+motion) OR sleeping (BLE+bed) #}\n    {# Still requires BLE to prevent
       false motion/bed triggers #}\n    {{ ble_detected.value and (motion_detected.value
       or other_detected.value or bed_occupied) }}\n\n  {% elif validation_mode ==
+      'ble_smart_bed' %}\n    {# BLE_SMART_BED mode - Bed sensor overrides BLE requirement #}\n    {#
+      When in bed: presence confirmed (no BLE needed - bed is physical proof) #}\n    {#
+      When not in bed: falls back to BLE + motion (same as ble_smart) #}\n    {#
+      Solves: BLE bouncing while sleeping causes false vacancy with unreliable EP sensors #}\n    {{
+      bed_occupied or (ble_detected.value and (motion_detected.value
+      or other_detected.value)) }}\n\n  {% elif validation_mode ==
       'motion_only' %}\n    {# MOTION_ONLY mode - motion sensor only (WARNING: prone
       to false triggers) #}\n    {# Use presence_confirmation_delay to reduce false
       positives #}\n    {{ motion_detected.value }}\n\n  {% elif validation_mode ==
