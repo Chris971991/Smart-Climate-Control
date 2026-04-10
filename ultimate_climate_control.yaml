@@ -6750,10 +6750,13 @@ action:
       %}\n    true\n  {% elif bed_occupied and (presence_confirmation_delay == 0 or
       minutes_with_presence >= (presence_confirmation_delay - 0.17)) %}\n    true\n
       \ {# v4.3.0: Bed absence grace period - bathroom breaks during sleep #}\n  {#
-      Only applies when bed sensor was previously active (last_mode was bed_comfort)
-      #}\n  {% elif bed_sensor_manual and not is_state(bed_sensor_manual, 'on') and
-      minutes_since_bed_off < bed_absence_grace and last_mode in ['bed_comfort_quiet',
-      'bed_comfort_eco', 'bed_eco_fan_only'] %}\n    true\n  {# Smart mode: require
+      v9.7.0 FIX: Apply grace period in ANY active mode, not just bed_comfort modes #}\n  {#
+      The bed sensor can flicker while user is still in bed. If last_mode was cooling #}\n  {#
+      (not yet transitioned to bed_comfort_eco), the grace period was skipped and AC #}\n  {#
+      turned off immediately. Now applies whenever bed sensor was recently on. #}\n  {%
+      elif bed_sensor_manual and not is_state(bed_sensor_manual, 'on') and
+      minutes_since_bed_off < bed_absence_grace and last_mode not in ['off',
+      'smart_off', 'away_off', 'auto_off_off'] %}\n    true\n  {# Smart mode: require
       confirmation delay before activation #}\n  {# v5.0.8 FIX: Add 10-second hysteresis
       buffer to prevent timing fluctuation flip-flop #}\n  {# v5.3.5 FIX: REMOVED
       can_bypass_delay - grace period handles re-entry, confirmation delay is mandatory
