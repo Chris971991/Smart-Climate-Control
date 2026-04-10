@@ -9779,7 +9779,7 @@ action:
           value: cooling
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled }}'
+        value_template: '{{ event_logging_enabled and last_mode != ''cooling'' }}'
       then:
       - service: system_log.write
         data:
@@ -10623,7 +10623,7 @@ action:
           value: heating
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled }}'
+        value_template: '{{ event_logging_enabled and last_mode != ''heating'' }}'
       then:
       - service: system_log.write
         data:
@@ -13331,7 +13331,8 @@ action:
     sequence:
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled }}'
+        value_template: '{{ event_logging_enabled and last_mode not in [''smart_off'',
+          ''away_off'', ''auto_off_off''] }}'
       then:
       - service: system_log.write
         data:
