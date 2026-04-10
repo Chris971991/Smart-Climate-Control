@@ -14948,10 +14948,15 @@ action:
       evt_outside: '{{ outdoor_temperature | round(1) if outdoor_temperature is defined
         and outdoor_temperature | float(0) > 0 else ''N/A'' }}'
       evt_stalling: '{{ is_stalling if is_stalling is defined else false }}'
-  - service: system_log.write
-    data:
-      message: "[EVENT] {{ room_name }}{% if evt_changed %} ★{% endif %} | {{ evt_mode | replace('_', ' ') | title }} ({{ time_in_current_mode | round(0) }}min){% if evt_changed %}, was {{ evt_prev | replace('_', ' ') | title }}{% endif %} | Room {{ current_temp }}°C, {{ evt_rate }}°C/min{% if evt_outside != 'N/A' %}, outside {{ evt_outside }}°C{% endif %} | Target {{ target_temp }}°C{% if evt_is_active %}, {{ evt_dist }}°C away{% endif %}{% if evt_is_active and evt_adj_target | float(0) != target_temp | float(0) %} (esc L{{ final_escalation_level }} → {{ evt_adj_target }}°C){% elif evt_is_active and evt_deesc | int(0) > 0 %} (de-esc L{{ evt_deesc }}){% endif %} | AC: {{ evt_hvac }}{% if evt_setpoint not in ['N/A', 'None', none] %} @ {{ evt_setpoint }}°C{% endif %}, Fan {{ evt_fan }}{% if evt_is_active %}, {{ evt_eff }}% eff{% if evt_stalling | bool %}, STALLING{% endif %}{% endif %} | {{ control_mode }}{% if control_mode == 'Smart' %}, {{ 'present' if room_presence_detected else 'no presence' }}{% if not should_activate %}, INACTIVE{% endif %}{% endif %}{% if bed_occupied %}, in bed{% endif %}{% if ceiling_fan_configured %} | Ceiling fan {{ evt_cfan_speed }}{% endif %}{% if manual_override_detection | bool %} | ⚠️ OVERRIDE DETECTED{% endif %} | trigger={{ trigger.id }}"
-      level: warning
+  - if:
+    - condition: template
+      value_template: "{{ evt_mode not in ['off', 'smart_off', 'away_off', 'auto_off_off',
+        'stability_off'] or evt_changed }}"
+    then:
+    - service: system_log.write
+      data:
+        message: "[EVENT] {{ room_name }}{% if evt_changed %} ★{% endif %} | {{ evt_mode | replace('_', ' ') | title }} ({{ time_in_current_mode | round(0) }}min){% if evt_changed %}, was {{ evt_prev | replace('_', ' ') | title }}{% endif %} | Room {{ current_temp }}°C, {{ evt_rate }}°C/min{% if evt_outside != 'N/A' %}, outside {{ evt_outside }}°C{% endif %} | Target {{ target_temp }}°C{% if evt_is_active %}, {{ evt_dist }}°C away{% endif %}{% if evt_is_active and evt_adj_target | float(0) != target_temp | float(0) %} (esc L{{ final_escalation_level }} → {{ evt_adj_target }}°C){% elif evt_is_active and evt_deesc | int(0) > 0 %} (de-esc L{{ evt_deesc }}){% endif %} | AC: {{ evt_hvac }}{% if evt_setpoint not in ['N/A', 'None', none] %} @ {{ evt_setpoint }}°C{% endif %}, Fan {{ evt_fan }}{% if evt_is_active %}, {{ evt_eff }}% eff{% if evt_stalling | bool %}, STALLING{% endif %}{% endif %} | {{ control_mode }}{% if control_mode == 'Smart' %}, {{ 'present' if room_presence_detected else 'no presence' }}{% if not should_activate %}, INACTIVE{% endif %}{% endif %}{% if bed_occupied %}, in bed{% endif %}{% if ceiling_fan_configured %} | Ceiling fan {{ evt_cfan_speed }}{% endif %}{% if manual_override_detection | bool %} | ⚠️ OVERRIDE DETECTED{% endif %} | trigger={{ trigger.id }}"
+        level: warning
 - if:
   - condition: template
     value_template: '{{ debug_enabled }}'
