@@ -8957,6 +8957,28 @@ action:
         continue_hvac_mode: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
           | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes %}\n
           \ Cool\n{% else %}\n  {{ modes[0] if modes else 'cool' }}\n{% endif %}\n"
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ continue_hvac_mode }}'
+          continue_on_error: false
+        - delay:
+            milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed }}'
+          then:
+          - service: climate.set_fan_mode
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              fan_mode: '{{ continue_fan_mode }}'
+            continue_on_error: false
     - if:
       - condition: template
         value_template: '{{ debug_enabled }}'
@@ -9031,28 +9053,6 @@ action:
         data:
           value: '{{ adjusted_target }}'
         continue_on_error: true
-    - repeat:
-        for_each: '{{ climate_list }}'
-        sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ continue_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - if:
-          - condition: template
-            value_template: '{{ fan_mode_changed }}'
-          then:
-          - service: climate.set_fan_mode
-            target:
-              entity_id: '{{ repeat.item }}'
-            data:
-              fan_mode: '{{ continue_fan_mode }}'
-            continue_on_error: false
     - if:
       - condition: template
         value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
@@ -10376,6 +10376,28 @@ action:
         continue_hvac_mode_heating: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
           | list %} {% if 'heat' in modes %}\n  heat\n{% elif 'Heat' in modes %}\n
           \ Heat\n{% else %}\n  {{ modes[0] if modes else 'heat' }}\n{% endif %}\n"
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ continue_hvac_mode_heating }}'
+          continue_on_error: false
+        - delay:
+            milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed }}'
+          then:
+          - service: climate.set_fan_mode
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              fan_mode: '{{ continue_fan_mode_heating }}'
+            continue_on_error: false
     - if:
       - condition: template
         value_template: '{{ debug_enabled }}'
@@ -10433,24 +10455,6 @@ action:
         data:
           value: '{{ adjusted_target }}'
         continue_on_error: true
-    - repeat:
-        for_each: '{{ climate_list }}'
-        sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ continue_hvac_mode_heating }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - service: climate.set_fan_mode
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            fan_mode: '{{ continue_fan_mode_heating }}'
-          continue_on_error: false
     - if:
       - condition: template
         value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
@@ -10543,6 +10547,59 @@ action:
         selected_swing_mode: '{{ validated_swing_mode }}'
     - if:
       - condition: template
+        value_template: '{{ helper_mode not in [none, '''', ''unavailable'', ''unknown'']
+          and enable_heating }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_mode }}'
+        data:
+          value: heating
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_hvac }}'
+        data:
+          value: '{{ selected_hvac_mode }}'
+        continue_on_error: true
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ selected_hvac_mode }}'
+          continue_on_error: false
+        - delay:
+            milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed }}'
+          then:
+          - service: climate.set_fan_mode
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              fan_mode: '{{ selected_fan_mode }}'
+            continue_on_error: false
+    - if:
+      - condition: template
+        value_template: '{{ event_logging_enabled and last_mode != ''heating'' }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "[EVENT] {{ room_name }} 🔥 | Heating Started | Room {{ current_temp
+            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            selected_hvac_mode }}"
+          level: warning
+    - if:
+      - condition: template
         value_template: '{{ debug_enabled }}'
       then:
       - service: system_log.write
@@ -10600,37 +10657,6 @@ action:
           target:
             entity_id: '{{ ceiling_fan_entities }}'
           continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ helper_mode not in [none, '''', ''unavailable'', ''unknown'']
-          and enable_heating }}'
-      then:
-      - service: input_text.set_value
-        target:
-          entity_id: '{{ helper_mode }}'
-        data:
-          value: heating
-    - if:
-      - condition: template
-        value_template: '{{ event_logging_enabled and last_mode != ''heating'' }}'
-      then:
-      - service: system_log.write
-        data:
-          message: "[EVENT] {{ room_name }} 🔥 | Heating Started | Room {{ current_temp
-            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
-            selected_hvac_mode }}"
-          level: warning
-    - if:
-      - condition: template
-        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_text.set_value
-        target:
-          entity_id: '{{ helper_expected_hvac }}'
-        data:
-          value: '{{ selected_hvac_mode }}'
-        continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
@@ -10742,39 +10768,6 @@ action:
               }}\n    • Temp: {{ snapshot_temp }}°C\n    • Fan: {{ snapshot_fan }}\n
               \   • Swing: {{ snapshot_swing }}\n"
             level: warning
-    - repeat:
-        for_each: '{{ climate_list }}'
-        sequence:
-        - variables:
-            current_entity: '{{ repeat.item }}'
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ selected_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - service: climate.set_fan_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            fan_mode: '{{ selected_fan_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - if:
-          - condition: template
-            value_template: '{{ selected_swing_mode not in [''none'', '''', ''unavailable'',
-              ''unknown''] }}'
-          then:
-          - service: climate.set_swing_mode
-            target:
-              entity_id: '{{ current_entity }}'
-            data:
-              swing_mode: '{{ selected_swing_mode }}'
-            continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
