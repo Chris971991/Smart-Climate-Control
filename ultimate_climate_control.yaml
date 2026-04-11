@@ -13327,7 +13327,8 @@ action:
       continue_on_error: true
   - conditions:
     - condition: template
-      value_template: '{{ control_mode == ''Smart'' }}'
+      value_template: '{{ control_mode == ''Smart'' or (control_mode == ''Override''
+        and override_behavior == ''independent'' and override_source == ''ac'') }}'
     - condition: template
       value_template: '{{ not bed_occupied }}'
     - condition: template
