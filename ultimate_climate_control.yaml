@@ -13344,6 +13344,28 @@ action:
     sequence:
     - if:
       - condition: template
+        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_hvac }}'
+        data:
+          value: 'off'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_mode not in [none, '''', ''unavailable'', ''unknown'']
+          }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_mode }}'
+        data:
+          value: smart_off
+        continue_on_error: true
+    - if:
+      - condition: template
         value_template: '{{ event_logging_enabled and states(helper_mode) not in [''smart_off'',
           ''away_off'', ''auto_off_off'', ''off''] }}'
       then:
