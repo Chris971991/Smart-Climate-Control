@@ -7073,7 +7073,13 @@ action:
       | bool %}\n  {% set reasons = reasons + ['time_window'] %}\n{% endif %} {{ reasons
       | join(', ') if reasons | length > 0 else 'none' }}\n"
     should_activate: "{# v3.11.0: Override mode = automation paused, just like Manual
-      mode #} {% if control_mode == 'Override' %}\n  false\n{# v7.0.3 FIX: Manual
+      mode #} {# v9.7.8: Independent mode with AC-only override lets fan handlers run #}
+      {% if control_mode == 'Override' and not (override_behavior == 'independent'
+      and override_source == 'ac') %}\n  false\n{% elif control_mode == 'Override'
+      and override_behavior == 'independent' and override_source == 'ac' %}\n  {#
+      AC overridden but fan is independent - evaluate normally for fan handlers #}\n
+      \ {{ smart_presence_active if states(helper_mode_before_override) == 'Smart'
+      else (anyone_home or approaching_home) }}\n{# v7.0.3 FIX: Manual
       override (physical remote) takes priority over runtime protection #} {# If user
       pressed physical remote to turn off AC, respect that immediately #} {% elif
       manual_override_detection | bool %}\n  false\n{# v3.9.20 FIX: Runtime protection
