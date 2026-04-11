@@ -13338,8 +13338,9 @@ action:
     - condition: template
       value_template: '{{ proximity_zone == ''home'' or anyone_home }}'
     - condition: template
-      value_template: '{{ last_mode == ''ceiling_fan_cooling'' or (time_in_current_mode
-        | float(0)) >= (runtime_min | float(0)) }}'
+      value_template: '{{ last_mode in [''ceiling_fan_cooling'', ''smart_off'', ''off'',
+        ''away_off'', ''auto_off_off''] or (time_in_current_mode | float(0)) >= (runtime_min
+        | float(0)) }}'
     sequence:
     - if:
       - condition: template
