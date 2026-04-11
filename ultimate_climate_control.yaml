@@ -9790,16 +9790,6 @@ action:
           value: cooling
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled and last_mode != ''cooling'' }}'
-      then:
-      - service: system_log.write
-        data:
-          message: "[EVENT] {{ room_name }} ❄️ | Cooling Started | Room {{ current_temp
-            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
-            selected_hvac_mode }}"
-          level: warning
-    - if:
-      - condition: template
         value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
           ''unknown''] }}'
       then:
@@ -9809,6 +9799,38 @@ action:
         data:
           value: '{{ selected_hvac_mode }}'
         continue_on_error: true
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ selected_hvac_mode }}'
+          continue_on_error: false
+        - delay:
+            milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed }}'
+          then:
+          - service: climate.set_fan_mode
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              fan_mode: '{{ selected_fan_mode }}'
+            continue_on_error: false
+    - if:
+      - condition: template
+        value_template: '{{ event_logging_enabled and last_mode != ''cooling'' }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "[EVENT] {{ room_name }} ❄️ | Cooling Started | Room {{ current_temp
+            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            selected_hvac_mode }}"
+          level: warning
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
@@ -9920,50 +9942,6 @@ action:
               }}\n    • Temp: {{ snapshot_temp }}°C\n    • Fan: {{ snapshot_fan }}\n
               \   • Swing: {{ snapshot_swing }}\n"
             level: warning
-    - repeat:
-        for_each: '{{ climate_list }}'
-        sequence:
-        - variables:
-            current_entity: '{{ repeat.item }}'
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ selected_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - service: climate.set_fan_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            fan_mode: '{{ selected_fan_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - if:
-          - condition: template
-            value_template: '{{ selected_swing_mode not in [''none'', '''', ''unavailable'',
-              ''unknown''] }}'
-          then:
-          - service: climate.set_swing_mode
-            target:
-              entity_id: '{{ current_entity }}'
-            data:
-              swing_mode: '{{ selected_swing_mode }}'
-            continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
-      then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
   - conditions:
     - condition: template
       value_template: "{# v8.9.4 FIX: Added explicit room_presence_detected check
