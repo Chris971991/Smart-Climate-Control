@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.7.11
-  description: "**Ultimate Smart Climate Control v9.7.11**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.7.12
+  description: "**Ultimate Smart Climate Control v9.7.12**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,20 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.7.11 - HARDENING: Apply bool coercion sweep to AC paths:**\n•
+    UPDATES:**\n\n**v9.7.12 - FIX: Align periodic_check grace with BRP072C integration timeout:**\n•
+    **FIX**: `manual_override_detection` template's `periodic_check` branch used
+    `time_since_cmd > 10s` as the \"not mid-command\" check. BRP072C devices have
+    a 30s integration timeout — when automation sent a command and the next 1-min
+    periodic_check tick fired before the device applied it, blueprint saw `expected=cool,
+    actual=off` and fired a FALSE override.\n• **Patched** to use 45s for `DaikinBRP072C`
+    (matches climate.py's v2.37.0 `_last_any_command_time` grace), 30s for others.
+    Non-Daikin devices fall through to 30s — better than the previous 10s for any
+    slow device.\n• **Real-press detection** still works: max 60s latency to next
+    periodic_check tick. Event listener path (`daikin_physical_remote_override`)
+    remains instant.\n• Companion to pydaikin v2.31.0 (post-set verification removed)
+    and integration v2.36.0 (coordinator reconnect grace) — all three layers now
+    aligned to suppress false overrides during slow-device handshakes.\n\n**v9.7.11
+    - HARDENING: Apply bool coercion sweep to AC paths:**\n•
     Applied the same string-truthiness fix from v9.7.9-10 (originally for the ceiling
     fan) to AC start/maintain/transition conditions\n• **Patched conditions**: AC
     cooling start, AC heating start, pre-conditioning entry, pre-conditioning cooling/heating
@@ -6935,7 +6948,15 @@ action:
       hasn't sent a command recently\n     This catches physical remote turn-off that
       happened between polls #}\n  {% set expected_on = expected_hvac in ['cool',
       'heat', 'auto', 'heat_cool', 'dry', 'fan_only'] %}\n  {% set actual_off = actual_hvac
-      == 'off' %}\n  {% set not_mid_command = time_since_cmd > 10 %}\n  {% set not_stale
+      == 'off' %}\n  {# v9.7.12 FIX: Align periodic_check grace with integration timeout. #}\n
+      \ {# BRP072C devices have 30s integration timeout; pydaikin/climate.py suppress #}\n
+      \ {# override detection for 30s+ after any command. Periodic check (1-min cadence) #}\n
+      \ {# must use a longer window to match v2.37.0's _last_any_command_time grace, #}\n
+      \ {# else it fires false override mid-handshake when device hasn't applied yet. #}\n
+      \ {% set device_type = state_attr(climate_list[0], 'device_type') or 'unknown'
+      %}\n  {% set mid_command_threshold = 45 if device_type == 'DaikinBRP072C' else
+      30 %}\n  {% set not_mid_command = time_since_cmd > mid_command_threshold %}\n
+      \ {% set not_stale
       = time_since_cmd < 300 %}\n  {# v7.5.0: Tightened from 3600s to 300s (5 min). Periodic check is a safety net, #}\n  {# not primary detection. If command is >5 min old and we just noticed mismatch, #}\n  {# it's likely stale state (HA restart, failed command) not a physical remote press. #}\n  {# Real remote presses are caught within seconds by climate_state_change trigger. #}\n  {% set power_override = expected_on and actual_off %}\n\n  {# v7.7.0 FIX: Removed temp_override from periodic check - blueprint dynamically #}\n  {# changes AC setpoint via escalation (adjusted_target), so expected temp (user #}\n  {# target) will differ from actual setpoint when escalation is active. Same issue #}\n  {# as fan_override (removed in v7.4.1). Temp/fan override detection only works #}\n  {# via climate_state_change trigger where context can identify the source. #}\n\n  {{ power_override and not_mid_command
       and not_stale }}\n{% elif trigger.id != 'climate_state_change' %}\n  false\n{%
       elif not (trigger.to_state is defined and trigger.from_state is defined) %}\n
