@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.7.12
-  description: "**Ultimate Smart Climate Control v9.7.12**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.7.13
+  description: "**Ultimate Smart Climate Control v9.7.13**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,21 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.7.12 - FIX: Align periodic_check grace with BRP072C integration timeout:**\n•
+    UPDATES:**\n\n**v9.7.13 - FIX: helper_expected_temp 0.0 range error in smart_off + eco_target string+int:**\n•
+    **FIX 1 (primary)**: `smart_off` (vacancy) branch at L14958-14961 hardcoded
+    `value: '0'` for `input_number.helper_expected_temp` — but the helper has range
+    10-35. Every time AC turned off via vacancy, automation error logged: `Invalid
+    value for input_number.climate_expected_temp_*: 0.0 (range 10.0 - 35.0)`. Fixed
+    to `'{{ target_temp | float(22) }}'`\n• **FIX 2**: `eco_target` template at L9502
+    (auto_off ECO) and L13875 (away ECO) computed `cooling_target_temp + eco_mode_setpoint_offset`
+    where `cooling_target_temp` is a STRING (rendered from `{{ base_cooling_target |
+    round(1) }}`). Jinja's `string + int` raises → empty render → 0.0 input → range
+    error. Fixed with `(cooling_target_temp | float(0))` coercion.\n• **Symptom**:
+    log spam `Invalid value for input_number.climate_expected_temp_*: 0.0 (range
+    10.0 - 35.0)` on every vacancy turn-off (very common)\n• **Affects**: all rooms
+    when AC turns off via vacancy detection. Plus rooms with `away_mode_action: eco`
+    or `auto_off_action: eco`.\n\n**v9.7.12 - FIX: Align periodic_check grace
+    with BRP072C integration timeout:**\n•
     **FIX**: `manual_override_detection` template's `periodic_check` branch used
     `time_since_cmd > 10s` as the \"not mid-command\" check. BRP072C devices have
     a 30s integration timeout — when automation sent a command and the next 1-min
@@ -9499,9 +9513,13 @@ action:
           value_template: '{{ auto_off_action == ''eco'' }}'
         sequence:
         - variables:
-            eco_target: "{% if current_temp > comfort_max_temp %}\n  {{ cooling_target_temp
-              + eco_mode_setpoint_offset }}\n{% else %}\n  {{ heating_target_temp
-              - eco_mode_setpoint_offset }}\n{% endif %}\n"
+            # v9.7.13 FIX: cooling_target_temp/heating_target_temp are STRINGS (from
+            # `{{ base_cooling_target | round(1) }}` templates) — adding int caused Jinja
+            # to raise "string + int" error, eco_target rendered empty, input_number got
+            # 0.0 (out of 10-35 range). Coerce to float before math.
+            eco_target: "{% if current_temp > comfort_max_temp %}\n  {{ (cooling_target_temp
+              | float(0)) + eco_mode_setpoint_offset }}\n{% else %}\n  {{ (heating_target_temp
+              | float(0)) - eco_mode_setpoint_offset }}\n{% endif %}\n"
         - service: input_number.set_value
           target:
             entity_id: '{{ helper_expected_temp }}'
@@ -13872,9 +13890,10 @@ action:
           value_template: '{{ away_action == ''eco'' }}'
         sequence:
         - variables:
-            eco_target: "{% if current_temp > comfort_max_temp %}\n  {{ cooling_target_temp
-              + eco_mode_setpoint_offset }}\n  {% else %}\n  {{ heating_target_temp
-              - eco_mode_setpoint_offset }}\n{% endif %}\n"
+            # v9.7.13 FIX: same as auto_off_eco — coerce target_temp strings to float.
+            eco_target: "{% if current_temp > comfort_max_temp %}\n  {{ (cooling_target_temp
+              | float(0)) + eco_mode_setpoint_offset }}\n  {% else %}\n  {{ (heating_target_temp
+              | float(0)) - eco_mode_setpoint_offset }}\n{% endif %}\n"
         - service: input_number.set_value
           target:
             entity_id: '{{ helper_expected_temp }}'
@@ -14941,7 +14960,10 @@ action:
       target:
         entity_id: '{{ helper_expected_temp }}'
       data:
-        value: '0'
+        # v9.7.13 FIX: was hardcoded `'0'` which is outside the helper's 10-35 range,
+        # causing automation errors. Use target_temp (always valid) — turning off
+        # AC doesn't really need a "no expected temp" sentinel; last valid value works.
+        value: '{{ target_temp | float(22) }}'
       continue_on_error: true
   - if:
     - condition: template
