@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.7.10
-  description: "**Ultimate Smart Climate Control v9.7.10**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.7.11
+  description: "**Ultimate Smart Climate Control v9.7.11**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,22 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.7.10 - CRITICAL FIX: fan_presence_ok variable ordering:**\n•
+    UPDATES:**\n\n**v9.7.11 - HARDENING: Apply bool coercion sweep to AC paths:**\n•
+    Applied the same string-truthiness fix from v9.7.9-10 (originally for the ceiling
+    fan) to AC start/maintain/transition conditions\n• **Patched conditions**: AC
+    cooling start, AC heating start, pre-conditioning entry, pre-conditioning cooling/heating
+    continue, comfort fan-only smart-presence check, smart-mode AC turn-off when
+    presence lost, window-open guard, precond auto-arrival timestamp, precond should-end
+    logic, AC handler entry/exit (cooling and heating)\n• **Pattern fixed**: `should_activate
+    or X` / `should_activate and X` / `is_precond_mode and X` / `not smart_presence_active`
+    / `not window_open` — these all silently mis-evaluated because the boolean-template
+    variables render as multi-line strings that are truthy in raw Jinja `and`/`or`/`not`\n•
+    **Symptom prevented**: AC could have started cooling/heating without presence
+    confirmation when temp went out of comfort zone, window-detection guard was always
+    bypassed, smart-mode auto-off never fired, pre-conditioning auto-arrival timestamp
+    never set\n• Not all visible — most paths weren't being exercised in current
+    conditions, but they were latent bugs.\n\n**v9.7.10 - CRITICAL FIX: fan_presence_ok
+    variable ordering:**\n•
     **CRITICAL FIX**: `fan_presence_ok` was defined BEFORE `room_presence_detected`
     and `smart_presence_active` in the variables block — Jinja evaluates top-down,
     so those dependencies were UNDEFINED at fan_presence_ok eval time. The chained
@@ -7253,8 +7268,9 @@ action:
     continue_on_error: true
 - if:
   - condition: template
-    value_template: "{{ is_precond_mode and anyone_home and not precond_arrival_occurred
-      and\n   helper_precond_arrival not in [none, '', 'unavailable', 'unknown'] }}\n"
+    value_template: "{{ (is_precond_mode | bool) and (anyone_home | bool) and not
+      (precond_arrival_occurred | bool)\n   and helper_precond_arrival not in [none,
+      '', 'unavailable', 'unknown'] }}\n"
   then:
   - service: input_datetime.set_datetime
     target:
@@ -7316,10 +7332,10 @@ action:
       configured_max_minutes = precond_max_runtime | float(60) %} {% set max_age_seconds
       = [((configured_max_minutes + 60) * 60) | int, 4 * 3600] | max %} {% set fresh_was_automation_triggered
       = fresh_start_ts > epoch_1971 and (as_timestamp(now()) - fresh_start_ts) < max_age_seconds
-      %} {% set fresh_should_end = fresh_grace_expired or (precond_temp_reached and
-      min_runtime_met) or precond_safety_timeout_exceeded %} {{ is_precond_mode and
-      fresh_was_automation_triggered and fresh_should_end and\n   control_mode_helper
-      not in [none, '', 'unavailable', 'unknown'] }}\n"
+      %} {% set fresh_should_end = fresh_grace_expired or ((precond_temp_reached
+      | bool) and min_runtime_met) or (precond_safety_timeout_exceeded | bool) %}
+      {{ (is_precond_mode | bool) and fresh_was_automation_triggered and fresh_should_end
+      and\n   control_mode_helper not in [none, '', 'unavailable', 'unknown'] }}\n"
   then:
   - variables:
       fresh_arrival_ts: '{{ as_timestamp(states(helper_precond_arrival)) | float(0)
@@ -8297,7 +8313,7 @@ action:
         data:
           datetime: '{{ now() }}'
 - condition: template
-  value_template: '{{ not window_open or not enable_window_detection }}'
+  value_template: '{{ not (window_open | bool) or not enable_window_detection }}'
 - variables:
     deescalation_level: "{% if not dynamic_enabled %}\n  0\n{% else %}\n  {% set approaching_threshold
       = deescalation_threshold %}  {# Distance to start de-escalating #}\n  {% set
@@ -8968,16 +8984,17 @@ action:
           temperature: '{{ precond_boost_temp }}'
   - conditions:
     - condition: template
-      value_template: '{{ should_activate or is_precond_mode }}'
+      value_template: '{{ (should_activate | bool) or (is_precond_mode | bool) }}'
     - condition: template
       value_template: '{{ last_mode in [''cooling'', ''bed_comfort_eco'', ''bed_comfort_quiet'']
-        or (is_precond_mode and states(climate_list[0]) == ''cool'') }}'
+        or ((is_precond_mode | bool) and states(climate_list[0]) == ''cool'') }}'
     - condition: template
-      value_template: '{{ current_temp <= comfort_max_temp or is_precond_mode }}'
+      value_template: '{{ current_temp <= comfort_max_temp or (is_precond_mode | bool)
+        }}'
     - condition: template
       value_template: '{% set overshoot_target = target_temp - target_overshoot %}
         {{ (current_temp > overshoot_target and current_temp < (comfort_max_temp -
-        0.1)) or is_precond_mode }}
+        0.1)) or (is_precond_mode | bool) }}
 
         '
     - condition: template
@@ -10396,16 +10413,17 @@ action:
           level: warning
   - conditions:
     - condition: template
-      value_template: '{{ should_activate or is_precond_mode }}'
+      value_template: '{{ (should_activate | bool) or (is_precond_mode | bool) }}'
     - condition: template
-      value_template: '{{ last_mode in [''heating''] or (is_precond_mode and states(climate_list[0])
-        == ''heat'') }}'
+      value_template: '{{ last_mode in [''heating''] or ((is_precond_mode | bool)
+        and states(climate_list[0]) == ''heat'') }}'
     - condition: template
-      value_template: '{{ current_temp >= comfort_min_temp or is_precond_mode }}'
+      value_template: '{{ current_temp >= comfort_min_temp or (is_precond_mode | bool)
+        }}'
     - condition: template
       value_template: '{% set overshoot_target = target_temp + target_overshoot %}
         {{ (current_temp < overshoot_target and current_temp > (comfort_min_temp +
-        0.1)) or is_precond_mode }}
+        0.1)) or (is_precond_mode | bool) }}
 
         '
     - condition: template
@@ -10898,9 +10916,9 @@ action:
     - choose:
       - conditions:
         - condition: template
-          value_template: '{{ should_activate and enable_cooling and current_temp
-            > comfort_max_temp and (control_mode != ''Smart'' or smart_presence_active)
-            }}'
+          value_template: '{{ (should_activate | bool) and enable_cooling and current_temp
+            > comfort_max_temp and (control_mode != ''Smart'' or (smart_presence_active
+            | bool)) }}'
         sequence:
         - repeat:
             for_each: '{{ climate_list }}'
@@ -11087,9 +11105,9 @@ action:
             float(0)) > (runtime_min | float(0)))) or ((last_mode == ''off'' or actual_ac_state
             == ''off'') and (not enforce_offtime or (time_in_current_mode | float(0))
             > (offtime_min | float(0)))) or (last_mode != ''heating'' and last_mode
-            != ''off'') %} {{ enable_heating and should_activate and current_temp
+            != ''off'') %} {{ enable_heating and (should_activate | bool) and current_temp
             < comfort_min_temp and time_protection_met and (control_mode != ''Smart''
-            or smart_presence_active) }}
+            or (smart_presence_active | bool)) }}
 
             '
         sequence:
@@ -11202,19 +11220,20 @@ action:
     - condition: template
       value_template: '{{ enable_pre_conditioning }}'
     - condition: template
-      value_template: '{{ is_precond_mode or should_activate }}'
+      value_template: '{{ (is_precond_mode | bool) or (should_activate | bool) }}'
     - condition: template
-      value_template: '{% set location_check = approaching_home and not anyone_home
-        %} {% set manual_precond_needs_setup = is_precond_mode and actual_ac_state
-        == ''off'' %} {{ location_check or manual_precond_needs_setup }}
+      value_template: '{% set location_check = (approaching_home | bool) and not (anyone_home
+        | bool) %} {% set manual_precond_needs_setup = (is_precond_mode | bool) and
+        actual_ac_state == ''off'' %} {{ location_check or manual_precond_needs_setup
+        }}
 
         '
     - condition: template
       value_template: '{% set needs_cooling = current_temp > comfort_max_temp and
         current_temp > target_temp and enable_cooling %} {% set needs_heating = current_temp
         < comfort_min_temp and current_temp < target_temp and enable_heating %} {%
-        set manual_precond = is_precond_mode and actual_ac_state == ''off'' %} {{
-        needs_cooling or needs_heating or manual_precond }}
+        set manual_precond = (is_precond_mode | bool) and actual_ac_state == ''off''
+        %} {{ needs_cooling or needs_heating or manual_precond }}
 
         '
     sequence:
@@ -11395,17 +11414,17 @@ action:
         continue_on_error: true
   - conditions:
     - condition: template
-      value_template: '{{ should_activate and approaching_home and not anyone_home
-        }}'
+      value_template: '{{ (should_activate | bool) and (approaching_home | bool) and
+        not (anyone_home | bool) }}'
     - condition: template
       value_template: "{% if last_mode == 'cooling' %}\n  {# Already cooling - continue
         until target reached #}\n  {% if current_temp <= (target_temp - target_overshoot)
         %}\n    False  {# EXIT: Target achieved with overshoot - cooled to {{ (target_temp
         - target_overshoot) | round(1) }}°C (strategy: {{ overshoot_strategy }}) #}\n
-        \ {% else %}\n    {{ should_activate and enable_cooling and current_temp >
-        (target_temp - target_overshoot) }}\n  {% endif %}\n{% else %}\n  {# Not cooling
-        - start if comfort max exceeded #}\n  {{ should_activate and enable_cooling
-        and current_temp > comfort_max_temp }}\n{% endif %}\n"
+        \ {% else %}\n    {{ (should_activate | bool) and enable_cooling and current_temp
+        > (target_temp - target_overshoot) }}\n  {% endif %}\n{% else %}\n  {# Not
+        cooling - start if comfort max exceeded #}\n  {{ (should_activate | bool)
+        and enable_cooling and current_temp > comfort_max_temp }}\n{% endif %}\n"
     - condition: template
       value_template: "{% if last_mode == 'cooling' %}\n  {# Same cooling mode - allow
         escalation, enforce runtime for de-escalation #}\n  {{ (final_escalation_level
@@ -12723,7 +12742,8 @@ action:
     - condition: template
       value_template: '{{ control_mode in [''Smart'', ''Auto''] }}'
     - condition: template
-      value_template: '{{ control_mode != ''Smart'' or smart_presence_active }}'
+      value_template: '{{ control_mode != ''Smart'' or (smart_presence_active | bool)
+        }}'
     - condition: template
       value_template: '{{ current_temp >= comfort_min_temp and current_temp <= comfort_max_temp
         }}'
@@ -14836,9 +14856,9 @@ action:
         level: warning
 - if:
   - condition: template
-    value_template: '{{ control_mode == ''Smart'' and not smart_presence_active and
-      not bed_occupied and actual_ac_state == ''on'' and last_mode not in [''auto_off_off'',
-      ''auto_off_eco'', ''auto_off_fan_only''] }}'
+    value_template: '{{ control_mode == ''Smart'' and not (smart_presence_active
+      | bool) and not bed_occupied and actual_ac_state == ''on'' and last_mode not
+      in [''auto_off_off'', ''auto_off_eco'', ''auto_off_fan_only''] }}'
   then:
   - if:
     - condition: template
