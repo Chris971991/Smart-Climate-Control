@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.7.9
-  description: "**Ultimate Smart Climate Control v9.7.9**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.7.10
+  description: "**Ultimate Smart Climate Control v9.7.10**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,17 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.7.9 - CRITICAL FIX: Ceiling Fan String-Truthiness Bug (full sweep):**\n•
+    UPDATES:**\n\n**v9.7.10 - CRITICAL FIX: fan_presence_ok variable ordering:**\n•
+    **CRITICAL FIX**: `fan_presence_ok` was defined BEFORE `room_presence_detected`
+    and `smart_presence_active` in the variables block — Jinja evaluates top-down,
+    so those dependencies were UNDEFINED at fan_presence_ok eval time. The chained
+    `| default(false) | bool` filters didn't reliably handle Jinja undefined values
+    in a HA variables-block context, so `fan_presence_ok` would silently take the
+    elif branch and return `\"true\"` regardless of actual presence\n• **Fix**: relocated
+    `fan_presence_ok` definition to AFTER both `room_presence_detected` and `smart_presence_active`
+    so dependency order matches reference order\n• Combined with v9.7.9's `| bool`
+    coercions on the entry/maintain conditions, this fully resolves the ceiling-fan-stuck-on
+    bug under `fan_presence_exit: respect_timers`.\n\n**v9.7.9 - CRITICAL FIX: Ceiling Fan String-Truthiness Bug (full sweep):**\n•
     **CRITICAL FIX**: Ceiling fan stayed ON in Smart mode after presence cleared
     AND re-activated immediately even from `smart_off` state\n• **Two bugs, same
     root cause**: (1) `fan_presence_ok` template emitted multi-line strings (`\"\\n
@@ -6076,12 +6086,6 @@ action:
       == 'medium' %}\n    {{ ceiling_fan_medium_switch }}\n  {% else %}\n    {{ ceiling_fan_high_switch
       }}\n  {% endif %}\n{% else %}\n  none\n{% endif %}\n"
     ceiling_fan_mode_active: '{{ last_mode == ''ceiling_fan_cooling'' }}'
-    fan_presence_ok: "{%- if control_mode != 'Smart' -%}true{%- elif (room_presence_detected
-      | default(false) | bool) -%}{%- if fan_presence_entry == 'instant' -%}true{%-
-      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
-      }}{%- endif -%}{%- else -%}{%- if fan_presence_exit == 'instant' -%}false{%-
-      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
-      }}{%- endif -%}{%- endif -%}"
     ceiling_fan_runtime_minutes: "{% if ceiling_fan_mode_active and helper_change
       and states(helper_change) not in ['unknown', 'unavailable', ''] %}\n  {{ ((as_timestamp(now())
       - as_timestamp(states(helper_change))) / 60) | round(1) }}\n{% else %}\n  0\n{%
@@ -6857,6 +6861,12 @@ action:
       < presence_timeout %}\n    true\n  {% elif proximity_zone == 'home' %}\n    true\n
       \ {% elif anyone_home %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{%
       else %}\n  false\n{% endif %}\n"
+    fan_presence_ok: "{%- if control_mode != 'Smart' -%}true{%- elif (room_presence_detected
+      | default(false) | bool) -%}{%- if fan_presence_entry == 'instant' -%}true{%-
+      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
+      }}{%- endif -%}{%- else -%}{%- if fan_presence_exit == 'instant' -%}false{%-
+      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
+      }}{%- endif -%}{%- endif -%}"
     extreme_temp_detected: "{% if not extreme_override %}\n  false\n{% elif current_temp
       > extreme_high %}\n  hot\n{% elif current_temp < extreme_low %}\n  cold\n{%
       else %}\n  false\n{% endif %}\n"
