@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.4.1
-  description: "**Ultimate Smart Climate Control v9.4.1**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.7.9
+  description: "**Ultimate Smart Climate Control v9.7.9**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,13 +34,41 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.4.1 - Fan Presence Entry/Exit Modes:**\n• **NEW**: `Fan Presence
-    Entry` — choose **Instant** (fan starts on first detection) or **Respect timers**
-    (wait for confirmation delay like AC)\n• **NEW**: `Fan Presence Exit` — choose
-    **Instant** (fan stops immediately) or **Respect timers** (stay on during grace
-    period like AC)\n• Default: instant entry + respect timers exit (quick comfort,
-    no annoying shutoffs for brief absences)\n• Only affects Smart mode — Auto mode
-    always bypasses presence checks\n\n**v9.3.7 - Fan Override + Stale Helper Fixes:**\n•
+    UPDATES:**\n\n**v9.7.9 - CRITICAL FIX: Ceiling Fan String-Truthiness Bug (full sweep):**\n•
+    **CRITICAL FIX**: Ceiling fan stayed ON in Smart mode after presence cleared
+    AND re-activated immediately even from `smart_off` state\n• **Two bugs, same
+    root cause**: (1) `fan_presence_ok` template emitted multi-line strings (`\"\\n
+    \ false\\n\"`) instead of real booleans — non-empty strings are TRUTHY in Jinja
+    so the MAINTAIN branch (`and fan_presence_ok`) always passed; (2) the ceiling-fan
+    ENTRY condition used raw `should_activate`, `room_presence_detected`, `in_ceiling_fan_zone`,
+    `ceiling_fan_should_escalate`, `ceiling_fan_mode_active`, `is_precond_mode`,
+    `approaching_home`, `anyone_home` — all of which are string-rendering boolean
+    templates with the same truthiness trap, so the entry guards were silently bypassed\n•
+    **Fix**: rewrote `fan_presence_ok` with whitespace control (`{%- -%}`) producing
+    a clean lowercase `true`/`false`; added `| bool` coercion at every use site of
+    these boolean-template variables in the ceiling-fan entry/maintain conditions\n•
+    **Symptom**: ceiling fan stuck ON for hours with nobody in the room. AC was
+    unaffected (its turn-off path uses `not room_presence_detected` which evaluated
+    correctly).\n\n**v9.4.2 - CRITICAL FIX: Ceiling Fan Vacancy Timer (initial fix,
+    incomplete):**\n•
+    **CRITICAL FIX**: Ceiling fan stayed ON indefinitely after presence cleared in
+    Smart mode with `fan_presence_exit: respect_timers`\n• **Root cause**: `fan_presence_ok`
+    template emitted a multi-line string (e.g. `\"\\n  false\\n\"`) instead of a
+    real boolean. Non-empty strings are truthy in Jinja, so the MAINTAIN branch (`and
+    fan_presence_ok`) always passed regardless of actual presence\n• **Fix**: Rewrote
+    `fan_presence_ok` with whitespace control (`{%- -%}`) and `| bool` coercion on
+    `room_presence_detected` / `smart_presence_active` references; output is now
+    a clean lowercase `true`/`false` that HA auto-converts to a real boolean\n• **Defense
+    in depth**: use sites of `fan_presence_ok` now explicitly coerce with `| bool`\n•
+    **Symptom**: ceiling fan stuck ON for hours after leaving the room. AC was unaffected
+    (its turn-off path uses `not room_presence_detected` which evaluated correctly)\n\n**v9.4.1
+    - Fan Presence Entry/Exit Modes:**\n• **NEW**: `Fan Presence Entry` — choose
+    **Instant** (fan starts on first detection) or **Respect timers** (wait for confirmation
+    delay like AC)\n• **NEW**: `Fan Presence Exit` — choose **Instant** (fan stops
+    immediately) or **Respect timers** (stay on during grace period like AC)\n• Default:
+    instant entry + respect timers exit (quick comfort, no annoying shutoffs for
+    brief absences)\n• Only affects Smart mode — Auto mode always bypasses presence
+    checks\n\n**v9.3.7 - Fan Override + Stale Helper Fixes:**\n•
     **FIX**: Fan override now detected when AC is already in Override mode (independent
     mode) — previously fan changes were silently ignored\n• **FIX**: Override source
     correctly set to `both` when fan overridden after AC (and vice versa)\n• **FIX**:
@@ -6048,12 +6076,12 @@ action:
       == 'medium' %}\n    {{ ceiling_fan_medium_switch }}\n  {% else %}\n    {{ ceiling_fan_high_switch
       }}\n  {% endif %}\n{% else %}\n  none\n{% endif %}\n"
     ceiling_fan_mode_active: '{{ last_mode == ''ceiling_fan_cooling'' }}'
-    fan_presence_ok: "{% if control_mode != 'Smart' %}\n  true\n{% elif room_presence_detected
-      %}\n  {# Entry: someone is here #}\n  {% if fan_presence_entry == 'instant'
-      %}\n    true\n  {% else %}\n    {{ smart_presence_active }}\n  {% endif %}\n{%
-      else %}\n  {# Exit: presence lost #}\n  {% if fan_presence_exit == 'instant'
-      %}\n    false\n  {% else %}\n    {{ smart_presence_active }}\n  {% endif %}\n{%
-      endif %}\n"
+    fan_presence_ok: "{%- if control_mode != 'Smart' -%}true{%- elif (room_presence_detected
+      | default(false) | bool) -%}{%- if fan_presence_entry == 'instant' -%}true{%-
+      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
+      }}{%- endif -%}{%- else -%}{%- if fan_presence_exit == 'instant' -%}false{%-
+      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
+      }}{%- endif -%}{%- endif -%}"
     ceiling_fan_runtime_minutes: "{% if ceiling_fan_mode_active and helper_change
       and states(helper_change) not in ['unknown', 'unavailable', ''] %}\n  {{ ((as_timestamp(now())
       - as_timestamp(states(helper_change))) / 60) | round(1) }}\n{% else %}\n  0\n{%
@@ -9621,6 +9649,10 @@ action:
     - condition: template
       value_template: '{{ should_activate }}'
     - condition: template
+      value_template: "{# v9.8.0: Defer to pre-conditioning branch when approaching home #}\n
+        {{ not (enable_pre_conditioning and approaching_home and not anyone_home and
+        not is_precond_mode) }}\n"
+    - condition: template
       value_template: '{% set bed_eco_active = bed_comfort_mode != ''off'' and bed_eco_fan_only_mode
         == ''enabled'' and bed_sensor_manual and is_state(bed_sensor_manual, ''on'')
         %} {% set bed_eco_max = target_temp + bed_eco_return_threshold if bed_eco_active
@@ -9954,15 +9986,20 @@ action:
         for Smart mode #} {# Defense-in-depth: should_activate covers this, but mode:restart
         race conditions #} {# can cause should_activate to evaluate inconsistently
         during state transitions #} {# v9.4.0: fan_presence_ok replaces dual Smart
-        checks; instant mode bypasses should_activate #} {{ ceiling_fan_configured\n
-        \  and not fan_override_active\n   and (should_activate or (control_mode ==
-        'Smart' and fan_presence_entry == 'instant' and room_presence_detected and
-        control_mode != 'Override' and not (manual_override_detection | bool)))\n
-        \  and enable_cooling\n   and in_ceiling_fan_zone\n   and not ceiling_fan_should_escalate\n
-        \  and not ceiling_fan_mode_active\n   and actual_ac_state != 'on'\n   and
-        last_mode not in ['cooling', 'heating']\n   and fan_presence_ok\n   and not
-        (is_precond_mode and fan_precondition_mode == 'skip')\n   and not (bed_occupied
-        and fan_bed_comfort_mode == 'off') }}\n"
+        checks; instant mode bypasses should_activate #} {# v9.7.9 FIX: coerce
+        boolean-template variables with `| bool` — they render as multi-line strings
+        like '\\n  false\\n' which are TRUTHY in Jinja and bypass these guards #} {{
+        ceiling_fan_configured\n   and not fan_override_active\n   and ((should_activate
+        | bool) or (control_mode == 'Smart' and fan_presence_entry == 'instant'
+        and (room_presence_detected | bool) and control_mode != 'Override' and not
+        (manual_override_detection | bool)))\n   and enable_cooling\n   and (in_ceiling_fan_zone
+        | bool)\n   and not (ceiling_fan_should_escalate | bool)\n   and not (ceiling_fan_mode_active
+        | bool)\n   and actual_ac_state != 'on'\n   and last_mode not in ['cooling',
+        'heating']\n   and (fan_presence_ok | bool)\n   and not ((is_precond_mode
+        | bool) and fan_precondition_mode == 'skip')\n   and not (enable_pre_conditioning
+        and (approaching_home | bool) and not (anyone_home | bool) and not (is_precond_mode
+        | bool) and fan_precondition_mode == 'skip')\n   and not (bed_occupied and
+        fan_bed_comfort_mode == 'off') }}\n"
     sequence:
     - if:
       - condition: template
@@ -10295,7 +10332,7 @@ action:
     - condition: template
       value_template: "{{ ceiling_fan_configured\n   and not fan_override_active\n
         \  and ceiling_fan_mode_active\n   and not ceiling_fan_should_escalate\n   and
-        in_ceiling_fan_zone\n   and fan_presence_ok }}\n"
+        in_ceiling_fan_zone\n   and (fan_presence_ok | bool) }}\n"
     sequence:
     - variables:
         ceiling_fan_temp_delta: '{{ (current_temp | float(0)) - (comfort_max_temp
@@ -11314,6 +11351,17 @@ action:
         level: warning
     - if:
       - condition: template
+        value_template: '{{ event_logging_enabled }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "[EVENT] {{ room_name }} 🏠 | Pre-conditioning Activated | Room
+            {{ current_temp }}°C → Target {{ adjusted_target }}°C | Distance: {{
+            states(proximity_sensor) | default('N/A') }}m | Direction: {{ states(direction_sensor)
+            | default('N/A') }} | Previous mode: {{ control_mode }}"
+          level: warning
+    - if:
+      - condition: template
         value_template: '{{ enable_notifications }}'
       then:
       - service: !input notification_service
@@ -11323,6 +11371,17 @@ action:
             }}°C
 
             '
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ enable_precond_notifications and precond_notify_device not
+          in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: '{{ precond_notify_device }}'
+        data:
+          title: '{{ room_name }} Pre-conditioning'
+          message: 'Pre-conditioning activated! {{ room_name }} is {{ current_temp
+            }}°C, cooling to {{ adjusted_target }}°C before you arrive.'
         continue_on_error: true
   - conditions:
     - condition: template
@@ -11981,6 +12040,11 @@ action:
   - conditions:
     - condition: template
       value_template: '{{ should_activate }}'
+    - condition: template
+      value_template: "{# v9.8.0: Only transition to fan_only if AC was actually cooling/heating #}\n
+        {# Don't turn AC ON from off just because ceiling fan brought room to comfort zone #}\n
+        {{ last_mode in ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet']
+        or actual_ac_state == 'on' }}\n"
     - condition: template
       value_template: "{% set in_comfort_zone = current_temp >= comfort_min_temp and
         current_temp <= comfort_max_temp %} {% set overshoot_reached = true %} {%
@@ -12752,6 +12816,9 @@ action:
       value_template: '{{ temp_stability_enabled }}'
     - condition: template
       value_template: '{{ control_mode in [''Smart'', ''Auto''] }}'
+    - condition: template
+      value_template: "{# v9.8.0: Stability detection requires presence - don't block Room Empty handler #}\n
+        {{ should_activate }}\n"
     - condition: template
       value_template: '{{ temp_stability_detected }}'
     - condition: template
