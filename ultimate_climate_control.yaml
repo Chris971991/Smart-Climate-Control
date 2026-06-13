@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.9.0
-  description: "**Ultimate Smart Climate Control v9.9.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.10.0
+  description: "**Ultimate Smart Climate Control v9.10.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,20 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.9.0 - Override-correctness & crash hardening:**\n•
+    UPDATES:**\n\n**v9.10.0 - Dormant features wired up:**\n•
+    **Time-Based Scheduling** is now active (morning/day/evening/night + weekend bands
+    drive the operative target).\n•
+    **Window-open AC shutdown**: opening a configured window/door past the open-delay turns
+    the AC off (mode window_off) and resumes after the close-delay; never fires in
+    Override/Manual and writes a pre-command snapshot so it can't trip a false override.\n•
+    **Bed-absence grace fixed** (last_changed read correctly) and **adjacent-room presence
+    fixed** (Jinja list scoping).\n•
+    **Response Aggressiveness**, **Pre-cooling Target**, **Multi-Sensor Strategy**
+    (warmest/coldest/average), and **additional notify services** are now wired up.\n•
+    **Auto/Quiet/Silence fan** selections pass through to the AC verbatim (no longer
+    crushed to a numeric level), respecting the fan band hold/debounce.\n•
+    **Outside-temp fan boost decoupled** from outside-temp compensation - either toggle
+    now reads the outdoor sensor independently.\n\n**v9.9.0 - Override-correctness & crash hardening:**\n•
     **Override correctness**: 50s unified command grace across all device types; mode:restart
     ordering race fixed (helpers/fan shutdown before select_option Override); `| bool` guards
     on string-boolean branch conditions; canonical mode names (cooling/heating/comfort_fan_only)
@@ -440,7 +453,9 @@ blueprint:
             Optional - if not set, uses AC''s built-in sensor.
 
 
-            Supports multiple sensors for multi-room cooling:
+            Supports multiple sensors for multi-room cooling. How the readings are
+            combined is controlled by the **Multi-Sensor Strategy** input below.
+            With the default ''auto'' strategy:
 
             - Cooling: Uses warmest room
 
@@ -460,20 +475,53 @@ blueprint:
               reorder: false
         use_average_temperature:
           name: Use Average Temperature
-          description: 'How to calculate temperature with multiple AC units.
+          description: 'How to calculate temperature with multiple AC units, and the
+            ''auto'' Multi-Sensor Strategy behavior.
 
 
-            - **ON:** Average temperatures from all ACs
+            - **ON:** Average temperatures from all ACs (and, with strategy ''auto'',
+            average the external sensors)
 
-            - **OFF:** Use first AC only
+            - **OFF:** Use first AC only (and, with strategy ''auto'', let the
+            warmest room drive cooling / coldest drive heating)
 
 
-            Disable if using one external sensor for multiple units.
+            Disable if using one external sensor for multiple units. For explicit
+            warmest/coldest/average control of multiple external sensors, use the
+            Multi-Sensor Strategy input instead.
 
             '
           default: true
           selector:
             boolean: {}
+        multi_sensor_strategy:
+          name: Multi-Sensor Strategy
+          description: 'How to combine readings when multiple Temperature Sensors are
+            configured.
+
+
+            - **auto:** Follow the Use Average Temperature toggle when ON; when OFF,
+            the warmest room drives cooling and the coldest drives heating (the
+            behavior promised by Temperature Sensor(s)).
+
+            - **average:** Always use the mean of all sensors.
+
+            - **warmest:** Always use the highest reading.
+
+            - **coldest:** Always use the lowest reading.
+
+            '
+          default: auto
+          selector:
+            select:
+              options:
+              - auto
+              - average
+              - warmest
+              - coldest
+              multiple: false
+              custom_value: false
+              sort: false
         target_temperature:
           name: Target Temperature
           description: 'Your ideal room temperature in Celsius.
@@ -715,8 +763,11 @@ blueprint:
 
             **Behavior:** System will heat to this temperature then switch to eco/off.
 
+
+            • **Must be below Comfort Zone Maximum to avoid triggering cooling.**
+
             '
-          default: 23
+          default: 22
           selector:
             number:
               min: 18.0
@@ -876,7 +927,7 @@ blueprint:
             **Requirement:** Home Assistant proximity integration setup.
 
             '
-          default: sensor.home_nearest_distance
+          default: []
           selector:
             entity:
               domain:
@@ -901,7 +952,7 @@ blueprint:
             **Example:** `sensor.home_nearest_direction_of_travel`
 
             '
-          default: sensor.home_nearest_direction_of_travel
+          default: []
           selector:
             entity:
               domain:
@@ -1993,7 +2044,25 @@ blueprint:
             • Separate weekend schedule option
 
 
-            **Note:** Overrides base target temperature when enabled.
+            **Note:** When enabled, the active scheduled temperature REPLACES the
+            base target temperature for ALL derived setpoint/threshold logic —
+            cooling/heating off-thresholds, the adjusted_target base, the overshoot
+            continue-zone, the bed-eco return threshold, pre-conditioning completion,
+            and the expected-temp / snapshot writes.
+
+
+            **Interaction with Advanced Temperature Control:** If Advanced overrides
+            (Enable Advanced Temperature Control) are also on, those overrides still
+            pin Comfort Zone Minimum/Maximum and the Cooling/Heating Targets — only
+            the off-thresholds and the adjusted_target base follow the schedule.
+            Combining both is not recommended; pick one source of truth for the
+            setpoint.
+
+
+            **Boundary pickup:** When a schedule band changes while the AC is
+            running, the new target is applied within Check Interval minutes
+            (default 1) by the periodic check — no separate trigger needed, and the
+            setpoint change does NOT count as a manual/physical-remote override.
 
             '
           default: false
@@ -2470,7 +2539,8 @@ blueprint:
 
             • **Percentage (0-100):** GPU load, CPU load, utilization sensors
 
-            • **Watts (future):** Power consumption sensors
+            • **Watts/kW:** Power consumption sensors - converted assuming 1000 W = 100%
+            load, capped at 100% (unit read from the sensor''s unit_of_measurement).
 
 
             **Examples:**
@@ -2481,13 +2551,17 @@ blueprint:
 
             • sensor.server_cpu_utilization
 
+            • sensor.gaming_pc_power (W or kW)
 
-            **Multiple sensors are averaged together.**
+
+            **Multiple sensors are averaged together after conversion.**
 
             '
           default: []
           selector:
             entity:
+              domain:
+              - sensor
               multiple: true
               reorder: false
         heat_source_threshold:
@@ -2639,6 +2713,12 @@ blueprint:
             The AC will always run at this fan speed regardless of temperature.
 
             Only applies when Fan Control Mode is set to "Static".
+
+
+            **v9.10.0:** Auto / Quiet / Silence are now passed through to the AC verbatim
+            (no longer converted to a numeric level). With Auto/Quiet/Silence selected,
+            distance-based escalation will not raise the fan speed unless an outside-temp
+            or heat-source boost is active.
 
             '
           default: Level 3
@@ -2837,20 +2917,23 @@ blueprint:
               sort: false
         fan_band_hold_time:
           name: 'Band: Minimum Hold Time'
-          description: '**Minimum minutes before fan speed can change between temperature
-            bands.**
+          description: '**Minimum minutes before the fan is allowed to SLOW DOWN
+            after a change.**
 
 
-            Prevents oscillation when temperature hovers near band boundaries.
+            Speeding up is always allowed after a 30-second debounce (v7.4.1
+            asymmetric design: responsive escalation, oscillation-free
+            de-escalation). Prevents oscillation when temperature hovers near band
+            boundaries.
 
             Timer resets after each fan speed change.
 
 
-            • **3-5 min:** Responsive but may oscillate near boundaries
+            • **3-5 min:** Responsive de-escalation but may oscillate near boundaries
 
-            • **5-10 min:** Balanced (recommended)
+            • **5-10 min:** Balanced de-escalation (recommended)
 
-            • **10-15 min:** Very stable, minimal changes
+            • **10-15 min:** Very stable, minimal slow-downs
 
 
             Only applies when Fan Control Mode is set to "Temperature Band".
@@ -3004,6 +3087,12 @@ blueprint:
             Works with all fan control modes (Static, Temperature Band, Dynamic).
 
             Disable for strict adherence to selected fan speeds.
+
+
+            **v9.10.0:** This boost is fully independent of Outside Temperature
+            Compensation - the outdoor sensor/weather entity is read whenever EITHER
+            this fan boost OR compensation is enabled. You do not need to enable
+            compensation for the fan boost to work.
 
             '
           default: true
@@ -3504,33 +3593,30 @@ blueprint:
             When AC has been running with poor progress for `stall_escalation_time
             × multiplier`,
 
-            escalation jumps to Level 4 (emergency/maximum power).
+            escalation jumps to Level 4 (emergency/maximum power). The multiplier is
+            multiplied by your Stall Escalation Time (default 15 min).
 
 
-            **Examples with stall_escalation_time = 2 minutes:**
+            **Examples with stall_escalation_time = 15 minutes (the default):**
 
-            • **10x:** Emergency after 20 minutes stuck → Very aggressive
+            • **2x:** Emergency after 30 minutes stuck → Aggressive
 
-            • **20x:** Emergency after 40 minutes stuck → Aggressive (recommended)
+            • **4x:** Emergency after 60 minutes stuck → Balanced (recommended)
 
-            • **30x:** Emergency after 60 minutes stuck → Balanced
-
-            • **50x:** Emergency after 100 minutes stuck → Patient
-
-            • **100x:** Emergency after 200 minutes stuck → Very patient
+            • **8x:** Emergency after 2 hours stuck → Patient
 
 
-            **User scenario (20x multiplier, 2min stall time):**
+            **User scenario (4x multiplier, 15min stall time):**
 
             ```
 
             Time 0: AC starts cooling, 25°C → 22°C target
 
-            Time 2: Still 25°C, slow progress → Level 3 (time-based stall)
+            Time 15: Still 25°C, slow progress → Level 3 (time-based stall)
 
-            Time 10: Still 24.8°C, poor progress → Level 3 (waiting)
+            Time 30: Still 24.8°C, poor progress → Level 3 (waiting)
 
-            Time 40: Still 24.5°C after 40 min → Level 4! (emergency)
+            Time 60: Still 24.5°C after 60 min → Level 4! (emergency)
 
             Result: Maximum fan power after extended stalling
 
@@ -3559,16 +3645,16 @@ blueprint:
             • Rooms where you rarely need maximum power
 
 
-            **Recommendation:** Start with 20x-30x, adjust based on how long your
-            AC typically takes to reach target.
+            **Recommendation:** Start with 4x (≈60 min at the 15-min default), adjust
+            based on how long your AC typically takes to reach target.
 
             '
-          default: 30
+          default: 4
           selector:
             number:
-              min: 5.0
-              max: 100.0
-              step: 5.0
+              min: 2.0
+              max: 40.0
+              step: 1.0
               mode: slider
         enable_dynamic_target_adjustment:
           name: Enable Dynamic Target Adjustment
@@ -5177,6 +5263,7 @@ variables:
   away_action: !input away_mode_action
   temp_sensor: !input temperature_sensor
   use_avg: !input use_average_temperature
+  multi_sensor_strategy: !input multi_sensor_strategy
   helper_mode: !input helper_last_mode
   helper_change: !input helper_last_change
   helper_mode_before_override: !input helper_mode_before_override
@@ -5209,7 +5296,24 @@ variables:
   precond_notify_device: !input precond_notify_device
   proximity_sensor_input: !input proximity_sensor
   direction_sensor_input: !input direction_sensor
-  target_temp: !input target_temperature
+  enable_scheduling: !input enable_scheduling
+  morning_temp: !input morning_temp
+  day_temp: !input day_temp
+  evening_temp: !input evening_temp
+  night_temp: !input night_temp
+  enable_weekend_schedule: !input enable_weekend_schedule
+  weekend_morning_temp: !input weekend_morning_temp
+  weekend_day_temp: !input weekend_day_temp
+  weekend_night_temp: !input weekend_night_temp
+  target_temp_base: !input target_temperature
+  target_temp: "{% if enable_scheduling %}\n  {% set hour = now().hour %}\n  {% set
+    is_weekend = now().weekday() >= 5 %}\n  {% if is_weekend and enable_weekend_schedule
+    %}\n    {% if 6 <= hour < 10 %}\n      {{ weekend_morning_temp }}\n    {% elif
+    10 <= hour < 22 %}\n      {{ weekend_day_temp }}\n    {% else %}\n      {{ weekend_night_temp
+    }}\n    {% endif %}\n  {% else %}\n    {% if 6 <= hour < 9 %}\n      {{ morning_temp
+    }}\n    {% elif 9 <= hour < 18 %}\n      {{ day_temp }}\n    {% elif 18 <= hour
+    < 22 %}\n      {{ evening_temp }}\n    {% else %}\n      {{ night_temp }}\n    {%
+    endif %}\n  {% endif %}\n{% else %}\n  {{ target_temp_base }}\n{% endif %}\n"
   comfort_width: !input comfort_zone_width
   aggressiveness: !input temperature_aggressiveness
   advanced_enabled: !input enable_advanced_temp
@@ -5217,6 +5321,7 @@ variables:
   comfort_max_input: !input comfort_max_temp
   cooling_target_input: !input cooling_target_temp
   heating_target_input: !input heating_target_temp
+  precool_target_input: !input precool_target_temp
   base_comfort_min: '{{ comfort_min_input if advanced_enabled else (target_temp -
     comfort_width) | float }}'
   base_comfort_max: '{{ comfort_max_input if advanced_enabled else (target_temp +
@@ -5225,6 +5330,8 @@ variables:
     | float }}'
   base_heating_target: '{{ heating_target_input if advanced_enabled else target_temp
     | float }}'
+  precond_target: '{{ (precool_target_input | float(22)) if advanced_enabled else (target_temp
+    | float(22)) }}'
   cooling_on_threshold: '{{ base_comfort_max }}'
   cooling_off_threshold: '{{ target_temp }}'
   heating_on_threshold: '{{ base_comfort_min }}'
@@ -5232,6 +5339,18 @@ variables:
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
   enable_notifications: !input enable_notifications
+  # M23: notification fan-out — primary service plus any additional services, each
+  # normalised to a notify.* service name, de-duplicated. Consumed by the repeat
+  # pattern at every notify call site.
+  notify_service_primary: !input notification_service
+  additional_notify_list: !input additional_notify_services
+  notify_services_all: "{% set extras = additional_notify_list if additional_notify_list
+    is iterable and additional_notify_list is not string else ([additional_notify_list]
+    if additional_notify_list else []) %}\n{% set ns = namespace(items=[]) %}\n{% for
+    raw in ([notify_service_primary] + (extras | list)) %}\n  {% set svc = (raw | string)
+    | trim %}\n  {% if svc != '' %}\n    {% set svc = svc if '.' in svc else 'notify.'
+    + svc %}\n    {% set ns.items = ns.items + [svc] %}\n  {% endif %}\n{% endfor %}\n{{
+    ns.items | unique | list }}\n"
   # LOW-event-logging-order: hoisted to top-level so it is defined before the
   # mode_change Pre-conditioning event-log gate (which runs before the action variables step).
   event_logging_enabled: !input enable_event_logging
@@ -5324,6 +5443,10 @@ variables:
   deescalation_threshold: !input deescalation_approach_threshold
   enable_dynamic_target: !input enable_dynamic_target_adjustment
   escalation_offset: !input escalation_target_offset
+  escalation_time_factor: '{{ {1: 1.5, 2: 1.0, 3: 0.8, 4: 0.6, 5: 0.45}.get(aggressiveness
+    | int(2), 1.0) }}'
+  effective_escalation_offset: '{{ (escalation_offset | float(0.5)) * {1: 0.5, 2: 1.0,
+    3: 1.25, 4: 1.5, 5: 2.0}.get(aggressiveness | int(2), 1.0) }}'
   helper_temp_history: !input helper_temp_history
   helper_trend: !input helper_trend_direction
   helper_mode_time: !input helper_mode_start_time
@@ -5373,10 +5496,7 @@ variables:
   room_name: !input room_name
   room_ble_name: !input room_name
   adjacent_rooms_input: !input adjacent_room_names
-  adjacent_room_list: "{% if adjacent_rooms_input and adjacent_rooms_input != '' %}\n
-    \ {% set rooms = [] %}\n  {% for room in adjacent_rooms_input.split(',') %}\n
-    \   {% set rooms = rooms + [room.strip()] %}\n  {% endfor %}\n  {{ rooms }}\n{%
-    else %}\n  []\n{% endif %}\n"
+  adjacent_room_list: "{% if adjacent_rooms_input and adjacent_rooms_input != '' %}{{ adjacent_rooms_input.split(',') | map('trim') | reject('eq', '') | list }}{% else %}[]{% endif %}"
   smart_behavior: !input smart_mode_behavior
   presence_validation: !input presence_validation_mode
   stability_mode: !input stability_mode
@@ -5434,11 +5554,7 @@ variables:
 
     '
   bed_absence_grace: !input bed_absence_grace_period
-  minutes_since_bed_off: "{% if bed_sensor_manual and not is_state(bed_sensor_manual,
-    'on') %}\n  {% set last_change = state_attr(bed_sensor_manual, 'last_changed')
-    %}\n  {% if last_change %}\n    {{ ((as_timestamp(now()) - as_timestamp(last_change))
-    / 60) | round(0) }}\n  {% else %}\n    999\n  {% endif %}\n{% else %}\n  0\n{%
-    endif %}\n"
+  minutes_since_bed_off: "{% if bed_sensor_manual and not is_state(bed_sensor_manual, 'on') %}{% set bed_state = states[bed_sensor_manual] %}{% if bed_state %}{{ ((as_timestamp(now()) - as_timestamp(bed_state.last_changed)) / 60) | round(0) }}{% else %}999{% endif %}{% else %}0{% endif %}"
   bed_eco_fan_only_mode: !input bed_eco_fan_only_mode
   bed_eco_fan_only_trigger: !input bed_eco_fan_only_trigger
   bed_eco_stability_minutes: !input bed_eco_stability_minutes
@@ -5449,15 +5565,6 @@ variables:
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
   extreme_low: !input extreme_low_temp
-  enable_scheduling: !input enable_scheduling
-  morning_temp: !input morning_temp
-  day_temp: !input day_temp
-  evening_temp: !input evening_temp
-  night_temp: !input night_temp
-  enable_weekend_schedule: !input enable_weekend_schedule
-  weekend_morning_temp: !input weekend_morning_temp
-  weekend_day_temp: !input weekend_day_temp
-  weekend_night_temp: !input weekend_night_temp
   enable_window_detection: !input enable_window_detection
   window_sensors: !input window_sensors
   window_open_delay: !input window_open_delay
@@ -5517,6 +5624,7 @@ variables:
   - stability_off
   - smart_off
   - auto_off_off
+  - window_off
 trigger:
 - platform: state
   entity_id: !input climate_entities
@@ -5571,6 +5679,18 @@ trigger:
 - platform: event
   event_type: daikin_physical_remote_override
   id: physical_remote_override
+- platform: state
+  entity_id: !input window_sensors
+  to: 'on'
+  for:
+    minutes: !input window_open_delay
+  id: window_opened
+- platform: state
+  entity_id: !input window_sensors
+  to: 'off'
+  for:
+    minutes: !input window_close_delay
+  id: window_closed
 condition:
 - condition: template
   value_template: |
@@ -5752,11 +5872,11 @@ action:
     proximity_sensor: "{% if proximity_sensor_input and proximity_sensor_input not
       in [none, '', 'unavailable', 'unknown'] and proximity_sensor_input is string
       and proximity_sensor_input != '' %}\n  {{ proximity_sensor_input }}\n{% else
-      %}\n  none\n{% endif %}\n"
+      %}\n  \n{% endif %}\n"
     direction_sensor: "{% if direction_sensor_input and direction_sensor_input not
       in [none, '', 'unavailable', 'unknown'] and direction_sensor_input is string
       and direction_sensor_input != '' %}\n  {{ direction_sensor_input }}\n{% else
-      %}\n  none\n{% endif %}\n"
+      %}\n  \n{% endif %}\n"
     previous_temp: "{% if helper_temp_history %}\n  {{ states(helper_temp_history)
       | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
     should_proceed: "{% if trigger.id == 'periodic_check' %}\n  {% set mins = now().minute
@@ -6079,8 +6199,10 @@ action:
       set temp_value = states(sensor) | float(-999) %}\n        {% if temp_value > -50
       %}\n          {% set temps.values = temps.values + [temp_value] %}\n        {%
       endif %}\n      {% endif %}\n    {% endfor %}\n\n    {% if temps.values | length > 0 %}\n      {%
-      if use_avg %}\n        {# User explicitly requested average - honor that setting
+      if multi_sensor_strategy == 'average' or (multi_sensor_strategy == 'auto' and use_avg) %}\n        {# LOW-multi-sensor-strategy: explicit strategy wins; 'auto' follows Use Average toggle
       #}\n        {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
+      \     {% elif multi_sensor_strategy == 'warmest' %}\n        {{ temps.values | max | round(1) }}\n
+      \     {% elif multi_sensor_strategy == 'coldest' %}\n        {{ temps.values | min | round(1) }}\n
       \     {% elif enable_cooling and not enable_heating %}\n        {# Cooling:
       Use MAX temp (warmest room drives cooling) #}\n        {{ temps.values | max
       | round(1) }}\n      {% elif enable_heating and not enable_cooling %}\n        {#
@@ -6097,15 +6219,7 @@ action:
       > 0 %}\n    {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
       \ {% else %}\n    25\n  {% endif %}\n{% else %}\n  {{ state_attr(climate_list[0],
       'current_temperature') | float(25) }}\n{% endif %}\n"
-    scheduled_target_temp: "{% if enable_scheduling %}\n  {% set hour = now().hour
-      %}\n  {% set is_weekend = now().weekday() >= 5 %}\n  {% if is_weekend and enable_weekend_schedule
-      %}\n    {% if 6 <= hour < 10 %}\n      {{ weekend_morning_temp }}\n    {% elif
-      10 <= hour < 22 %}\n      {{ weekend_day_temp }}\n    {% else %}\n      {{ weekend_night_temp
-      }}\n    {% endif %}\n  {% else %}\n    {% if 6 <= hour < 9 %}\n      {{ morning_temp
-      }}\n    {% elif 9 <= hour < 18 %}\n      {{ day_temp }}\n    {% elif 18 <= hour
-      < 22 %}\n      {{ evening_temp }}\n    {% else %}\n      {{ night_temp }}\n
-      \   {% endif %}\n  {% endif %}\n{% else %}\n  {{ target_temp }}\n{% endif %}\n"
-    outdoor_temperature: "{% if enable_outside_temp_compensation %}\n  {% if outdoor_temp_sensor
+    outdoor_temperature: "{% if enable_outside_temp_compensation or enable_outside_temp_fan_boost %}\n  {% if outdoor_temp_sensor
       %}\n    {{ states(outdoor_temp_sensor) | float(25) }}\n  {% else %}\n    {{
       state_attr(weather_entity, 'temperature') | float(25) }}\n  {% endif %}\n{%
       else %}\n  25\n{% endif %}\n"
@@ -6118,7 +6232,11 @@ action:
       %}\n  {% set load_sum = namespace(value=0, count=0) %}\n  {% for sensor in heat_source_sensors
       %}\n    {% set state = states(sensor) %}\n    {% if state not in ['unavailable',
       'unknown', 'none', ''] %}\n      {% set val = state | float(0) %}\n      {#
-      Handle percentage sensors (0-100) #}\n      {% if val >= 0 and val <= 100 %}\n
+      LOW-heat-source-sensors: convert watt-scale sensors to a 0-100 load (1000 W = 100%) #}\n
+      \     {% set unit = (state_attr(sensor, 'unit_of_measurement') | default('') | lower) %}\n
+      \     {% if unit == 'w' %}\n        {% set val = val / 10 %}\n      {% elif unit == 'kw' %}\n
+      \       {% set val = val * 100 %}\n      {% endif %}\n      {% set val = [val, 100] | min %}\n
+      \     {% if val >= 0 %}\n
       \       {% set load_sum.value = load_sum.value + val %}\n        {% set load_sum.count
       = load_sum.count + 1 %}\n      {% endif %}\n    {% endif %}\n  {% endfor %}\n
       \ {% if load_sum.count > 0 %}\n    {{ (load_sum.value / load_sum.count) | round(1)
@@ -6198,6 +6316,38 @@ action:
       %}\n  {% for sensor in window_sensors %}\n    {% if is_state(sensor, 'on') %}\n
       \     {% set open.value = true %}\n    {% endif %}\n  {% endfor %}\n  {{ open.value
       }}\n{% else %}\n  false\n{% endif %}\n"
+    window_open_over_delay: >-
+      {% if enable_window_detection and (window_sensors | list | length) > 0 %}
+        {% set od = namespace(value=false) %}
+        {% set delay = window_open_delay | float(2) %}
+        {% for sensor in window_sensors %}
+          {% if is_state(sensor, 'on') %}
+            {% set s = states[sensor] %}
+            {% if s and ((as_timestamp(now()) - as_timestamp(s.last_changed)) / 60) >= delay %}
+              {% set od.value = true %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ od.value }}
+      {% else %}
+        false
+      {% endif %}
+    windows_closed_over_delay: >-
+      {% if not enable_window_detection or (window_sensors | list | length) == 0 %}
+        true
+      {% elif (window_open | bool) %}
+        false
+      {% else %}
+        {% set cd = namespace(value=true) %}
+        {% set delay = window_close_delay | float(1) %}
+        {% for sensor in window_sensors %}
+          {% set s = states[sensor] %}
+          {% if (s is none) or (not is_state(sensor, 'off')) or (((as_timestamp(now()) - as_timestamp(s.last_changed)) / 60) < delay) %}
+            {% set cd.value = false %}
+          {% endif %}
+        {% endfor %}
+        {{ cd.value }}
+      {% endif %}
     anyone_home: "{% set home = namespace(value=false) %} {% for person in persons
       %}\n  {% if is_state(person, 'home') %}\n    {% set home.value = true %}\n  {%
       endif %}\n{% endfor %} {% if not home.value %}\n  {% for device in devices %}\n
@@ -6317,8 +6467,10 @@ action:
       0 %}\n    {# Stalled - not making progress #}\n    30\n  {% else %}\n    {#
       Temperature falling during heating - very bad! #}\n    10\n  {% endif %}\n{%
       else %}\n  50  {# Default effectiveness #}\n{% endif %}\n"
-    escalation_level: "{% if not dynamic_enabled %}\n  0\n{% else %}\n  {% set min_check_time
-      = 5 %}  {# v4.2.1: Increased from 3 to 5 minutes - more patient initial evaluation
+    escalation_level: "{% if not dynamic_enabled %}\n  0\n{% else %}\n  {% set tf =
+      escalation_time_factor | float(1.0) %}  {# M21: Response Aggressiveness scales all
+      time gates (A=2 -> tf=1.0 no-op) #}\n  {% set min_check_time
+      = 5 * tf %}  {# v4.2.1: Increased from 3 to 5 minutes - more patient initial evaluation
       #}\n  {% set emergency_threshold = 5.0 %}  {# v4.2.1: Increased from 4.0 to
       5.0°C - true emergencies only #}\n  {% set stall_threshold = 2.5 %}  {# v4.2.1:
       Increased from 2.0 to 2.5°C - less sensitive to stalling #}\n\n  {# v5.2.0:
@@ -6349,7 +6501,7 @@ action:
       - Immediate maximum power #}\n  {% elif distance_from_target > emergency_threshold
       and (time_in_current_mode | float(0)) >= min_check_time %}\n    {% set effectiveness_level
       = 4 %}  {# Far from target - emergency escalation #}\n  {% elif current_effectiveness
-      <= 10 and (time_in_current_mode | float(0)) >= 10 %}\n    {% set effectiveness_level
+      <= 10 and (time_in_current_mode | float(0)) >= 10 * tf %}\n    {% set effectiveness_level
       = 4 %}  {# v4.2.1: Increased from 5 to 10 min - completely ineffective for extended
       time #}\n  {% elif last_mode == 'cooling' and calculated_trend == 'rising' and
       current_temp > (comfort_max_temp + 1.5) %}\n    {% set effectiveness_level =
@@ -6358,7 +6510,7 @@ action:
       == 'falling' and current_temp < (comfort_min_temp - 1.5) %}\n    {% set effectiveness_level
       = 4 %}  {# v4.2.1: Increased threshold from -1.0 to -1.5°C - heating but temperature
       falling significantly #}\n  {% elif (time_in_current_mode | float(0)) >= (stall_time_threshold
-      * extended_stall_multiplier) and temp_change_rate | abs < (effective_min_progress_rate
+      * extended_stall_multiplier * tf) and temp_change_rate | abs < (effective_min_progress_rate
       * 0.5) and distance_from_target > 2.0 %}\n    {% set effectiveness_level = 4
       %}  {# v4.2.1: Changed progress check to 50% of min_progress_rate, distance
       from 1.5 to 2.0°C - extended stall with truly no progress #}\n\n  {# Level 0:
@@ -6373,46 +6525,46 @@ action:
       > (bed_eco_near_target_threshold if last_mode in ['bed_comfort_eco', 'bed_comfort_quiet',
       'bed_eco_fan_only'] else 0.5) and distance_from_target <= ((bed_eco_near_target_threshold
       * 2) if last_mode in ['bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only']
-      else 1.0) and (time_in_current_mode | float(0)) >= 20 and (calculated_trend
+      else 1.0) and (time_in_current_mode | float(0)) >= 20 * tf and (calculated_trend
       == 'stable' or temp_change_rate | abs < 0.05) %}\n    {% set effectiveness_level
       = 1 %}  {# v4.2.1: Increased from 15 to 20 min - more patience near target #}\n\n
       \ {# Level 3: HIGH - Strong escalation needed #}\n  {% elif distance_from_target
-      > 3.5 and (time_in_current_mode | float(0)) >= 8 %}\n    {% set effectiveness_level
+      > 3.5 and (time_in_current_mode | float(0)) >= 8 * tf %}\n    {% set effectiveness_level
       = 3 %}  {# v4.2.1: Increased distance from 3.0 to 3.5°C, time from 5 to 8 min
       - reserve for truly far from target #}\n  {% elif current_effectiveness <= 15
-      and (time_in_current_mode | float(0)) >= 12 %}\n    {% set effectiveness_level
+      and (time_in_current_mode | float(0)) >= 12 * tf %}\n    {% set effectiveness_level
       = 3 %}  {# v4.2.1: Reduced from 25% to 15%, increased time from 7 to 12 min
       - poor effectiveness for extended time #}\n  {% elif distance_from_target >
       stall_threshold and calculated_trend == 'stable' and (time_in_current_mode |
-      float(0)) >= 15 %}\n    {% set effectiveness_level = 3 %}  {# v4.2.1: Increased
+      float(0)) >= 15 * tf %}\n    {% set effectiveness_level = 3 %}  {# v4.2.1: Increased
       from 8 to 15 min - allow more time before declaring stall #}\n  {% elif (time_in_current_mode
-      | float(0)) >= stall_time_threshold and temp_change_rate | abs < (effective_min_progress_rate
+      | float(0)) >= (stall_time_threshold * tf) and temp_change_rate | abs < (effective_min_progress_rate
       * 0.6) and distance_from_target > 1.5 %}\n    {% set effectiveness_level = 3
       %}  {# v4.2.1: Changed progress check to 60% of min_progress_rate, increased
       distance from temp_tolerance/2 - time-based stall detection #}\n\n  {# Level
       2: MEDIUM - Moderate escalation #}\n  {% elif distance_from_target > 2.5 and
-      (time_in_current_mode | float(0)) >= 12 %}\n    {% set effectiveness_level =
+      (time_in_current_mode | float(0)) >= 12 * tf %}\n    {% set effectiveness_level =
       2 %}  {# v4.2.1: Increased distance from 2.0 to 2.5°C, time from 8 to 12 min
       - moderate distance after reasonable time #}\n  {% elif current_effectiveness
-      <= 20 and (time_in_current_mode | float(0)) >= 15 %}\n    {% set effectiveness_level
+      <= 20 and (time_in_current_mode | float(0)) >= 15 * tf %}\n    {% set effectiveness_level
       = 2 %}  {# v4.2.1: CRITICAL FIX - Reduced from 40% to 20%, increased time from
       10 to 15 min - realistic effectiveness threshold #}\n  {% elif distance_from_target
-      > 2.0 and (time_in_current_mode | float(0)) >= (effectiveness_check_mins + 5)
+      > 2.0 and (time_in_current_mode | float(0)) >= (effectiveness_check_mins + 5) * tf
       %}\n    {% set effectiveness_level = 2 %}  {# v4.2.1: Increased distance from
       1.5 to 2.0°C, added +5 min to check time - more conservative #}\n  {% elif (time_in_current_mode
-      | float(0)) >= (stall_time_threshold * 0.75) and temp_change_rate | abs < (effective_min_progress_rate
+      | float(0)) >= (stall_time_threshold * 0.75 * tf) and temp_change_rate | abs < (effective_min_progress_rate
       * 0.4) and distance_from_target > 1.0 %}\n    {% set effectiveness_level = 2
       %}  {# v4.2.1: Changed from stall_time/2 to stall_time*0.75, progress to 40%
       of min_rate, distance from 0.3 to 1.0°C - early stall warning less aggressive
       #}\n\n  {# Level 1: LOW - Minor escalation #}\n  {% elif distance_from_target
-      > 1.5 and (time_in_current_mode | float(0)) >= (effectiveness_check_mins + 8)
+      > 1.5 and (time_in_current_mode | float(0)) >= (effectiveness_check_mins + 8) * tf
       %}\n    {% set effectiveness_level = 1 %}  {# v4.2.1: Increased distance from
       1.0 to 1.5°C, added +8 min instead of +2 - gentle escalation only when needed
       #}\n  {% elif current_effectiveness <= 35 and (time_in_current_mode | float(0))
-      >= (effectiveness_check_mins + 10) %}\n    {% set effectiveness_level = 1 %}
+      >= (effectiveness_check_mins + 10) * tf %}\n    {% set effectiveness_level = 1 %}
       \ {# v4.2.1: CRITICAL FIX - Reduced from 60% to 35%, increased time from +5
       to +10 min - realistic effectiveness threshold #}\n  {% elif distance_from_target
-      > 1.0 and (time_in_current_mode | float(0)) >= 2 %}\n    {% set effectiveness_level
+      > 1.0 and (time_in_current_mode | float(0)) >= 2 * tf %}\n    {% set effectiveness_level
       = 1 %}  {# v5.2.3: Aggressive escalation - always escalate if 1°C+ away after
       2 minutes #}\n\n  {% else %}\n    {% set effectiveness_level = 0 %}  {# No escalation
       needed #}\n  {% endif %}\n\n    {# v5.2.0: Return HIGHER of distance_floor or
@@ -6428,7 +6580,7 @@ action:
       \ )\n}}\n"
     wrong_direction_escalation_add: "{% if wrong_direction_detected %}\n  {{ wrong_direction_per_check
       | int(1) }}\n{% else %}\n  0\n{% endif %}\n"
-    outside_temp_escalation_boost: "{% if enable_outside_temp_compensation %}\n  {%
+    outside_temp_escalation_boost: "{% if enable_outside_temp_fan_boost %}\n  {%
       set outdoor = outdoor_temperature | float(25) %}\n  {% set outdoor_delta = outdoor
       - outside_compensation_base_temp %}\n  {% set is_cooling = last_mode == 'cooling'
       %}\n  {% set is_heating = last_mode == 'heating' %}\n\n  {% if is_cooling and
@@ -6528,6 +6680,18 @@ action:
       enable_deesc and progressing and current_level > start_level and distance <
       2.0 %}\n      {{ current_level - 1 }}\n    {% else %}\n      {{ current_level
       }}\n    {% endif %}\n  {% endif %}\n{% endif %}\n"
+    configured_band_fan: >-
+      {% set mode = fan_control_mode %}
+      {% if mode == 'static' %}
+        {{ static_fan_speed }}
+      {% elif mode == 'temperature_band' %}
+        {% set distance = distance_from_target | float(0) %}
+        {% if distance <= 1.0 %}{{ fan_band_0_1 }}
+        {% elif distance <= 2.0 %}{{ fan_band_1_2 }}
+        {% elif distance <= 3.0 %}{{ fan_band_2_3 }}
+        {% elif distance <= 4.0 %}{{ fan_band_3_4 }}
+        {% else %}{{ fan_band_4_plus }}{% endif %}
+      {% else %}{% endif %}
     final_fan_level_int: "{% set base_level = calculated_fan_level_int | int(3) %}
       {% set boost = 0 %}\n{# Outside temperature boost (if enabled) #} {% if enable_outside_temp_fan_boost
       %}\n  {% set outdoor = outdoor_temperature | float(25) %}\n  {% set base_temp
@@ -6540,6 +6704,28 @@ action:
       if enable_heat_source_fan_boost and heat_source_escalation_boost | int(0) >
       0 %}\n  {% set boost = boost + (heat_source_escalation_boost | int(0)) %}\n{%
       endif %}\n{# Apply boost, capped at 5 #} {{ [base_level + boost, 5] | min }}\n"
+    verbatim_fan: >-
+      {% set fans = (state_attr(climate_list[0], 'fan_modes') or []) | list if
+        climate_list | length > 0 else [] %}
+      {% set choice = configured_band_fan | trim %}
+      {% set cl = choice | lower %}
+      {% set boosted = (final_fan_level_int | int(3)) > (calculated_fan_level_int | int(3)) %}
+      {# M24 option (a): only emit verbatim once the integer pipeline has settled on
+         the configured band's level, so fan_band_hold_time/debounce is respected. #}
+      {% if '5' in cl or cl == 'high' %}{% set choice_level = 5 %}
+      {% elif '4' in cl %}{% set choice_level = 4 %}
+      {% elif '3' in cl or cl == 'medium' %}{% set choice_level = 3 %}
+      {% elif '2' in cl %}{% set choice_level = 2 %}
+      {% elif '1' in cl or cl in ['low', 'quiet', 'silence'] %}{% set choice_level = 1 %}
+      {% elif cl == 'auto' %}{% set choice_level = 3 %}
+      {% else %}{% set choice_level = -1 %}{% endif %}
+      {% set settled = (calculated_fan_level_int | int(3)) == choice_level %}
+      {% if cl in ['auto', 'quiet', 'silence'] and not boosted and settled %}
+        {% if choice in fans %}{{ choice }}
+        {% elif cl in fans %}{{ cl }}
+        {% elif (cl | title) in fans %}{{ cl | title }}
+        {% else %}{% endif %}
+      {% else %}{% endif %}
     new_fan_mode: "{% set fans = (state_attr(climate_list[0], 'fan_modes') or [])
       | list if climate_list | length > 0 else [] %} {% set is_precond = control_mode_helper
       and states(control_mode_helper) == 'Pre-conditioning' %} {% set desired_precond_fan
@@ -6558,6 +6744,7 @@ action:
       elif 'high' in fans %}high{% elif 'High' in fans %}High{% else %}{{ fans[-1]
       | default('auto') }}{% endif %}\n  {% else %}\n    {{ fans[0] | default('auto')
       }}\n  {% endif %}\n{% else %} {% set level = final_fan_level_int | int(3) %}\n{%
+      if (verbatim_fan | trim) != '' %}\n  {{ verbatim_fan | trim }}\n{% else %}\n{%
       if ('Level ' ~ level) in fans %}\n  Level {{ level }}\n{% elif level | string
       in fans %}\n  {{ level }}\n{% elif level == 1 and 'Silence' in fans %}\n  Silence\n{%
       elif level == 1 and 'silence' in fans %}\n  silence\n{% elif level == 1 and
@@ -6568,8 +6755,8 @@ action:
       in fans %}\n  Medium\n{% elif level == 4 and 'medium-high' in fans %}\n  medium-high\n{%
       elif level == 5 and 'high' in fans %}\n  high\n{% elif level == 5 and 'High'
       in fans %}\n  High\n{% elif 'Auto' in fans %}\n  Auto\n{% elif 'auto' in fans
-      %}\n  auto\n{% else %}\n  {{ fans[0] if fans else 'Auto' }}\n{% endif %} {%
-      endif %}\n"
+      %}\n  auto\n{% else %}\n  {{ fans[0] if fans else 'Auto' }}\n{% endif %}\n{% endif
+      %} {% endif %}\n"
     fan_mode_changed: '{% set current = state_attr(climate_list[0], ''fan_mode'')
       | default('''') if climate_list | length > 0 else '''' %} {{ current != new_fan_mode
       }}
@@ -6609,7 +6796,7 @@ action:
       escalation adjustment if enabled #} {# v7.2.0: Skip escalation in bed comfort
       modes - gentle cooling to target then fan_only #} {% if enable_dynamic_target
       and (final_escalation_level | int(0)) > 0 and (is_cooling or is_heating) and
-      not in_bed_comfort %}\n  {% set escalation_adj = final_escalation_level * escalation_offset
+      not in_bed_comfort %}\n  {% set escalation_adj = final_escalation_level * effective_escalation_offset
       %}\n  {% if is_cooling %}\n    {% set base = base - escalation_adj %}\n  {%
       elif is_heating %}\n    {% set base = base + escalation_adj %}\n  {% endif %}\n{%
       endif %}\n{# Step 3: Apply heat source compensation if enabled (v6.5.0) #} {#
@@ -6622,7 +6809,10 @@ action:
       %} {% set precond_boost = precond_mode_check and precond_boost_enabled %} {%
       if precond_boost and is_cooling %}\n  {% set base = ac_min_resolved | float(18)
       %}\n{% elif precond_boost and is_heating %}\n  {% set base = ac_max_resolved
-      | float(30) %}\n{% endif %}\n{# AC temperature limits resolved once in ac_min_resolved/ac_max_resolved
+      | float(30) %}\n{% elif precond_mode_check and is_cooling %}\n  {% set base =
+      [base, precond_target | float(22)] | min %}\n{% elif precond_mode_check and is_heating
+      %}\n  {% set base = [base, precond_target | float(22)] | max %}\n{% endif %}\n{#
+      AC temperature limits resolved once in ac_min_resolved/ac_max_resolved
       (user override if non-zero -> reported values -> safe defaults) #} {% set ac_min_temp
       = ac_min_resolved | float(16) %} {% set ac_max_temp = ac_max_resolved | float(30)
       %}\n{# Safety limits: Respect AC hardware limits while allowing escalation adjustments
@@ -6675,7 +6865,7 @@ action:
       | float(60)) > 0 %}\n  {{ precond_runtime_minutes >= (precond_max_runtime |
       float(60)) }}\n{% else %}\n  false\n{% endif %}\n"
     precond_temp_reached: "{% if precond_expiry_mode == 'Timer Only' %}\n  false\n{%
-      else %}\n  {% set current = current_temp | float(0) %}\n  {% set target = target_temp
+      else %}\n  {% set current = current_temp | float(0) %}\n  {% set target = precond_target
       | float(0) %}\n  {% set threshold = precond_temp_threshold | float(1.0) %}\n
       \ {% set hvac_mode = states(climate_list[0]) if climate_list | length > 0 else
       'off' %}\n  {% if hvac_mode == 'cool' %}\n    {{ current <= (target + threshold)
@@ -6889,7 +7079,7 @@ action:
       turned off immediately. Now applies whenever bed sensor was recently on. #}\n  {%
       elif bed_sensor_manual and not is_state(bed_sensor_manual, 'on') and
       minutes_since_bed_off < bed_absence_grace and last_mode not in ['off',
-      'smart_off', 'away_off', 'auto_off_off'] %}\n    true\n  {# Smart mode: require
+      'smart_off', 'away_off', 'auto_off_off', 'window_off'] %}\n    true\n  {# Smart mode: require
       confirmation delay before activation #}\n  {# v5.0.8 FIX: Add 10-second hysteresis
       buffer to prevent timing fluctuation flip-flop #}\n  {# v5.3.5 FIX: REMOVED
       can_bypass_delay - grace period handles re-entry, confirmation delay is mandatory
@@ -8442,8 +8632,95 @@ action:
           entity_id: '{{ helper_temp_stable_since }}'
         data:
           datetime: '{{ now() }}'
+- if:
+  - condition: template
+    value_template: '{{ enable_window_detection and (window_open_over_delay | bool)
+      and control_mode not in [''Override'', ''Manual''] and actual_ac_state == ''on''
+      }}'
+  then:
+  # H8 window-open shutdown. Helper/snapshot/expected-state writes are ORDERED FIRST
+  # (the H11 mode:restart lesson) and guarded by last_mode != 'window_off' so retries
+  # don't rewrite timestamps. climate.turn_off is re-issued every run while the AC
+  # reports on (retry-safe), so a partial/killed run still converges.
+  - if:
+    - condition: template
+      value_template: '{{ last_mode != ''window_off'' }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: !input helper_last_mode
+      data:
+        value: window_off
+      continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_change not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: !input helper_mode_start_time
+      data:
+        datetime: '{{ now() }}'
+      continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_hvac }}'
+        data:
+          value: 'off'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - variables:
+          update_snapshot: hvac=off,temp=0,fan=unknown,swing=unknown
+          update_checksum: '0'
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_last_command }}'
+        data:
+          value: '{{ update_snapshot }}'
+        continue_on_error: true
+      - service: input_number.set_value
+        target:
+          entity_id: '{{ helper_state_checksum }}'
+        data:
+          value: '{{ update_checksum }}'
+        continue_on_error: true
+  - service: system_log.write
+    data:
+      message: "\U0001FA9F {{ room_name | upper }} WINDOW OPEN — AC turned off (window_off)"
+      level: warning
+  - if:
+    - condition: template
+      value_template: '{{ enable_notifications }}'
+    then:
+    - repeat:
+        for_each: '{{ notify_services_all }}'
+        sequence:
+        - service: '{{ repeat.item }}'
+          data:
+            title: '{{ room_name }} Climate Control'
+            message: Window open - AC turned off
+          continue_on_error: true
+  - service: climate.turn_off
+    target:
+      entity_id: !input climate_entities
+    continue_on_error: false
+  - stop: Window open - AC turned off
 - condition: template
-  value_template: '{{ not (window_open | bool) or not enable_window_detection }}'
+  value_template: '{{ not enable_window_detection or (not (window_open_over_delay |
+    bool) and (last_mode != ''window_off'' or (windows_closed_over_delay | bool))) }}'
 - variables:
     deescalation_level: "{% if not dynamic_enabled %}\n  0\n{% else %}\n  {% set approaching_threshold
       = deescalation_threshold %}  {# Distance to start de-escalating #}\n  {% set
@@ -8488,14 +8765,16 @@ action:
         {{ effectiveness_check_mins }} minutes\n    • Runtime: {{ time_in_current_mode
         | round(1) }} min ({{ (time_in_current_mode - effectiveness_check_mins) |
         round(1) }} min {{ 'over' if (time_in_current_mode | float(0)) >= effectiveness_check_mins
-        else 'under' }} threshold)\n\n⏰ Escalation Time Thresholds:\n    • Level 2
-        (1.5°C distance): {{ effectiveness_check_mins }}min → {{ 'READY' if (time_in_current_mode
-        | float(0)) >= effectiveness_check_mins else 'WAITING' }}\n    • Level 1 (1.0°C
-        distance): {{ effectiveness_check_mins + 2 }}min → {{ 'READY' if (time_in_current_mode
-        | float(0)) >= (effectiveness_check_mins + 2) else 'WAITING' }}\n    • Level
-        1 (≤60% effectiveness): {{ effectiveness_check_mins + 5 }}min → {{ 'READY'
-        if (time_in_current_mode | float(0)) >= (effectiveness_check_mins + 5) else
-        'WAITING' }}\n\n\U0001F4C8 Current Status:\n    • Distance from target: {{
+        else 'under' }} threshold)\n\n⏰ Escalation Time Thresholds (× aggressiveness
+        factor {{ escalation_time_factor }}):\n    {% set tf = escalation_time_factor
+        | float(1.0) %}\n    • Level 2 (>2.0°C distance): {{ ((effectiveness_check_mins
+        + 5) * tf) | round(1) }}min → {{ 'READY' if (time_in_current_mode | float(0))
+        >= ((effectiveness_check_mins + 5) * tf) else 'WAITING' }}\n    • Level 1 (>1.5°C
+        distance): {{ ((effectiveness_check_mins + 8) * tf) | round(1) }}min → {{ 'READY'
+        if (time_in_current_mode | float(0)) >= ((effectiveness_check_mins + 8) * tf) else
+        'WAITING' }}\n    • Level 1 (≤35% effectiveness): {{ ((effectiveness_check_mins
+        + 10) * tf) | round(1) }}min → {{ 'READY' if (time_in_current_mode | float(0))
+        >= ((effectiveness_check_mins + 10) * tf) else 'WAITING' }}\n\n\U0001F4C8 Current Status:\n    • Distance from target: {{
         distance_from_target | round(1) }}°C\n    • Current effectiveness: {{ current_effectiveness
         }}%\n    • Escalation level: {{ final_escalation_level }}/4\n    • Should
         escalate: {{ should_escalate }}\n"
@@ -8665,16 +8944,17 @@ action:
         > (temp_tolerance / 2) }}\n    • SHOULD TRIGGER: {{ (time_in_current_mode
         | float(0)) >= stall_time_threshold and temp_change_rate | abs < min_progress_rate
         and distance_from_target > (temp_tolerance / 2) }}\n\n\U0001F6A8 Extended
-        Stall Detection (Level 4 Emergency):\n    • Extended threshold: {{ (stall_time_threshold
-        * extended_stall_multiplier) | round(0) }}min ({{ stall_time_threshold }}min
-        × {{ extended_stall_multiplier }})\n    • Time in mode: {{ time_in_current_mode
+        Stall Detection (Level 4 Emergency):\n    {% set tf = escalation_time_factor
+        | float(1.0) %}\n    • Extended threshold: {{ (stall_time_threshold
+        * extended_stall_multiplier * tf) | round(0) }}min ({{ stall_time_threshold }}min
+        × {{ extended_stall_multiplier }} × aggressiveness {{ escalation_time_factor }})\n    • Time in mode: {{ time_in_current_mode
         | round(1) }}min\n    • Time ≥ threshold: {{ (time_in_current_mode | float(0))
-        >= (stall_time_threshold * extended_stall_multiplier) }}\n    • Progress rate
+        >= (stall_time_threshold * extended_stall_multiplier * tf) }}\n    • Progress rate
         < {{ min_progress_rate }}°C/min: {{ temp_change_rate | abs < min_progress_rate
         }} (current: {{ temp_change_rate | abs | round(3) }}°C/min)\n    • Distance
         > 1.5°C: {{ distance_from_target > 1.5 }} (current: {{ distance_from_target
         | round(1) }}°C)\n    • SHOULD TRIGGER EMERGENCY: {{ (time_in_current_mode
-        | float(0)) >= (stall_time_threshold * extended_stall_multiplier) and temp_change_rate
+        | float(0)) >= (stall_time_threshold * extended_stall_multiplier * tf) and temp_change_rate
         | abs < min_progress_rate and distance_from_target > 1.5 }}\n\n⚡ Result: Base
         Escalation Level = {{ escalation_level }}\n"
       level: warning
@@ -8806,17 +9086,18 @@ action:
       message: "[12/18] \U0001F3AF {{ room_name | upper }} DYNAMIC TARGET ADJUSTMENT\n\U0001F527
         Smart Escalation Boost Active:\n    • Feature Enabled: {{ enable_dynamic_target
         }}\n    • User Desired Temperature: {{ target_temp }}°C\n    • Final Escalation
-        Level: {{ final_escalation_level }}\n    • Offset Per Level: {{ escalation_offset
-        }}°C\n    • Total Adjustment: {{ (final_escalation_level * escalation_offset)
+        Level: {{ final_escalation_level }}\n    • Offset Per Level: {{ effective_escalation_offset
+        | float(0.5) | round(2) }}°C (base {{ escalation_offset }}°C × aggressiveness {{
+        aggressiveness }})\n    • Total Adjustment: {{ (final_escalation_level * effective_escalation_offset)
         | round(1) }}°C\n\n\U0001F321️ Target Calculation:\n    • Current Mode: {{
         last_mode }}\n    {% if last_mode == 'cooling' %}\n    • Cooling Mode: LOWERING
         target to make AC work harder\n    • Formula: {{ target_temp }}°C - ({{ final_escalation_level
-        }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C\n    • AC will cool
+        }} × {{ effective_escalation_offset | float(0.5) | round(2) }}°C) = {{ adjusted_target }}°C\n    • AC will cool
         to {{ adjusted_target }}°C instead of {{ target_temp }}°C\n    • Creates {{
         (target_temp - adjusted_target) | round(1) }}°C buffer zone below user target\n
         \   {% elif last_mode == 'heating' %}\n    • Heating Mode: RAISING target
         to make AC work harder\n    • Formula: {{ target_temp }}°C + ({{ final_escalation_level
-        }} × {{ escalation_offset }}°C) = {{ adjusted_target }}°C\n    • AC will heat
+        }} × {{ effective_escalation_offset | float(0.5) | round(2) }}°C) = {{ adjusted_target }}°C\n    • AC will heat
         to {{ adjusted_target }}°C instead of {{ target_temp }}°C\n    • Creates {{
         (adjusted_target - target_temp) | round(1) }}°C buffer zone above user target\n
         \   {% endif %}\n\n\U0001F4A1 Why This Helps:\n    • AC compressor works harder
@@ -9117,12 +9398,15 @@ action:
         - condition: template
           value_template: '{{ enable_notifications }}'
         then:
-        - service: !input notification_service
-          data:
-            title: '{{ room_name }} Climate Control'
-            message: Manual timeout ({{ manual_timeout_hours }}h) - switched back
-              to Smart mode
-          continue_on_error: true
+        - repeat:
+            for_each: '{{ notify_services_all }}'
+            sequence:
+            - service: '{{ repeat.item }}'
+              data:
+                title: '{{ room_name }} Climate Control'
+                message: Manual timeout ({{ manual_timeout_hours }}h) - switched back
+                  to Smart mode
+              continue_on_error: true
       - stop: Manual mode timeout - returned to Smart mode
       else:
       - if:
@@ -9997,12 +10281,15 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: '{{ room_name }} Climate Control'
-          message: 'Auto-Off: {{ auto_off_action }} ({{ auto_off_trigger_reason }},
-            {{ current_temp }}°C)'
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: '{{ room_name }} Climate Control'
+              message: 'Auto-Off: {{ auto_off_action }} ({{ auto_off_trigger_reason }},
+                {{ current_temp }}°C)'
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ should_activate }}'
@@ -11922,14 +12209,17 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: Climate Pre-conditioning
-          message: 'Pre-conditioning started - approaching home. Current: {{ current_temp
-            }}°C
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: Climate Pre-conditioning
+              message: 'Pre-conditioning started - approaching home. Current: {{ current_temp
+                }}°C
 
-            '
-        continue_on_error: true
+                '
+            continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ enable_precond_notifications and precond_notify_device not
@@ -12913,11 +13203,14 @@ action:
           - condition: template
             value_template: '{{ enable_notifications }}'
           then:
-          - service: !input notification_service
-            data:
-              title: '{{ room_name }} Climate Control'
-              message: Eco mode - Comfort zone ({{ current_temp }}°C)
-            continue_on_error: true
+          - repeat:
+              for_each: '{{ notify_services_all }}'
+              sequence:
+              - service: '{{ repeat.item }}'
+                data:
+                  title: '{{ room_name }} Climate Control'
+                  message: Eco mode - Comfort zone ({{ current_temp }}°C)
+                continue_on_error: true
       - conditions:
         - condition: template
           value_template: '{{ comfort_zone_action == ''fan_only'' }}'
@@ -13320,11 +13613,14 @@ action:
         - condition: template
           value_template: '{{ enable_notifications }}'
         then:
-        - service: !input notification_service
-          data:
-            title: '{{ room_name }} Climate Control'
-            message: Turned off - Comfort zone ({{ current_temp }}°C)
-          continue_on_error: true
+        - repeat:
+            for_each: '{{ notify_services_all }}'
+            sequence:
+            - service: '{{ repeat.item }}'
+              data:
+                title: '{{ room_name }} Climate Control'
+                message: Turned off - Comfort zone ({{ current_temp }}°C)
+              continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ last_mode in [''stability_fan_only'', ''comfort_fan_only'']
@@ -13947,12 +14243,15 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: '{{ room_name }} Climate Control'
-          message: 'Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode
-            | round(0) }}min, {{ current_temp }}°C)'
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: '{{ room_name }} Climate Control'
+              message: 'Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode
+                | round(0) }}min, {{ current_temp }}°C)'
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ control_mode == ''Manual'' }}'
@@ -14371,12 +14670,15 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: '{{ room_name }} Climate Control'
-          message: 'Smart Mode: {{ smart_behavior }} (room empty {{ minutes_since_presence
-            | round(0) }}min, {{ current_temp }}°C)'
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: '{{ room_name }} Climate Control'
+              message: 'Smart Mode: {{ smart_behavior }} (room empty {{ minutes_since_presence
+                | round(0) }}min, {{ current_temp }}°C)'
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ enable_away_mode }}'
@@ -14584,11 +14886,14 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: Climate Away Mode
-          message: '{{ away_action | title }} mode activated - nobody home'
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: Climate Away Mode
+              message: '{{ away_action | title }} mode activated - nobody home'
+            continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ event_logging_enabled }}'
@@ -14801,11 +15106,14 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: '{{ room_name }} Climate Control'
-          message: Low heating mode - {{ current_temp }}°C
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: '{{ room_name }} Climate Control'
+              message: Low heating mode - {{ current_temp }}°C
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ false }}'
@@ -14948,11 +15256,14 @@ action:
       - condition: template
         value_template: '{{ enable_notifications }}'
       then:
-      - service: !input notification_service
-        data:
-          title: '{{ room_name }} Climate Control'
-          message: Medium heating mode - {{ current_temp }}°C
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ notify_services_all }}'
+          sequence:
+          - service: '{{ repeat.item }}'
+            data:
+              title: '{{ room_name }} Climate Control'
+              message: Medium heating mode - {{ current_temp }}°C
+            continue_on_error: true
 - if:
   - condition: template
     value_template: '{{ debug_enabled }}'
@@ -15751,7 +16062,7 @@ action:
   - if:
     - condition: template
       value_template: "{{ evt_mode not in ['off', 'smart_off', 'away_off', 'auto_off_off',
-        'stability_off'] or evt_changed }}"
+        'stability_off', 'window_off'] or evt_changed }}"
     then:
     - service: system_log.write
       data:
