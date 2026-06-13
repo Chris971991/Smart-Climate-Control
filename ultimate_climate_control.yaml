@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.7.13
-  description: "**Ultimate Smart Climate Control v9.7.13**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.8.0
+  description: "**Ultimate Smart Climate Control v9.8.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,23 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.7.13 - FIX: helper_expected_temp 0.0 range error in smart_off + eco_target string+int:**\n•
+    UPDATES:**\n\n**v9.8.0 - FIX: AC fan-speed flutter (multi-cause):**\n•
+    **F1+F2 (continue-exit hysteresis)**: cooling-continue exit at L9031 and heating-continue
+    exit at L10464 used a 0.1°C magic number for the threshold. With sensor noise
+    around the boundary, brief temp dips would exit cooling-continue → comfort_fan_only
+    → flutter. Replaced with `max(hysteresis_tolerance/2, 0.1)`. At default hyst=0.3,
+    margin grows to 0.15°C; at min hyst=0.05, floor preserves current 0.1 behavior
+    (no regression). Recommend hyst≥0.3 to actually fix flutter.\n•
+    **F3 (hold-time gate restored)**: only 5 of 25 `set_fan_mode` call sites updated
+    `helper_last_fan_change`. The asymmetric debounce in `calculated_fan_level_int`
+    (30s for escalation, full hold_time for de-escalation) silently broke at the
+    other 20 paths because `time_since_fan_change` returned stale values. Added
+    helper-write at all 20 missing sites. This is the load-bearing fix — restores
+    the hold-time guarantee that already existed in template logic.\n•
+    **F4 (escalation_level distance-band hysteresis)**: deferred. F1+F2+F3 alone
+    expected to cut flutter substantially. Reassess after 24h soak.\n•
+    **Behavior impact**: at default hyst=0.3, cooling cycles +3-5s (cooling reaches
+    22.85°C instead of 22.9°C before exit). Negligible at room scale.\n\n**v9.7.13 - FIX: helper_expected_temp 0.0 range error in smart_off + eco_target string+int:**\n•
     **FIX 1 (primary)**: `smart_off` (vacancy) branch at L14958-14961 hardcoded
     `value: '0'` for `input_number.helper_expected_temp` — but the helper has range
     10-35. Every time AC turned off via vacancy, automation error logged: `Invalid
@@ -6150,9 +6166,11 @@ action:
       \   {% if is_state(device, 'on') or is_state(device, 'PowerOn') %}\n      {%
       set home.value = true %}\n    {% endif %}\n  {% endfor %}\n{% endif %} {{ home.value
       }}\n"
-    approaching_home: "{% if direction_sensor and proximity_sensor %}\n  {{ (is_state(direction_sensor,
-      'towards') or is_state(direction_sensor, 'arrived')) and\n     states(proximity_sensor)
-      | float(10000) < home_zone_distance }}\n{% else %}\n  false\n{% endif %}\n"
+    approaching_home: "{# v9.8.1: Removed 'arrived' from approaching_home - 'arrived' state lingers indefinitely #}\n
+      {# 'arrived' means already home, not approaching. Use anyone_home for at-home detection instead #}\n
+      {% if direction_sensor and proximity_sensor %}\n  {{ is_state(direction_sensor,
+      'towards') and\n     states(proximity_sensor) | float(10000) < home_zone_distance
+      }}\n{% else %}\n  false\n{% endif %}\n"
     time_since_change: "{% if helper_change and states(helper_change) not in ['unknown',
       'unavailable', ''] %}\n  {% set change_timestamp = as_timestamp(states(helper_change))
       %}\n  {% if change_timestamp %}\n    {{ (as_timestamp(now()) - change_timestamp)
@@ -7303,9 +7321,11 @@ action:
     continue_on_error: true
 - if:
   - condition: template
-    value_template: "{{ (is_precond_mode | bool) and (anyone_home | bool) and not
-      (precond_arrival_occurred | bool)\n   and helper_precond_arrival not in [none,
-      '', 'unavailable', 'unknown'] }}\n"
+    value_template: "{# v9.8.1: Start grace timer on EITHER anyone_home OR direction='arrived' #}\n
+      {# Person entity can lag behind direction sensor by 1-2 minutes due to GPS delays #}\n
+      {{ (is_precond_mode | bool) and ((anyone_home | bool) or (direction_sensor and
+      is_state(direction_sensor, 'arrived'))) and not (precond_arrival_occurred | bool)\n
+      \  and helper_precond_arrival not in [none, '', 'unavailable', 'unknown'] }}\n"
   then:
   - service: input_datetime.set_datetime
     target:
@@ -9008,6 +9028,17 @@ action:
           entity_id: '{{ climate_list[0] }}'
         data:
           fan_mode: '{{ precond_validated_fan_mode }}'
+      - if:
+        - condition: template
+          value_template: '{{ helper_last_fan_change not in [none, '''', ''unavailable'',
+            ''unknown''] }}'
+        then:
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: '{{ helper_last_fan_change }}'
+          data:
+            datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+          continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ precond_temp_needs_fix }}'
@@ -9028,8 +9059,9 @@ action:
         }}'
     - condition: template
       value_template: '{% set overshoot_target = target_temp - target_overshoot %}
-        {{ (current_temp > overshoot_target and current_temp < (comfort_max_temp -
-        0.1)) or (is_precond_mode | bool) }}
+        {% set raw_margin = (hysteresis_tolerance | float(0.3)) / 2 %} {% set continue_margin
+        = [raw_margin, 0.1] | max %} {{ (current_temp > overshoot_target and current_temp
+        < (comfort_max_temp - continue_margin)) or (is_precond_mode | bool) }}
 
         '
     - condition: template
@@ -9291,12 +9323,45 @@ action:
               data:
                 swing_mode: '{{ validated_swing_mode }}'
               continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: input_text.set_value
           target:
             entity_id: !input helper_expected_fan
           data:
             value: '{{ selected_fan_only_fan_mode }}'
           continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_hvac }}'
+            data:
+              value: fan_only
+            continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_number.set_value
+            target:
+              entity_id: '{{ helper_expected_temp }}'
+            data:
+              value: '{{ target_temp }}'
+            continue_on_error: true
         - service: input_text.set_value
           target:
             entity_id: !input helper_last_mode
@@ -9583,6 +9648,17 @@ action:
               continue_on_error: true
         - if:
           - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
+        - if:
+          - condition: template
             value_template: '{{ event_logging_enabled }}'
           then:
           - service: system_log.write
@@ -9643,6 +9719,17 @@ action:
                 data:
                   fan_mode: '{{ selected_fan_only_fan_mode }}'
                 continue_on_error: false
+          - if:
+            - condition: template
+              value_template: '{{ fan_mode_changed and helper_last_fan_change not
+                in [none, '''', ''unavailable'', ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - if:
             - condition: template
               value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
@@ -9925,6 +10012,17 @@ action:
             data:
               fan_mode: '{{ selected_fan_mode }}'
             continue_on_error: false
+    - if:
+      - condition: template
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_last_fan_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ event_logging_enabled and last_mode != ''cooling'' }}'
@@ -10461,8 +10559,9 @@ action:
         }}'
     - condition: template
       value_template: '{% set overshoot_target = target_temp + target_overshoot %}
-        {{ (current_temp < overshoot_target and current_temp > (comfort_min_temp +
-        0.1)) or (is_precond_mode | bool) }}
+        {% set raw_margin = (hysteresis_tolerance | float(0.3)) / 2 %} {% set continue_margin
+        = [raw_margin, 0.1] | max %} {{ (current_temp < overshoot_target and current_temp
+        > (comfort_min_temp + continue_margin)) or (is_precond_mode | bool) }}
 
         '
     - condition: template
@@ -11043,6 +11142,17 @@ action:
                   level: debug
         - if:
           - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
+        - if:
+          - condition: template
             value_template: '{{ ceiling_fan_configured and not fan_override_active
               and helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
               ''unknown''] }}'
@@ -11231,6 +11341,17 @@ action:
                     }} • Temperature: {{ heating_target_temp }}°C • Reason: Exited
                     comfort zone stability, activating heating\n"
                   level: debug
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: input_number.set_value
           target:
             entity_id: '{{ helper_expected_temp }}'
@@ -11261,10 +11382,12 @@ action:
     - condition: template
       value_template: '{{ (is_precond_mode | bool) or (should_activate | bool) }}'
     - condition: template
-      value_template: '{% set location_check = (approaching_home | bool) and not (anyone_home
-        | bool) %} {% set manual_precond_needs_setup = (is_precond_mode | bool) and
-        actual_ac_state == ''off'' %} {{ location_check or manual_precond_needs_setup
-        }}
+      value_template: '{# v9.8.1: Re-entry guard - location_check only fires on FIRST entry, not while already in precond mode #}
+        {# Without this guard, the block re-fires every periodic_check, resetting timestamps and spamming notifications #}
+        {% set location_check = (approaching_home | bool) and not (anyone_home
+        | bool) and not (is_precond_mode | bool) %} {% set manual_precond_needs_setup
+        = (is_precond_mode | bool) and actual_ac_state == ''off'' %} {{ location_check
+        or manual_precond_needs_setup }}
 
         '
     - condition: template
@@ -11398,6 +11521,17 @@ action:
           data:
             fan_mode: '{{ precond_fan_mode }}'
           continue_on_error: false
+    - if:
+      - condition: template
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_last_fan_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
@@ -11605,6 +11739,17 @@ action:
                 • Temperature: {{ cooling_target_temp }}°C • Reason: Low cooling mode
                 for gentle temperature control\n"
               level: debug
+    - if:
+      - condition: template
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_last_fan_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
     - service: input_text.set_value
       target:
         entity_id: !input helper_last_mode
@@ -11918,6 +12063,17 @@ action:
                 mode\n\nReason: Bed occupied - continuous temperature maintenance
                 in ECO mode with dynamic fan escalation\n"
               level: warning
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ bed_eco_should_fan_only }}'
@@ -12333,6 +12489,17 @@ action:
                 data:
                   swing_mode: '{{ validated_swing_mode }}'
                 continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: input_text.set_value
           target:
             entity_id: !input helper_last_mode
@@ -12628,6 +12795,17 @@ action:
                 continue_on_error: false
           - if:
             - condition: template
+              value_template: '{{ fan_mode_changed and helper_last_fan_change not
+                in [none, '''', ''unavailable'', ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
+          - if:
+            - condition: template
               value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
                 ''unknown''] }}'
             then:
@@ -12879,6 +13057,17 @@ action:
               entity_id: '{{ helper_expected_fan }}'
             data:
               value: '{{ selected_fan_only_fan_mode }}'
+            continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
             continue_on_error: true
   - conditions:
     - condition: template
@@ -13158,6 +13347,17 @@ action:
               data:
                 swing_mode: '{{ validated_swing_mode }}'
               continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: system_log.write
           data:
             message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Temperature Stability
@@ -13267,6 +13467,17 @@ action:
                 data:
                   fan_mode: '{{ selected_fan_only_fan_mode }}'
                 continue_on_error: false
+          - if:
+            - condition: template
+              value_template: '{{ fan_mode_changed and helper_last_fan_change not
+                in [none, '''', ''unavailable'', ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - if:
             - condition: template
               value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
@@ -13702,6 +13913,17 @@ action:
               data:
                 swing_mode: '{{ validated_swing_mode }}'
               continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: system_log.write
           data:
             message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Smart Room Eco
@@ -13954,6 +14176,17 @@ action:
               data:
                 swing_mode: '{{ validated_swing_mode }}'
               continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and helper_last_fan_change not in
+              [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_last_fan_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
         - service: system_log.write
           data:
             message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Away Eco Mode
@@ -14136,6 +14369,17 @@ action:
                 selected_hvac_mode }} • Fan Mode: {{ selected_fan_mode }} • Temperature:
                 {{ heating_target_temp }}°C • Reason: Low fan speed for gentle heating\n"
               level: debug
+    - if:
+      - condition: template
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_last_fan_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
     - service: system_log.write
       data:
         message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Low Heating Set AC
@@ -14254,6 +14498,17 @@ action:
           data:
             swing_mode: '{{ validated_swing_mode }}'
           continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_last_fan_change }}'
+        data:
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+        continue_on_error: true
     - service: system_log.write
       data:
         message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Medium Heating Set
@@ -14584,6 +14839,17 @@ action:
             data:
               swing_mode: '{{ validated_swing_mode }}'
             continue_on_error: true
+      - if:
+        - condition: template
+          value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+            '''', ''unavailable'', ''unknown''] }}'
+        then:
+        - service: input_datetime.set_datetime
+          target:
+            entity_id: '{{ helper_last_fan_change }}'
+          data:
+            datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+          continue_on_error: true
     default:
     - if:
       - condition: template
