@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.8.0
-  description: "**Ultimate Smart Climate Control v9.8.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.9.0
+  description: "**Ultimate Smart Climate Control v9.9.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,15 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.8.0 - FIX: AC fan-speed flutter (multi-cause):**\n•
+    UPDATES:**\n\n**v9.9.0 - Override-correctness & crash hardening:**\n•
+    **Override correctness**: 50s unified command grace across all device types; mode:restart
+    ordering race fixed (helpers/fan shutdown before select_option Override); `| bool` guards
+    on string-boolean branch conditions; canonical mode names (cooling/heating/comfort_fan_only)
+    in override-clear sync + state machine; independent AC-only override now runs the ceiling
+    fan via a contained sub-sequence at the Override choke point.\n•
+    **Crash fixes**: 0°C min/max temp sentinel resolved once into ac_min_resolved/ac_max_resolved;
+    None|list guards on state_attr reads; timezone-safe pre-conditioning arrival/start
+    sentinel; current_temp distinguishes unavailable sensor from sub-zero reading.\n\n**v9.8.0 - FIX: AC fan-speed flutter (multi-cause):**\n•
     **F1+F2 (continue-exit hysteresis)**: cooling-continue exit at L9031 and heating-continue
     exit at L10464 used a 0.1°C magic number for the threshold. With sensor noise
     around the boundary, brief temp dips would exit cooling-continue → comfort_fan_only
@@ -5224,6 +5232,9 @@ variables:
   enable_pre_conditioning: !input enable_pre_conditioning
   enable_away_mode: !input enable_away_mode
   enable_notifications: !input enable_notifications
+  # LOW-event-logging-order: hoisted to top-level so it is defined before the
+  # mode_change Pre-conditioning event-log gate (which runs before the action variables step).
+  event_logging_enabled: !input enable_event_logging
   eco_mode_setpoint_offset: !input eco_mode_setpoint_offset
   fan_control_mode: !input fan_control_mode
   static_fan_speed: !input static_fan_speed
@@ -5296,8 +5307,7 @@ variables:
     and ceiling_fan_high_switch_input | length > 0 %}\n  {{ ceiling_fan_high_switch_input[0]
     }}\n{% else %}\n  none\n{% endif %}\n"
   desired_swing_input: !input swing_mode_active
-  validated_swing_mode: "{% set swing_modes = state_attr(climate_list[0], 'swing_modes')
-    | default([]) | list %} {% set desired = desired_swing_input | lower %} {% if
+  validated_swing_mode: "{% set swing_modes = (state_attr(climate_list[0], 'swing_modes') or []) | list %} {% set desired = desired_swing_input | lower %} {% if
     desired in swing_modes %}\n  {{ desired }}\n{% elif desired == 'vertical' and
     'Vertical' in swing_modes %}\n  Vertical\n{% elif desired == 'horizontal' and
     'Horizontal' in swing_modes %}\n  Horizontal\n{% elif desired == 'both' and '3D'
@@ -5318,7 +5328,8 @@ variables:
   helper_trend: !input helper_trend_direction
   helper_mode_time: !input helper_mode_start_time
   helper_effectiveness: !input helper_effectiveness_score
-  last_mode: '{{ states(helper_mode) | default(''off'') }}'
+  last_mode: "{% set raw = states(helper_mode) %}{{ raw if raw not in ['unknown', 'unavailable',
+    ''] else 'off' }}"
   enable_ac_override_detection: !input enable_ac_override_detection
   enable_ceiling_fan_override_detection: !input enable_ceiling_fan_override_detection
   override_behavior: !input override_behavior
@@ -5348,7 +5359,6 @@ variables:
     in ['cool', 'heat', 'heat_cool', 'auto', 'dry', 'fan_only'] %}\n      {% set ac_states.any_running
     = true %}\n    {% endif %}\n  {% endif %}\n{% endfor %} {{ 'on' if ac_states.any_running
     else 'off' }}\n"
-  last_change: '{{ states(helper_change) | default(now()) }}'
   runtime_min: !input min_runtime_minutes
   offtime_min: !input min_off_time_minutes
   enforce_offtime: !input enforce_off_time_protection
@@ -5388,7 +5398,7 @@ variables:
   fan_only_fan_speed_setting: !input fan_only_fan_speed
   selected_fan_only_fan_mode: "{% set user_choice = fan_only_fan_speed_setting | default('silence')
     %} {% set entity = climate_list[0] if climate_list | length > 0 else none %} {%
-    set available_fans = state_attr(entity, 'fan_modes') | list if entity else []
+    set available_fans = (state_attr(entity, 'fan_modes') or []) | list if entity else []
     %}\n{% if user_choice == 'silence' %}\n  {% if 'silence' in available_fans %}\n
     \   silence\n  {% elif 'Silence' in available_fans %}\n    Silence\n  {% elif
     'quiet' in available_fans %}\n    quiet\n  {% elif 'Quiet' in available_fans %}\n
@@ -5475,6 +5485,14 @@ variables:
     zone_width | round(2) }}\n{% else %}\n  0.75\n{% endif %}\n"
   ac_minimum_temp: !input ac_minimum_temp
   ac_maximum_temp: !input ac_maximum_temp
+  ac_min_resolved: "{% set user_min = ac_minimum_temp | float(0) %} {% set reported
+    = state_attr(climate_list[0], 'min_temp') | float(16) %} {% set reported = reported
+    if reported > 0 else 16 %} {{ (user_min if user_min > 0 else reported) | round(1)
+    }}"
+  ac_max_resolved: "{% set user_max = ac_maximum_temp | float(0) %} {% set reported
+    = state_attr(climate_list[0], 'max_temp') | float(30) %} {% set reported = reported
+    if reported > 0 else 30 %} {{ (user_max if user_max > 0 else reported) | round(1)
+    }}"
   default_control_mode: !input default_control_mode
   override_timeout: !input override_timeout
   manual_mode_timeout: !input manual_mode_timeout
@@ -5555,12 +5573,24 @@ trigger:
   id: physical_remote_override
 condition:
 - condition: template
-  value_template: "{% if trigger.id == 'climate_state_change' %}\n  {# Only accept
-    if HVAC mode actually changed (off↔cool↔heat↔dry↔fan_only) #}\n  {{ trigger.from_state.state
-    != trigger.to_state.state }}\n{% elif trigger.id == 'ceiling_fan_state_change'
-    %}\n  {# v9.0.0: Only accept if ceiling fan state actually changed (on↔off) #}\n
-    \ {{ trigger.from_state.state != trigger.to_state.state }}\n{% else %}\n  {# All
-    other triggers pass through #}\n  true\n{% endif %}\n"
+  value_template: |
+    {% if trigger.id == 'climate_state_change' %}
+      {# Only accept if HVAC mode actually changed (off↔cool↔heat↔dry↔fan_only) #}
+      {{ trigger.from_state.state != trigger.to_state.state }}
+    {% elif trigger.id == 'ceiling_fan_state_change' %}
+      {# v9.0.0: Only accept if ceiling fan state actually changed (on↔off) #}
+      {# H11: Ignore fan changes caused by our own service calls — prevents mode:restart
+         from killing the override-activation sequence between fan shutdown and
+         select_option Override #}
+      {{ trigger.from_state.state != trigger.to_state.state and (trigger.to_state.context.parent_id is none) }}
+    {% elif trigger.id in ['presence_change', 'device_change', 'room_presence_change', 'auto_off_person_change', 'auto_off_sensor_1_change', 'auto_off_sensor_all_change'] %}
+      {# M30: Ignore attribute-only updates (GPS coords, RSSI) — only real state transitions.
+         none-guards let entity-appeared/removed events pass through (startup behavior). #}
+      {{ trigger.from_state is none or trigger.to_state is none or trigger.from_state.state != trigger.to_state.state }}
+    {% else %}
+      {# All other triggers pass through #}
+      true
+    {% endif %}
 action:
 - condition: template
   value_template: '{{ trigger is defined and trigger.id is defined }}'
@@ -5718,7 +5748,6 @@ action:
     continue_on_error: true
 - variables:
     check_interval: !input check_interval_minutes
-    event_logging_enabled: !input enable_event_logging
     debug_enabled: !input enable_full_debug_logging
     proximity_sensor: "{% if proximity_sensor_input and proximity_sensor_input not
       in [none, '', 'unavailable', 'unknown'] and proximity_sensor_input is string
@@ -5730,10 +5759,6 @@ action:
       %}\n  none\n{% endif %}\n"
     previous_temp: "{% if helper_temp_history %}\n  {{ states(helper_temp_history)
       | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
-    current_trend: "{% if helper_trend %}\n  {{ states(helper_trend) | default('stable')
-      }}\n{% else %}\n  stable\n{% endif %}\n"
-    mode_start_time: "{% if helper_mode_time %}\n  {{ states(helper_mode_time) | default(now())
-      | as_datetime }}\n{% else %}\n  {{ now() }}\n{% endif %}\n"
     should_proceed: "{% if trigger.id == 'periodic_check' %}\n  {% set mins = now().minute
       %}\n  {% set interval = check_interval | int(1) %}\n  {% if interval > 0 %}\n
       \   {{ (mins % interval) == 0 }}\n  {% else %}\n    true\n  {% endif %}\n{%
@@ -5869,8 +5894,9 @@ action:
       }}'
   then:
   - if:
+    # M26: control_mode variable not yet defined at this point in the action list — must read the helper directly
     - condition: template
-      value_template: '{{ fan_override_active and control_mode != ''Override'' }}'
+      value_template: '{{ fan_override_active and states(control_mode_helper) != ''Override'' }}'
     then:
     - if:
       - condition: template
@@ -5959,7 +5985,7 @@ action:
       continue_on_error: true
   - if:
     - condition: template
-      value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+      value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
         and climate_list | length > 0 }}'
     then:
     - variables:
@@ -5992,13 +6018,16 @@ action:
       continue_on_error: true
   - if:
     - condition: template
-      value_template: '{{ helper_mode not in [none, ''unavailable'', ''unknown'']
+      value_template: '{{ helper_mode not in [none, '''', ''unavailable'', ''unknown'']
         and climate_list | length > 0 }}'
     then:
     - variables:
-        sync_last_mode: "{% set hvac = states(climate_list[0]) %} {% if hvac == 'cool'
-          %}\n  cooling_medium\n{% elif hvac == 'heat' %}\n  heating_medium\n{% elif
-          hvac == 'fan_only' %}\n  fan_only\n{% elif hvac == 'dry' %}\n  eco\n{% else
+        sync_last_mode: "{# M32: emit canonical mode names ('cooling'/'heating'/'comfort_fan_only')
+          that core logic matches — runtime protection checks last_mode in ['cooling','heating'],
+          active_modes holds the canonical names, and legacy '_medium' names never matched. #}
+          {% set hvac = states(climate_list[0]) %} {% if hvac == 'cool'
+          %}\n  cooling\n{% elif hvac == 'heat' %}\n  heating\n{% elif
+          hvac == 'fan_only' %}\n  comfort_fan_only\n{% elif hvac == 'dry' %}\n  eco\n{% else
           %}\n  off\n{% endif %}\n"
     - service: input_text.set_value
       target:
@@ -6045,9 +6074,11 @@ action:
       sensor (backward compatibility) #}\n    {{ states(temp_sensor) | float(25) }}\n
       \ {% else %}\n    {# Multiple sensors - use min/max/avg strategy based on HVAC
       mode #}\n    {% set temps = namespace(values=[]) %}\n    {% for sensor in temp_sensor
-      %}\n      {% set temp_value = states(sensor) | float(0) %}\n      {% if temp_value
-      > 0 %}\n        {% set temps.values = temps.values + [temp_value] %}\n      {%
-      endif %}\n    {% endfor %}\n\n    {% if temps.values | length > 0 %}\n      {%
+      %}\n      {# M29: distinguish unavailable sensor from legitimately cold (<=0) reading #}\n
+      \     {% if states(sensor) not in ['unknown', 'unavailable', ''] %}\n        {%
+      set temp_value = states(sensor) | float(-999) %}\n        {% if temp_value > -50
+      %}\n          {% set temps.values = temps.values + [temp_value] %}\n        {%
+      endif %}\n      {% endif %}\n    {% endfor %}\n\n    {% if temps.values | length > 0 %}\n      {%
       if use_avg %}\n        {# User explicitly requested average - honor that setting
       #}\n        {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
       \     {% elif enable_cooling and not enable_heating %}\n        {# Cooling:
@@ -6058,9 +6089,11 @@ action:
       #}\n        {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
       \     {% endif %}\n    {% else %}\n      25\n    {% endif %}\n  {% endif %}\n{%
       elif use_avg %}\n  {% set temps = namespace(values=[]) %}\n  {% for entity in
-      climate_list %}\n    {% set temp_value = state_attr(entity, 'current_temperature')
-      | float(0) %}\n    {% if temp_value > 0 %}\n      {% set temps.values = temps.values
-      + [temp_value] %}\n    {% endif %}\n  {% endfor %}\n  {% if temps.values | length
+      climate_list %}\n    {# M29: None attribute test IS the availability check; <=0 readings kept #}\n
+      \   {% set raw = state_attr(entity, 'current_temperature') %}\n    {% if raw is
+      not none %}\n      {% set temp_value = raw | float(-999) %}\n      {% if temp_value
+      > -50 %}\n        {% set temps.values = temps.values + [temp_value] %}\n      {%
+      endif %}\n    {% endif %}\n  {% endfor %}\n  {% if temps.values | length
       > 0 %}\n    {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
       \ {% else %}\n    25\n  {% endif %}\n{% else %}\n  {{ state_attr(climate_list[0],
       'current_temperature') | float(25) }}\n{% endif %}\n"
@@ -6143,6 +6176,11 @@ action:
       == 'low' %}\n    {{ ceiling_fan_low_switch }}\n  {% elif ceiling_fan_target_speed
       == 'medium' %}\n    {{ ceiling_fan_medium_switch }}\n  {% else %}\n    {{ ceiling_fan_high_switch
       }}\n  {% endif %}\n{% else %}\n  none\n{% endif %}\n"
+    # M38: the non-target speed relays — turn these OFF before energizing the target so
+    # capacitor-speed fan motors never have two relays energized simultaneously.
+    ceiling_fan_other_switches: "{% if ceiling_fan_has_speed_switches %}\n  {{ [ceiling_fan_low_switch,
+      ceiling_fan_medium_switch, ceiling_fan_high_switch] | reject('eq', ceiling_fan_target_switch)
+      | list }}\n{% else %}\n  []\n{% endif %}\n"
     ceiling_fan_mode_active: '{{ last_mode == ''ceiling_fan_cooling'' }}'
     ceiling_fan_runtime_minutes: "{% if ceiling_fan_mode_active and helper_change
       and states(helper_change) not in ['unknown', 'unavailable', ''] %}\n  {{ ((as_timestamp(now())
@@ -6385,11 +6423,9 @@ action:
     wrong_direction_per_check: !input wrong_direction_escalation_per_check
     wrong_direction_min_rate: !input wrong_direction_min_rate
     wrong_direction_detected: "{{\n  (wrong_direction_enabled and wrong_direction_per_check
-      > 0) and\n  (\n    (last_mode == 'cooling' and\n     (temp_change_rate > wrong_direction_min_rate
-      or (temp_change_rate >= -effective_min_progress_rate and temp_change_rate <=
-      0))) or\n    (last_mode == 'heating' and\n     (temp_change_rate < -wrong_direction_min_rate
-      or (temp_change_rate <= effective_min_progress_rate and temp_change_rate >=
-      0)))\n  )\n}}\n"
+      > 0) and\n  (\n    (last_mode == 'cooling' and temp_change_rate >= -effective_min_progress_rate)
+      or\n    (last_mode == 'heating' and temp_change_rate <= effective_min_progress_rate)\n
+      \ )\n}}\n"
     wrong_direction_escalation_add: "{% if wrong_direction_detected %}\n  {{ wrong_direction_per_check
       | int(1) }}\n{% else %}\n  0\n{% endif %}\n"
     outside_temp_escalation_boost: "{% if enable_outside_temp_compensation %}\n  {%
@@ -6504,7 +6540,7 @@ action:
       if enable_heat_source_fan_boost and heat_source_escalation_boost | int(0) >
       0 %}\n  {% set boost = boost + (heat_source_escalation_boost | int(0)) %}\n{%
       endif %}\n{# Apply boost, capped at 5 #} {{ [base_level + boost, 5] | min }}\n"
-    new_fan_mode: "{% set fans = state_attr(climate_list[0], 'fan_modes') | default([])
+    new_fan_mode: "{% set fans = (state_attr(climate_list[0], 'fan_modes') or [])
       | list if climate_list | length > 0 else [] %} {% set is_precond = control_mode_helper
       and states(control_mode_helper) == 'Pre-conditioning' %} {% set desired_precond_fan
       = precond_fan_mode | default('Dynamic') %} {% set has_numbered = '5' in fans
@@ -6584,15 +6620,11 @@ action:
       fast as possible #} {# Note: is_precond_mode defined later, so read helper directly
       #} {% set precond_mode_check = states(control_mode_helper) == 'Pre-conditioning'
       %} {% set precond_boost = precond_mode_check and precond_boost_enabled %} {%
-      if precond_boost and is_cooling %}\n  {% set base = ac_minimum_temp | float(18)
-      %}\n{% elif precond_boost and is_heating %}\n  {% set base = ac_maximum_temp
-      | float(30) %}\n{% endif %}\n{# Get AC's actual temperature limits with smart
-      fallbacks #} {% set user_min = ac_minimum_temp | float(0) %} {% set user_max
-      = ac_maximum_temp | float(0) %} {% set reported_min = state_attr(climate_list[0],
-      'min_temp') | float(16) %} {% set reported_max = state_attr(climate_list[0],
-      'max_temp') | float(30) %}\n{# Priority: User override (if non-zero) → Reported
-      values → Safe defaults #} {% set ac_min_temp = user_min if user_min > 0 else
-      reported_min %} {% set ac_max_temp = user_max if user_max > 0 else reported_max
+      if precond_boost and is_cooling %}\n  {% set base = ac_min_resolved | float(18)
+      %}\n{% elif precond_boost and is_heating %}\n  {% set base = ac_max_resolved
+      | float(30) %}\n{% endif %}\n{# AC temperature limits resolved once in ac_min_resolved/ac_max_resolved
+      (user override if non-zero -> reported values -> safe defaults) #} {% set ac_min_temp
+      = ac_min_resolved | float(16) %} {% set ac_max_temp = ac_max_resolved | float(30)
       %}\n{# Safety limits: Respect AC hardware limits while allowing escalation adjustments
       #} {% if is_cooling %}\n  {# Allow cooling below target_temp when escalated,
       but respect AC minimum temp #}\n  {{ [ac_min_temp, base] | max | round(1) }}\n{%
@@ -6621,13 +6653,15 @@ action:
 
       '
     precond_start_timestamp: "{% if helper_precond_start and states(helper_precond_start)
-      not in ['unknown', 'unavailable', ''] %}\n  {{ as_timestamp(states(helper_precond_start))
-      | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
+      not in ['unknown', 'unavailable', ''] and not states(helper_precond_start).startswith('1970-01-01')
+      %}\n  {{ as_timestamp(states(helper_precond_start)) | float(0) }}\n{% else %}\n
+      \ 0\n{% endif %}\n"
     precond_runtime_minutes: "{% if precond_start_timestamp > 0 %}\n  {{ ((as_timestamp(now())
       - precond_start_timestamp) / 60) | round(1) }}\n{% else %}\n  0\n{% endif %}\n"
     precond_arrival_timestamp: "{% if helper_precond_arrival and states(helper_precond_arrival)
-      not in ['unknown', 'unavailable', ''] %}\n  {{ as_timestamp(states(helper_precond_arrival))
-      | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
+      not in ['unknown', 'unavailable', ''] and not states(helper_precond_arrival).startswith('1970-01-01')
+      %}\n  {{ as_timestamp(states(helper_precond_arrival)) | float(0) }}\n{% else %}\n
+      \ 0\n{% endif %}\n"
     precond_arrival_occurred: '{{ precond_arrival_timestamp > 0 }}
 
       '
@@ -6670,8 +6704,7 @@ action:
     precond_previous_mode_value: "{% if helper_precond_previous_mode and states(helper_precond_previous_mode)
       not in ['unknown', 'unavailable', ''] %}\n  {{ states(helper_precond_previous_mode)
       }}\n{% else %}\n  {{ default_control_mode }}\n{% endif %}\n"
-    precond_validated_fan_mode: "{% set fan_modes = state_attr(climate_list[0], 'fan_modes')
-      | default([]) | list %} {% set desired = precond_fan_mode | default('Dynamic')
+    precond_validated_fan_mode: "{% set fan_modes = (state_attr(climate_list[0], 'fan_modes') or []) | list %} {% set desired = precond_fan_mode | default('Dynamic')
       %} {% set has_numbered = '5' in fan_modes or '4' in fan_modes %} {% if desired
       == 'Dynamic' %}\n  Dynamic\n{% elif desired | lower in fan_modes %}\n  {{ desired
       | lower }}\n{% elif desired in fan_modes %}\n  {{ desired }}\n{% elif desired
@@ -6930,6 +6963,11 @@ action:
     extreme_temp_detected: "{% if not extreme_override %}\n  false\n{% elif current_temp
       > extreme_high %}\n  hot\n{% elif current_temp < extreme_low %}\n  cold\n{%
       else %}\n  false\n{% endif %}\n"
+    # H10: Unified command grace (seconds) for BOTH periodic_check and climate_state_change
+    # override paths. MUST stay >= the integration's 45s _last_any_command_time grace
+    # (homeassistant-daikin-optimized climate.py ~line 633/605). 50 gives 5s margin
+    # for poll latency.
+    override_command_grace: 50
     manual_override_detection: "{# Step 0: Quick validation checks #} {% if not enable_ac_override_detection
       %}\n  false\n{% elif control_mode in ['Override', 'Manual', 'Pre-conditioning']
       %}\n  {# v6.6.0: Exclude Pre-conditioning mode from override detection #}\n
@@ -6980,14 +7018,11 @@ action:
       hasn't sent a command recently\n     This catches physical remote turn-off that
       happened between polls #}\n  {% set expected_on = expected_hvac in ['cool',
       'heat', 'auto', 'heat_cool', 'dry', 'fan_only'] %}\n  {% set actual_off = actual_hvac
-      == 'off' %}\n  {# v9.7.12 FIX: Align periodic_check grace with integration timeout. #}\n
-      \ {# BRP072C devices have 30s integration timeout; pydaikin/climate.py suppress #}\n
-      \ {# override detection for 30s+ after any command. Periodic check (1-min cadence) #}\n
-      \ {# must use a longer window to match v2.37.0's _last_any_command_time grace, #}\n
-      \ {# else it fires false override mid-handshake when device hasn't applied yet. #}\n
-      \ {% set device_type = state_attr(climate_list[0], 'device_type') or 'unknown'
-      %}\n  {% set mid_command_threshold = 45 if device_type == 'DaikinBRP072C' else
-      30 %}\n  {% set not_mid_command = time_since_cmd > mid_command_threshold %}\n
+      == 'off' %}\n  {# H10: Unified device-agnostic command grace derived from override_command_grace.
+      #}\n  {# Replaces the v9.7.12 per-device thresholds (45 BRP072C / 30 other).
+      MUST stay >= #}\n  {# the integration's 45s _last_any_command_time grace (climate.py
+      ~605/633). #}\n  {% set mid_command_threshold = override_command_grace | int(50)
+      %}\n  {% set not_mid_command = time_since_cmd > mid_command_threshold %}\n
       \ {% set not_stale
       = time_since_cmd < 300 %}\n  {# v7.5.0: Tightened from 3600s to 300s (5 min). Periodic check is a safety net, #}\n  {# not primary detection. If command is >5 min old and we just noticed mismatch, #}\n  {# it's likely stale state (HA restart, failed command) not a physical remote press. #}\n  {# Real remote presses are caught within seconds by climate_state_change trigger. #}\n  {% set power_override = expected_on and actual_off %}\n\n  {# v7.7.0 FIX: Removed temp_override from periodic check - blueprint dynamically #}\n  {# changes AC setpoint via escalation (adjusted_target), so expected temp (user #}\n  {# target) will differ from actual setpoint when escalation is active. Same issue #}\n  {# as fan_override (removed in v7.4.1). Temp/fan override detection only works #}\n  {# via climate_state_change trigger where context can identify the source. #}\n\n  {{ power_override and not_mid_command
       and not_stale }}\n{% elif trigger.id != 'climate_state_change' %}\n  false\n{%
@@ -7038,13 +7073,12 @@ action:
       \   false\n  {% elif integration_supports_tracking %}\n    {# ===== INTEGRATION-AWARE
       DETECTION ===== #}\n\n    {# Calculate time since last automation command #}\n
       \   {% set time_since_cmd = ((now() - as_datetime(last_cmd_time)).total_seconds())
-      if last_cmd_time else 9999 %}\n\n    {# Device-aware timeout: BRP084 needs longer
-      due to semaphore + power verification #}\n    {# v6.1.0: Increased timeouts
-      to account for sequential service calls with 500ms delays #}\n    {# v6.5.5:
-      Increased BRP072C timeout from 10s to 30s - these devices fetch state before
-      #}\n    {#         sending commands (extra network latency), causing false override
-      detection #}\n    {% set cmd_timeout = 15 if device_type == 'DaikinBRP084' else
-      30 %}\n\n    {# Recent automation command = within device-specific timeout #}\n
+      if last_cmd_time else 9999 %}\n\n    {# H10: Unified device-agnostic command
+      grace derived from override_command_grace. #}\n    {# Replaces the per-device
+      timeouts (15 BRP084 / 30 other). MUST stay >= the #}\n    {# integration's 45s
+      _last_any_command_time grace (climate.py ~605/633). #}\n    {% set cmd_timeout
+      = override_command_grace | int(50) %}\n\n    {# Recent automation command =
+      within the unified command grace #}\n
       \   {% set recent_automation = (time_since_cmd < cmd_timeout) %}\n\n    {# =====
       HVAC MODE MISMATCH DETECTION (v6.3.0) ===== #}\n    {# Simplified to power ON/OFF
       detection only #}\n    {# temp/fan/swing mismatch detection removed - will be
@@ -7065,16 +7099,12 @@ action:
       HA UI) from this check. #}\n    {# The integration's _set() sets expected_hvac_mode
       and last_command_time for ALL #}\n    {# callers (automation AND user), so without
       this exclusion, Google Home OFF commands #}\n    {# are incorrectly treated
-      as automation confirmations and override never fires. #}\n    {% set expected_matches_actual
-      = (expected_hvac is not none and expected_hvac == actual_hvac) %}\n    {% set
-      likely_automation_change = (recent_automation and expected_matches_actual and
-      not state_change_from_user) %}\n\n    {# v6.1.2: Check STATE CHANGE CONTEXT
-      first - this is 100% reliable #}\n    {# v6.7.0: Also check if this looks like
-      a recent automation command #}\n    {% if likely_automation_change %}\n      {#
-      v6.7.0: Automation sent command recently and device now shows expected state
-      #}\n      {# This is NOT a manual override - it's the automation's command being
-      confirmed #}\n      {# Context.parent_id is lost when integration calls async_write_ha_state()
-      #}\n      false\n    {% elif state_change_from_user %}\n      {# STATE CHANGE
+      as automation confirmations and override never fires. #}\n\n    {# v6.1.2: Check STATE CHANGE CONTEXT
+      first - this is 100% reliable #}\n    {# H10 AMENDMENT: Blanket command grace mirroring the integration 45s
+      _last_any_command_time suppression: pow/mode bounces during transitions must not
+      fire overrides; real remote presses within the grace are caught by periodic_check
+      (design decision #2). Subsumes the former likely_automation_change gate and makes
+      on_to_off / bare hvac_mismatch / no-tracking fallback all respect the 50s grace. #}\n    {% if recent_automation and not state_change_from_user %}\n      false\n    {% elif state_change_from_user %}\n      {# STATE CHANGE
       was caused by user clicking in HA UI = MANUAL OVERRIDE #}\n      {# context
       has user_id but no parent_id = direct user action #}\n      true\n    {% elif
       state_change_from_automation %}\n      {# STATE CHANGE was caused by an automation
@@ -7372,16 +7402,16 @@ action:
       level: warning
 - if:
   - condition: template
-    value_template: "{% set fresh_arrival_ts = as_timestamp(states(helper_precond_arrival))
+    value_template: "{% set epoch_1971 = 31536000 %} {% set fresh_arrival_ts = as_timestamp(states(helper_precond_arrival))
       | float(0) if helper_precond_arrival and states(helper_precond_arrival) not
       in ['unknown', 'unavailable', ''] else 0 %} {% set fresh_arrival_occurred =
-      fresh_arrival_ts > 0 %} {% set fresh_minutes_since_arrival = ((as_timestamp(now())
-      - fresh_arrival_ts) / 60) | round(1) if fresh_arrival_ts > 0 else 0 %} {% set
+      fresh_arrival_ts > epoch_1971 %} {% set fresh_minutes_since_arrival = ((as_timestamp(now())
+      - fresh_arrival_ts) / 60) | round(1) if fresh_arrival_ts > epoch_1971 else 0 %} {% set
       fresh_grace_expired = fresh_arrival_occurred and fresh_minutes_since_arrival
       >= (precond_grace_period | float(15)) %} {% set min_runtime_seconds = 30 %}
       {% set fresh_start_ts = as_timestamp(states(helper_precond_start)) | float(0)
       if helper_precond_start and states(helper_precond_start) not in ['unknown',
-      'unavailable', ''] else 0 %} {% set epoch_1971 = 31536000 %} {% set runtime_seconds
+      'unavailable', ''] else 0 %} {% set runtime_seconds
       = (as_timestamp(now()) - fresh_start_ts) if fresh_start_ts > epoch_1971 else
       0 %} {% set min_runtime_met = runtime_seconds >= min_runtime_seconds %} {% set
       configured_max_minutes = precond_max_runtime | float(60) %} {% set max_age_seconds
@@ -7395,13 +7425,14 @@ action:
   - variables:
       fresh_arrival_ts: '{{ as_timestamp(states(helper_precond_arrival)) | float(0)
         if helper_precond_arrival and states(helper_precond_arrival) not in [''unknown'',
-        ''unavailable'', ''''] else 0 }}'
+        ''unavailable'', ''''] and as_timestamp(states(helper_precond_arrival)) | float(0)
+        > 31536000 else 0 }}'
       fresh_minutes_since_arrival: '{{ ((as_timestamp(now()) - (as_timestamp(states(helper_precond_arrival))
         | float(0))) / 60) | round(1) if helper_precond_arrival and states(helper_precond_arrival)
         not in [''unknown'', ''unavailable'', ''''] and as_timestamp(states(helper_precond_arrival))
-        | float(0) > 0 else 0 }}'
+        | float(0) > 31536000 else 0 }}'
       fresh_grace_expired: '{{ (as_timestamp(states(helper_precond_arrival)) | float(0)
-        > 0) and (((as_timestamp(now()) - (as_timestamp(states(helper_precond_arrival))
+        > 31536000) and (((as_timestamp(now()) - (as_timestamp(states(helper_precond_arrival))
         | float(0))) / 60) >= (precond_grace_period | float(15))) }}'
       precond_end_reason: "{% if precond_safety_timeout_exceeded %}\n  safety_timeout\n{%
         elif precond_temp_reached %}\n  target_reached\n{% elif fresh_grace_expired
@@ -7501,24 +7532,29 @@ action:
   then:
   - service: system_log.write
     data:
-      message: "[2/18] \U0001F50D {{ room_name | upper }} MANUAL OVERRIDE DEBUG (v6.1.3)\n\U0001F4CA
+      message: "[2/18] \U0001F50D {{ room_name | upper }} MANUAL OVERRIDE DEBUG\n\U0001F4CA
         Trigger & Control:\n    • Trigger ID: {{ trigger.id }}\n    • Control Mode:
         {{ control_mode }}\n    • Actual AC State: {{ actual_ac_state }}\n    • From
         State: {{ trigger.from_state.state if trigger.from_state is defined else 'N/A'
         }}\n    • To State: {{ trigger.to_state.state if trigger.to_state is defined
         else 'N/A' }}\n\n{% if trigger.id == 'periodic_check' %} \U0001F4E1 PERIODIC
-        CHECK DETECTION (v6.1.3 - Physical Remote):\n    {% set expected_hvac = state_attr(climate_list[0],
-        'expected_hvac_mode') %}\n    {% set actual_hvac = states(climate_list[0])
+        CHECK DETECTION (Physical Remote):\n    {# LOW-periodic-debug-log: mirror the REAL
+        detector — helper_expected_hvac fallback chain, override_command_grace, 300s staleness.
+        Final line prints the already-computed manual_override_detection (single source of truth). #}\n
+        \   {% set expected_hvac = states(helper_expected_hvac) | default(none) if helper_expected_hvac
+        not in [none, '', 'unavailable', 'unknown'] and states(helper_expected_hvac) not in
+        ['unknown', 'unavailable', ''] else state_attr(climate_list[0], 'expected_hvac_mode')
+        %}\n    {% set actual_hvac = states(climate_list[0])
         %}\n    {% set last_cmd_time = state_attr(climate_list[0], 'last_command_time')
         %}\n    {% set time_since_cmd = ((now() - as_datetime(last_cmd_time)).total_seconds())
         if last_cmd_time else 9999 %}\n    {% set expected_on = expected_hvac in ['cool',
         'heat', 'auto', 'heat_cool', 'dry', 'fan_only'] %}\n    {% set actual_off
-        = actual_hvac == 'off' %}\n    {% set not_mid_command = time_since_cmd > 10
-        %}\n    • Expected HVAC: {{ expected_hvac }}\n    • Actual HVAC: {{ actual_hvac
+        = actual_hvac == 'off' %}\n    {% set not_mid_command = time_since_cmd > (override_command_grace
+        | int(50)) %}\n    {% set not_stale = time_since_cmd < 300 %}\n    • Expected HVAC: {{ expected_hvac }}\n    • Actual HVAC: {{ actual_hvac
         }}\n    • Expected ON: {{ expected_on }}\n    • Actual OFF: {{ actual_off
-        }}\n    • Time Since Cmd: {{ time_since_cmd | round(1) }}s (>10s? {{ not_mid_command
-        }})\n    • OVERRIDE DETECTED: {{ expected_on and actual_off and not_mid_command
-        }}\n{% else %} \U0001F511 STATE CHANGE CONTEXT (v6.1.2 - THE KEY!):\n    •
+        }}\n    • Time Since Cmd: {{ time_since_cmd | round(1) }}s (grace {{ override_command_grace
+        | int(50) }}s passed? {{ not_mid_command }}, <300s? {{ not_stale }})\n    • OVERRIDE
+        DETECTED: {{ manual_override_detection }}\n{% else %} \U0001F511 STATE CHANGE CONTEXT (v6.1.2 - THE KEY!):\n    •
         Context User ID: {{ trigger.to_state.context.user_id | default('None') if
         trigger.to_state is defined else 'N/A' }}\n    • Context Parent ID: {{ trigger.to_state.context.parent_id
         | default('None') if trigger.to_state is defined else 'N/A' }}\n    • FROM
@@ -7667,6 +7703,17 @@ action:
       continue_on_error: true
   - if:
     - condition: template
+      value_template: '{{ helper_override_timestamp not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_datetime.set_datetime
+      target:
+        entity_id: '{{ helper_override_timestamp }}'
+      data:
+        datetime: '{{ now() }}'
+      continue_on_error: true
+  - if:
+    - condition: template
       value_template: '{{ helper_override_timeout_storage not in [none, '''', ''unavailable'',
         ''unknown''] }}'
     then:
@@ -7676,12 +7723,6 @@ action:
       data:
         value: '{{ override_timeout }}'
       continue_on_error: true
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: Override
-    continue_on_error: true
   - if:
     - condition: template
       value_template: '{{ override_behavior == ''linked'' and ceiling_fan_configured
@@ -7716,6 +7757,14 @@ action:
         target:
           entity_id: '{{ ceiling_fan_entities }}'
         continue_on_error: true
+  # H11: select_option fires the mode_change trigger and mode:restart can kill this
+  # run — all helper writes and the linked fan shutdown happen FIRST, select LAST.
+  - service: input_select.select_option
+    target:
+      entity_id: '{{ control_mode_helper }}'
+    data:
+      option: Override
+    continue_on_error: true
   - stop: Physical remote override detected - automation paused
 - if:
   - condition: template
@@ -7871,7 +7920,7 @@ action:
           %} ⚠️{% endif %}\n\n        • Fan: {{ expected_fan }} → {{ actual_fan }}{%
           if is_fan_manual %} ⚠️{% endif %}\n\n        • Swing: {{ expected_swing
           }} → {{ actual_swing }}{% if is_swing_manual %} ⚠️{% endif %}\n\nTime Since
-          Last Change: {{ time_since_change | round(1) }}s Control Mode: {{ control_mode
+          Last Change: {{ time_since_change | round(1) }}min Control Mode: {{ control_mode
           }} → Override Mode Override Duration: {{ override_timeout }}h (configurable
           timeout)\n\U0001F3AE Automation Response: • Automation paused to respect
           your manual changes • Will automatically resume after {{ override_timeout
@@ -7918,7 +7967,7 @@ action:
         | swing={{ state_attr(climate_list[0], ''swing_mode'') }} | current={{ state_attr(climate_list[0],
         ''current_temperature'') }}C [OVERRIDE_LOG] LOGIC: manual_override={{ manual_override_detection
         }} | control_mode={{ control_mode }} | actual_ac={{ actual_ac_state }} | time_since_change={{
-        time_since_change | round(1) }}s [OVERRIDE_LOG] CHECKSUM: actual={{ actual_state_checksum
+        time_since_change | round(1) }}min [OVERRIDE_LOG] CHECKSUM: actual={{ actual_state_checksum
         }} | stored={{ states(helper_state_checksum) | default(''N/A'') }} | state_machine={{
         states(helper_state_machine) | default(''N/A'') }} [OVERRIDE_LOG] ===============================================================================
 
@@ -8011,12 +8060,6 @@ action:
       continue_on_error: true
     - stop: Ceiling fan override (independent) - fan paused, AC continues
     else:
-    - service: input_select.select_option
-      target:
-        entity_id: '{{ control_mode_helper }}'
-      data:
-        option: Override
-      continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ helper_override_source not in [none, '''', ''unavailable'',
@@ -8036,6 +8079,17 @@ action:
       - service: input_boolean.turn_on
         target:
           entity_id: '{{ helper_override_flag }}'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_override_timestamp not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_override_timestamp }}'
+        data:
+          datetime: '{{ now() }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -8071,6 +8125,14 @@ action:
 
           '
         level: error
+      continue_on_error: true
+    # H11: select_option fires the mode_change trigger and mode:restart can kill this
+    # run — all helper writes happen FIRST, select LAST (mirrors manual-override block).
+    - service: input_select.select_option
+      target:
+        entity_id: '{{ control_mode_helper }}'
+      data:
+        option: Override
       continue_on_error: true
     - stop: Ceiling fan manual override detected (linked) - all automation paused
 - if:
@@ -8172,6 +8234,19 @@ action:
       data:
         value: '{{ state_attr(climate_list[0], ''fan_mode'') | default(''unknown'')
           }}'
+      continue_on_error: true
+  # LOW-flag-clear-fan-resync: also resync the ceiling fan so a user-chosen fan state
+  # doesn't immediately read as a new fan override (mirrors the timeout-expiry clear).
+  - if:
+    - condition: template
+      value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
+        ''unknown''] and ceiling_fan_configured }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: '{{ helper_expected_ceiling_fan }}'
+      data:
+        value: '{{ states(ceiling_fan_entity) }}'
       continue_on_error: true
 - if:
   - condition: template
@@ -8667,17 +8742,13 @@ action:
         Stall & Wrong Direction Detection:\n    {% if last_mode == 'cooling' %}\n
         \   • Mode: Cooling\n    • Expected: Temperature FALLING at rate > {{ min_progress_rate
         }}°C/min\n    • Actual Rate: {{ temp_change_rate | round(3) }}°C/min\n    •
-        Wrong Direction (rising): {{ temp_change_rate > wrong_direction_min_rate }}
-        (rate > +{{ wrong_direction_min_rate }}°C/min)\n    • Stalling (cooling too
-        slowly): {{ temp_change_rate >= -min_progress_rate and temp_change_rate <=
-        0 }} (rate between -{{ min_progress_rate }} and 0°C/min, inclusive)\n    {%
+        Below min progress (cooling): {{ temp_change_rate >= -effective_min_progress_rate }}
+        (rate >= -{{ effective_min_progress_rate }}°C/min — single monotonic threshold)\n    {%
         elif last_mode == 'heating' %}\n    • Mode: Heating\n    • Expected: Temperature
         RISING at rate > {{ min_progress_rate }}°C/min\n    • Actual Rate: {{ temp_change_rate
-        | round(3) }}°C/min\n    • Wrong Direction (falling): {{ temp_change_rate
-        < -wrong_direction_min_rate }} (rate < -{{ wrong_direction_min_rate }}°C/min)\n
-        \   • Stalling (heating too slowly): {{ temp_change_rate <= min_progress_rate
-        and temp_change_rate >= 0 }} (rate between 0 and +{{ min_progress_rate }}°C/min,
-        inclusive)\n    {% else %}\n    • Mode: {{ last_mode }} (not cooling/heating)\n
+        | round(3) }}°C/min\n    • Below min progress (heating): {{ temp_change_rate
+        <= effective_min_progress_rate }} (rate <= +{{ effective_min_progress_rate }}°C/min
+        — single monotonic threshold)\n    {% else %}\n    • Mode: {{ last_mode }} (not cooling/heating)\n
         \   • Stall/Wrong Direction: Not Applicable\n    {% endif %}\n\n⚡ Incremental
         Escalation Calculation:\n    • Stall or Wrong Direction Detected: {{ wrong_direction_detected
         }}\n    • Wrong Direction Threshold: {{ wrong_direction_min_rate }}°C/min\n
@@ -8858,6 +8929,127 @@ action:
           will clear automatically after {{ override_timeout }} hour(s)\n   or immediately
           if you change control mode\n"
         level: warning
+  # M31: independent AC-only override still runs the ceiling-fan handlers via a CONTAINED
+  # sub-sequence at the single Override choke point (the main dispatch stays fully blocked
+  # by this stop — no AC-commanding branch is ever reached during Override). Fan ON/OFF
+  # only; SPEED escalation is intentionally NOT managed during AC override.
+  # On/off is EDGE-triggered (`not ceiling_fan_is_on` / `ceiling_fan_is_on`) so this does
+  # not re-issue commands every trigger for the whole multi-hour override. The fan commands
+  # produce ceiling_fan_state_change triggers, but the global condition (line ~5577) ignores
+  # our own service calls (parent_id) so they can't restart-kill this run mid-choose, and
+  # the detector ignores automation-context changes so no self-override.
+  # NOTE: duplicated on/off logic mirrors the main fan branches (turn-on ~10321, shutdown
+  # ~12588) — keep both sites in sync.
+  - if:
+    - condition: template
+      value_template: "{{ override_behavior == 'independent' and override_source == 'ac'\n
+        \  and ceiling_fan_configured and not fan_override_active }}\n"
+    then:
+    - choose:
+      # Branch A — fan SHOULD run and is currently OFF (edge-triggered turn-on)
+      - conditions:
+        - condition: template
+          value_template: "{{ (should_activate | bool) and (in_ceiling_fan_zone | bool)\n
+            \  and enable_cooling\n   and not (bed_occupied and fan_bed_comfort_mode == 'off')\n
+            \  and not ceiling_fan_is_on }}\n"
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_ceiling_fan }}'
+            data:
+              value: 'on'
+            continue_on_error: true
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: '{{ ceiling_fan_has_speed_switches }}'
+            sequence:
+            # M38: break-before-make — release the non-target speed relays first
+            - service: switch.turn_off
+              target:
+                entity_id: '{{ ceiling_fan_other_switches }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 100
+            - service: switch.turn_on
+              target:
+                entity_id: '{{ ceiling_fan_target_switch }}'
+              continue_on_error: true
+          - conditions:
+            - condition: template
+              value_template: '{{ ceiling_fan_domain == ''fan'' }}'
+            sequence:
+            - service: fan.turn_on
+              target:
+                entity_id: '{{ ceiling_fan_entities }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 500
+            - choose:
+              - conditions:
+                - condition: template
+                  value_template: '{{ ceiling_fan_has_presets }}'
+                sequence:
+                - service: fan.set_preset_mode
+                  target:
+                    entity_id: '{{ ceiling_fan_entities }}'
+                  data:
+                    preset_mode: '{{ ceiling_fan_target_speed }}'
+                  continue_on_error: true
+              default:
+              - service: fan.set_percentage
+                target:
+                  entity_id: '{{ ceiling_fan_entities }}'
+                data:
+                  percentage: '{{ ceiling_fan_target_pct }}'
+                continue_on_error: true
+          default:
+          - service: homeassistant.turn_on
+            target:
+              entity_id: '{{ ceiling_fan_entities }}'
+            continue_on_error: true
+      # Branch B — fan is ON but SHOULD stop (explicit hysteresis since last_mode is never
+      # 'ceiling_fan_cooling' here, so in_ceiling_fan_zone's 0.3 band at ~6142 has nothing
+      # to key on — replicate the band inline cross-referencing comfort_max_temp/zone_max).
+      - conditions:
+        - condition: template
+          value_template: "{{ ceiling_fan_is_on and (\n     not (should_activate | bool)\n
+            \    or (current_temp | float(0)) <= ((comfort_max_temp | float(0)) - 0.3)\n
+            \    or (current_temp | float(0)) > (ceiling_fan_zone_max | float(0))\n   ) }}\n"
+        sequence:
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_ceiling_fan }}'
+            data:
+              value: 'off'
+            continue_on_error: true
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: '{{ ceiling_fan_has_speed_switches }}'
+            sequence:
+            - service: switch.turn_off
+              target:
+                entity_id:
+                - '{{ ceiling_fan_low_switch }}'
+                - '{{ ceiling_fan_medium_switch }}'
+                - '{{ ceiling_fan_high_switch }}'
+              continue_on_error: true
+          default:
+          - service: homeassistant.turn_off
+            target:
+              entity_id: '{{ ceiling_fan_entities }}'
+            continue_on_error: true
   - stop: Override mode active - respecting user's manual changes
 - choose:
   - conditions:
@@ -8951,21 +9143,11 @@ action:
             level: debug
       - stop: Manual mode active - user has complete control
   - conditions:
+    # M34: match regardless of debug_enabled so an unavailable AC always skips the
+    # downstream AC-commanding branches (which would crash on None|list patterns).
+    # debug gating now lives only on the log step inside this branch.
     - condition: template
-      value_template: '{{ any_ac_unavailable and debug_enabled }}'
-    sequence:
-    - service: system_log.write
-      data:
-        message: "\U0001F50C {{ room_name | upper }} AC UNAVAILABLE: Skipping manual
-          override detection • AC disconnected - this is a known issue • Manual override
-          detection disabled while unavailable • Automation will resume when AC reconnects
-          • AC entity states: {% for entity in climate_list %}{{ entity }}={{ states(entity)
-          }}{% if not loop.last %}, {% endif %}{% endfor %}\n"
-        level: warning
-  - conditions:
-    - condition: template
-      value_template: '{{ control_mode == ''Override'' and manual_override_detection
-        | bool }}'
+      value_template: '{{ any_ac_unavailable }}'
     sequence:
     - if:
       - condition: template
@@ -8973,16 +9155,16 @@ action:
       then:
       - service: system_log.write
         data:
-          message: "{% set change_timestamp = as_timestamp(states(helper_change))
-            %} \U0001F512 {{ room_name | upper }} MANUAL OVERRIDE: Respecting user
-            changes • Manual override detected: {{ manual_override_detection }} •
-            Last mode state: \"{{ states(helper_mode) | default('off') }}\" • Actual
-            AC state: \"{{ actual_ac_state }}\" • Override timeout: {{ override_timeout
-            }} hours • Time remaining: {{ (override_timeout - ((as_timestamp(now())
-            - change_timestamp) / 3600)) | round(1) if change_timestamp else 'N/A'
-            }} hours • AC will maintain user settings until timeout expires\n"
+          message: "\U0001F50C {{ room_name | upper }} AC UNAVAILABLE: Skipping manual
+            override detection • AC disconnected - this is a known issue • Manual override
+            detection disabled while unavailable • Automation will resume when AC reconnects
+            • AC entity states: {% for entity in climate_list %}{{ entity }}={{ states(entity)
+            }}{% if not loop.last %}, {% endif %}{% endfor %}\n"
           level: warning
-    - stop: Manual override active - respecting user changes
+  # LOW-dead-manual-branch: removed an unreachable choose branch (condition
+  # 'control_mode == Override and manual_override_detection | bool'). It was provably
+  # dead — manual_override_detection hard-returns false when control_mode == 'Override',
+  # and the unconditional Override stop (~8919) already halts every Override run first.
   - conditions:
     - condition: template
       value_template: '{{ is_precond_mode }}'
@@ -8991,9 +9173,9 @@ action:
     - condition: template
       value_template: '{% set current_fan = state_attr(climate_list[0], ''fan_mode'')
         %} {% set fan_wrong = current_fan != precond_validated_fan_mode %} {% set
-        current_temp = state_attr(climate_list[0], ''temperature'') | float %} {%
-        set ac_state = states(climate_list[0]) %} {% set boost_temp = ac_minimum_temp
-        | float(18) if ac_state == ''cool'' else ac_maximum_temp | float(30) %} {%
+        current_temp = state_attr(climate_list[0], ''temperature'') | float(-1) %} {%
+        set ac_state = states(climate_list[0]) %} {% set boost_temp = ac_min_resolved
+        | float(18) if ac_state == ''cool'' else ac_max_resolved | float(30) %} {%
         set temp_wrong = precond_boost_enabled and (current_temp | round(1) != boost_temp
         | round(1)) %} {{ fan_wrong or temp_wrong }}
 
@@ -9001,9 +9183,9 @@ action:
     sequence:
     - variables:
         precond_ac_state: '{{ states(climate_list[0]) }}'
-        precond_boost_temp: '{{ ac_minimum_temp | float(18) if precond_ac_state ==
-          ''cool'' else ac_maximum_temp | float(30) }}'
-        precond_current_temp: '{{ state_attr(climate_list[0], ''temperature'') | float
+        precond_boost_temp: '{{ ac_min_resolved | float(18) if precond_ac_state ==
+          ''cool'' else ac_max_resolved | float(30) }}'
+        precond_current_temp: '{{ state_attr(climate_list[0], ''temperature'') | float(-1)
           }}'
         precond_current_fan: '{{ state_attr(climate_list[0], ''fan_mode'') }}'
         precond_fan_needs_fix: '{{ precond_current_fan != precond_validated_fan_mode
@@ -9048,6 +9230,7 @@ action:
           entity_id: '{{ climate_list[0] }}'
         data:
           temperature: '{{ precond_boost_temp }}'
+        continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ (should_activate | bool) or (is_precond_mode | bool) }}'
@@ -9082,7 +9265,7 @@ action:
         continue_fan_mode: "{% if is_precond_mode and precond_validated_fan_mode !=
           'Dynamic' %}\n  {{ precond_validated_fan_mode }}\n{% else %}\n  {{ new_fan_mode
           }}\n{% endif %}\n"
-        continue_hvac_mode: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+        continue_hvac_mode: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes %}\n
           \ Cool\n{% else %}\n  {{ modes[0] if modes else 'cool' }}\n{% endif %}\n"
     - repeat:
@@ -9194,7 +9377,7 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
@@ -9334,12 +9517,17 @@ action:
             data:
               datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
             continue_on_error: true
-        - service: input_text.set_value
-          target:
-            entity_id: !input helper_expected_fan
-          data:
-            value: '{{ selected_fan_only_fan_mode }}'
-          continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_fan }}'
+            data:
+              value: '{{ selected_fan_only_fan_mode }}'
+            continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
@@ -9370,12 +9558,18 @@ action:
           continue_on_error: true
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - variables:
-              fan_snapshot: hvac=fan_only,temp=0,fan=unknown,swing=unknown
-              fan_checksum: '5'
+              # LOW-sanity-stop-snapshot: snapshot/checksum MUST match the commands just
+              # sent (hvac=fan_only, temp=target_temp, fan=selected_fan_only_fan_mode,
+              # swing=validated_swing_mode); 5 = hvac_codes['fan_only']. Formula matches
+              # every other snapshot site.
+              fan_snapshot: hvac=fan_only,temp={{ target_temp | float(0) | round(1) }},fan={{
+                selected_fan_only_fan_mode }},swing={{ validated_swing_mode }}
+              fan_checksum: '{{ (((target_temp | float(0) | round(1)) * 1000) + (selected_fan_only_fan_mode
+                | string | length) + (validated_swing_mode | string | length) + 5) | int(0) }}'
           - service: input_text.set_value
             target:
               entity_id: '{{ helper_last_command }}'
@@ -9391,7 +9585,7 @@ action:
       default:
       - if:
         - condition: template
-          value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+          value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
             }}'
         then:
         - variables:
@@ -9540,7 +9734,7 @@ action:
           continue_on_error: true
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - service: input_text.set_value
@@ -9582,9 +9776,20 @@ action:
             # `{{ base_cooling_target | round(1) }}` templates) — adding int caused Jinja
             # to raise "string + int" error, eco_target rendered empty, input_number got
             # 0.0 (out of 10-35 range). Coerce to float before math.
-            eco_target: "{% if current_temp > comfort_max_temp %}\n  {{ (cooling_target_temp
-              | float(0)) + eco_mode_setpoint_offset }}\n{% else %}\n  {{ (heating_target_temp
-              | float(0)) - eco_mode_setpoint_offset }}\n{% endif %}\n"
+            # M35: branch ECO relaxation on the season the system was actually fighting
+            # (last_mode), falling back to the comfort-band comparison only when the mode
+            # carries no direction. cooling test matches the file's own cooling-family
+            # classification at the mode_is_cooling list (incl. bed_comfort modes).
+            eco_target: "{% if ('cooling' in last_mode) or last_mode in ['bed_comfort_eco',
+              'bed_comfort_quiet', 'bed_eco_fan_only'] %}\n  {{ (cooling_target_temp
+              | float(0)) + eco_mode_setpoint_offset }}\n{% elif 'heating' in last_mode
+              %}\n  {{ (heating_target_temp | float(0)) - eco_mode_setpoint_offset }}\n{%
+              elif current_temp > comfort_max_temp %}\n  {{ (cooling_target_temp | float(0))
+              + eco_mode_setpoint_offset }}\n{% elif current_temp < comfort_min_temp %}\n
+              \ {{ (heating_target_temp | float(0)) - eco_mode_setpoint_offset }}\n{% elif
+              enable_cooling %}\n  {{ (cooling_target_temp | float(0)) + eco_mode_setpoint_offset
+              }}\n{% else %}\n  {{ (heating_target_temp | float(0)) - eco_mode_setpoint_offset
+              }}\n{% endif %}\n"
         - service: input_number.set_value
           target:
             entity_id: '{{ helper_expected_temp }}'
@@ -9602,7 +9807,7 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
                 selected_hvac_mode: "{% if 'auto' in available_modes %}\n  auto\n{%
                   elif 'Auto' in available_modes %}\n  Auto\n{% elif 'heat_cool' in
@@ -9693,7 +9898,7 @@ action:
             value: auto_off_fan_only
           continue_on_error: true
         - variables:
-            selected_fan_only_hvac: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+            selected_fan_only_hvac: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
               | list if climate_list | length > 0 else [] %} {% if 'fan_only' in modes
               %}\n  fan_only\n{% elif 'dry' in modes %}\n  dry\n{% else %}\n  off\n{%
               endif %}\n"
@@ -9830,7 +10035,7 @@ action:
         selected_fan_mode: "{% if is_precond_mode and precond_validated_fan_mode !=
           'Dynamic' %}\n  {{ precond_validated_fan_mode }}\n{% else %}\n  {{ new_fan_mode
           }}\n{% endif %}\n"
-        selected_hvac_mode: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+        selected_hvac_mode: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes %}\n
           \ Cool\n{% elif enable_heating and 'auto' in modes %}\n  auto\n{% elif enable_heating
           and 'Auto' in modes %}\n  Auto\n{% elif enable_heating and 'heat_cool' in
@@ -9917,6 +10122,15 @@ action:
           - condition: template
             value_template: '{{ ceiling_fan_has_speed_switches }}'
           sequence:
+          # M38: break-before-make — release medium+high before energizing low
+          - service: switch.turn_off
+            target:
+              entity_id:
+              - '{{ ceiling_fan_medium_switch }}'
+              - '{{ ceiling_fan_high_switch }}'
+            continue_on_error: true
+          - delay:
+              milliseconds: 100
           - service: switch.turn_on
             target:
               entity_id: '{{ ceiling_fan_low_switch }}'
@@ -9960,6 +10174,15 @@ action:
           - condition: template
             value_template: '{{ ceiling_fan_has_speed_switches }}'
           sequence:
+          # M38: release low+medium before energizing high (uniformity — clears stuck relays)
+          - service: switch.turn_off
+            target:
+              entity_id:
+              - '{{ ceiling_fan_low_switch }}'
+              - '{{ ceiling_fan_medium_switch }}'
+            continue_on_error: true
+          - delay:
+              milliseconds: 100
           - service: switch.turn_on
             target:
               entity_id: '{{ ceiling_fan_high_switch }}'
@@ -10092,7 +10315,7 @@ action:
         milliseconds: 300
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
@@ -10217,6 +10440,13 @@ action:
         - condition: template
           value_template: '{{ ceiling_fan_has_speed_switches }}'
         sequence:
+        # M38: break-before-make — release the non-target speed relays first
+        - service: switch.turn_off
+          target:
+            entity_id: '{{ ceiling_fan_other_switches }}'
+          continue_on_error: true
+        - delay:
+            milliseconds: 100
         - service: switch.turn_on
           target:
             entity_id: '{{ ceiling_fan_target_switch }}'
@@ -10278,11 +10508,14 @@ action:
         level: warning
   - conditions:
     - condition: template
-      value_template: "{{ ceiling_fan_configured\n   and not fan_override_active\n
-        \  and ceiling_fan_mode_active\n   and in_ceiling_fan_zone\n   and not ceiling_fan_should_escalate\n
-        \  and (should_activate or (control_mode == 'Smart' and fan_presence_entry
-        == 'instant' and room_presence_detected))\n   and (control_mode != 'Smart'
-        or room_presence_detected) }}\n"
+      value_template: "{# H12: coerce boolean-template variables with `| bool` — they
+        render as multi-line strings like '\\n  false\\n' which are TRUTHY in Jinja
+        and bypass these guards (see v9.7.9 pitfall comment ~10188) #} {{ ceiling_fan_configured\n
+        \  and not fan_override_active\n   and (ceiling_fan_mode_active | bool)\n   and
+        (in_ceiling_fan_zone | bool)\n   and not (ceiling_fan_should_escalate | bool)\n
+        \  and ((should_activate | bool) or (control_mode == 'Smart' and fan_presence_entry
+        == 'instant' and (room_presence_detected | bool)))\n   and (control_mode != 'Smart'
+        or (room_presence_detected | bool)) }}\n"
     sequence:
     - variables:
         current_fan_speed: "{% if ceiling_fan_has_speed_switches %}\n  {% if is_state(ceiling_fan_high_switch,
@@ -10316,6 +10549,14 @@ action:
           - condition: template
             value_template: '{{ ceiling_fan_has_speed_switches }}'
           sequence:
+          # M38: THE main double-energize path — current speed != target means another
+          # relay is on. Break-before-make: release non-target relays first.
+          - service: switch.turn_off
+            target:
+              entity_id: '{{ ceiling_fan_other_switches }}'
+            continue_on_error: true
+          - delay:
+              milliseconds: 100
           - service: switch.turn_on
             target:
               entity_id: '{{ ceiling_fan_target_switch }}'
@@ -10353,9 +10594,12 @@ action:
   - conditions:
     - condition: template
       value_template: "{# v8.9.4 FIX: Added room_presence_detected guard for Smart
-        mode #} {{ ceiling_fan_configured\n   and not fan_override_active\n   and
-        ceiling_fan_mode_active\n   and ceiling_fan_should_escalate\n   and should_activate\n
-        \  and enable_cooling\n   and (control_mode != 'Smart' or room_presence_detected)
+        mode #} {# H12: coerce boolean-template variables with `| bool` — they render
+        as multi-line strings like '\\n  false\\n' which are TRUTHY in Jinja and bypass
+        these guards (see v9.7.9 pitfall comment ~10188) #} {{ ceiling_fan_configured\n
+        \  and not fan_override_active\n   and (ceiling_fan_mode_active | bool)\n   and
+        (ceiling_fan_should_escalate | bool)\n   and (should_activate | bool)\n   and
+        enable_cooling\n   and (control_mode != 'Smart' or (room_presence_detected | bool))
         }}\n"
     sequence:
     - if:
@@ -10401,6 +10645,15 @@ action:
             - condition: template
               value_template: '{{ ceiling_fan_has_speed_switches }}'
             sequence:
+            # M38: break-before-make — release medium+high before energizing low
+            - service: switch.turn_off
+              target:
+                entity_id:
+                - '{{ ceiling_fan_medium_switch }}'
+                - '{{ ceiling_fan_high_switch }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 100
             - service: switch.turn_on
               target:
                 entity_id: '{{ ceiling_fan_low_switch }}'
@@ -10465,12 +10718,49 @@ action:
         data:
           datetime: '{{ now() }}'
         continue_on_error: true
+    # M37: mirror the unified cooling branch's missing helper writes — without these,
+    # mode-time stall detection, temp_change_rate, and the manual-change checksum still
+    # describe the pre-escalation (ceiling-fan) era, causing false manual-override detection.
+    # last_mode was 'ceiling_fan_cooling' here, so reset unconditionally (no mode clause).
+    - if:
+      - condition: template
+        value_template: '{{ helper_mode_time not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: '{{ helper_mode_time }}'
+        data:
+          datetime: '{{ now() }}'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_temp_history not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_number.set_value
+        target:
+          entity_id: '{{ helper_temp_history }}'
+        data:
+          value: '{{ current_temp }}'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_number.set_value
+        target:
+          entity_id: '{{ helper_expected_temp }}'
+        data:
+          value: '{{ cooling_target_temp }}'
+        continue_on_error: true
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
         - variables:
             current_entity: '{{ repeat.item }}'
-            escalation_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+            escalation_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
               | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes
               %}\n  Cool\n{% elif 'auto' in modes %}\n  auto\n{% else %}\n  {{ modes[0]
               if modes else 'off' }}\n{% endif %}\n"
@@ -10492,6 +10782,56 @@ action:
         data:
           value: cool
         continue_on_error: true
+    # M37: command snapshot + checksum, mirroring the unified cooling branch (10152+).
+    # snapshot_hvac resolves the same way escalation_hvac_mode did (climate_list[0]); no
+    # fan/swing command is sent so snapshot the CURRENT values with the SAME defaults as
+    # actual_state_checksum so stored == actual and no false manual-override fires.
+    - delay:
+        milliseconds: 300
+    - if:
+      - condition: template
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
+          }}'
+      then:
+      - variables:
+          snapshot_hvac: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
+            | list %}{% if 'cool' in modes %}cool{% elif 'Cool' in modes %}Cool{% elif
+            'auto' in modes %}auto{% else %}{{ modes[0] if modes else 'off' }}{% endif %}"
+          snapshot_temp: '{{ cooling_target_temp | float(0) }}'
+          snapshot_fan: "{{ state_attr(climate_list[0], 'fan_mode') | default('unknown') }}"
+          snapshot_swing: "{{ state_attr(climate_list[0], 'swing_mode') | default('unknown') }}"
+          update_snapshot: hvac={{ snapshot_hvac }},temp={{ snapshot_temp }},fan={{
+            snapshot_fan }},swing={{ snapshot_swing }}
+          update_checksum: '{% set hvac_codes = {''off'': 0, ''cool'': 1, ''heat'':
+            2, ''auto'': 3, ''dry'': 4, ''fan_only'': 5, ''heat_cool'': 6} %} {{ ((snapshot_temp
+            * 1000) + (snapshot_fan | string | length) + (snapshot_swing | string
+            | length) + hvac_codes.get(snapshot_hvac, 99)) | int(0) }}
+
+            '
+      - parallel:
+        - service: input_text.set_value
+          target:
+            entity_id: '{{ helper_last_command }}'
+          data:
+            value: '{{ update_snapshot }}'
+          continue_on_error: true
+        - service: input_number.set_value
+          target:
+            entity_id: '{{ helper_state_checksum }}'
+          data:
+            value: '{{ update_checksum }}'
+          continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ helper_change not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_datetime.set_datetime
+            target:
+              entity_id: '{{ helper_change }}'
+            data:
+              datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+            continue_on_error: true
   - conditions:
     - condition: template
       value_template: "{{ ceiling_fan_configured\n   and not fan_override_active\n
@@ -10511,6 +10851,13 @@ action:
           - condition: template
             value_template: '{{ ceiling_fan_has_speed_switches }}'
           sequence:
+          # M38: dynamic-speed-in-zone — break-before-make on the non-target relays
+          - service: switch.turn_off
+            target:
+              entity_id: '{{ ceiling_fan_other_switches }}'
+            continue_on_error: true
+          - delay:
+              milliseconds: 100
           - service: switch.turn_on
             target:
               entity_id: '{{ ceiling_fan_target_switch }}'
@@ -10582,7 +10929,7 @@ action:
         continue_fan_mode_heating: "{% if is_precond_mode and precond_validated_fan_mode
           != 'Dynamic' %}\n  {{ precond_validated_fan_mode }}\n{% else %}\n  {{ new_fan_mode
           }}\n{% endif %}\n"
-        continue_hvac_mode_heating: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+        continue_hvac_mode_heating: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'heat' in modes %}\n  heat\n{% elif 'Heat' in modes %}\n
           \ Heat\n{% else %}\n  {{ modes[0] if modes else 'heat' }}\n{% endif %}\n"
     - repeat:
@@ -10677,7 +11024,7 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
@@ -10746,7 +11093,7 @@ action:
         selected_fan_mode: "{% if is_precond_mode and precond_validated_fan_mode !=
           'Dynamic' %}\n  {{ precond_validated_fan_mode }}\n{% else %}\n  {{ new_fan_mode
           }}\n{% endif %}\n"
-        selected_hvac_mode: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+        selected_hvac_mode: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'heat' in modes %}\n  heat\n{% elif 'Heat' in modes %}\n
           \ Heat\n{% elif enable_cooling and 'auto' in modes %}\n  auto\n{% elif enable_cooling
           and 'Auto' in modes %}\n  Auto\n{% elif enable_cooling and 'heat_cool' in
@@ -10925,7 +11272,7 @@ action:
         milliseconds: 300
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
@@ -11007,7 +11354,7 @@ action:
       target:
         entity_id: !input helper_last_mode
       data:
-        value: "{% if control_mode == 'Smart' and not smart_presence_active %}\n  off\n{%
+        value: "{% if control_mode == 'Smart' and not (smart_presence_active | bool) %}\n  off\n{%
           elif current_temp > comfort_max_temp %}\n  cooling\n{% elif current_temp
           < comfort_min_temp %}\n  heating\n{% else %}\n  {{ last_mode if last_mode
           in ['cooling', 'heating'] else 'off' }}\n{% endif %}\n"
@@ -11063,9 +11410,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# For cooling, try cooling-capable modes #} {% if 'cool'
                   in modes %}\n  cool\n  {% elif 'Cool' in modes %}\n  Cool\n  {%
                   elif enable_heating and 'auto' in modes %}\n  auto\n  {% elif enable_heating
@@ -11135,7 +11482,7 @@ action:
               - service: system_log.write
                 data:
                   message: "\U0001F50D STABILITY RESET - COOLING: {{ repeat.item }}
-                    • HVAC Mode: {{ selected_hvac_mode }} • Fan Mode: {{ selected_fan_mode
+                    • HVAC Mode: {{ selected_hvac_mode }} • Fan Mode: {{ new_fan_mode
                     }} • Temperature: {{ cooling_target_temp }}°C • Ceiling fan: {{
                     fan_with_ac_mode }} (configured: {{ ceiling_fan_configured }})
                     • Reason: Exited comfort zone stability, activating cooling\n"
@@ -11200,6 +11547,15 @@ action:
                   - condition: template
                     value_template: '{{ ceiling_fan_has_speed_switches }}'
                   sequence:
+                  # M38: break-before-make — release medium+high before energizing low
+                  - service: switch.turn_off
+                    target:
+                      entity_id:
+                      - '{{ ceiling_fan_medium_switch }}'
+                      - '{{ ceiling_fan_high_switch }}'
+                    continue_on_error: true
+                  - delay:
+                      milliseconds: 100
                   - service: switch.turn_on
                     target:
                       entity_id: '{{ ceiling_fan_low_switch }}'
@@ -11265,9 +11621,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# For heating, try heating-capable modes #} {% if 'heat'
                   in modes %}\n  heat\n  {% elif 'Heat' in modes %}\n  Heat\n  {%
                   elif enable_cooling and 'auto' in modes %}\n  auto\n  {% elif enable_cooling
@@ -11337,7 +11693,7 @@ action:
               - service: system_log.write
                 data:
                   message: "\U0001F50D STABILITY RESET - HEATING: {{ repeat.item }}
-                    • HVAC Mode: {{ selected_hvac_mode }} • Fan Mode: {{ selected_fan_mode
+                    • HVAC Mode: {{ selected_hvac_mode }} • Fan Mode: {{ new_fan_mode
                     }} • Temperature: {{ heating_target_temp }}°C • Reason: Exited
                     comfort zone stability, activating heating\n"
                   level: debug
@@ -11657,20 +12013,27 @@ action:
         sequence:
         - variables:
             current_entity: '{{ repeat.item }}'
-            available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list }}'
-            selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+            available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list }}'
+            # LOW-low-cooling-expected-fallback: MUST stay in sync with the duplicate
+            # template in the command repeat below (ends in 'cool', not 'off').
+            selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
               | list %} {# For cooling, try cooling-capable modes #} {% if 'cool'
               in modes %}\n  cool\n  {% elif 'Cool' in modes %}\n  Cool\n  {% elif
               enable_heating and 'auto' in modes %}\n  auto\n  {% elif enable_heating
               and 'Auto' in modes %}\n  Auto\n  {% elif enable_heating and 'heat_cool'
               in modes %}\n  heat_cool\n  {% elif enable_heating and 'Heat/Cool' in
-              modes %}\n  Heat/Cool\n  {% else %}\n  off\n{% endif %}\n"
-        - service: input_text.set_value
-          target:
-            entity_id: '{{ helper_expected_hvac }}'
-          data:
-            value: '{{ selected_hvac_mode }}'
-          continue_on_error: true
+              modes %}\n  Heat/Cool\n  {% else %}\n  cool\n{% endif %}\n"
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_hvac }}'
+            data:
+              value: '{{ selected_hvac_mode }}'
+            continue_on_error: true
     - service: input_number.set_value
       target:
         entity_id: '{{ helper_expected_temp }}'
@@ -11682,14 +12045,16 @@ action:
         sequence:
         - variables:
             current_entity: '{{ repeat.item }}'
-            available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list }}'
-            selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+            available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list }}'
+            # LOW-low-cooling-expected-fallback: MUST stay in sync with the duplicate
+            # template in the expected-state repeat above (both end in 'cool').
+            selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
               | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes
               %}\n  Cool\n{% elif enable_heating and 'auto' in modes %}\n  auto\n{%
               elif enable_heating and 'Auto' in modes %}\n  Auto\n{% elif enable_heating
               and 'heat_cool' in modes %}\n  heat_cool\n{% elif enable_heating and
               'Heat/Cool' in modes %}\n  Heat/Cool\n{% else %}\n  cool\n{% endif %}\n"
-            selected_fan_mode: "{% set fans = state_attr(repeat.item, 'fan_modes')
+            selected_fan_mode: "{% set fans = (state_attr(repeat.item, 'fan_modes') or [])
               | list %}\n{# Try low speed equivalents in order of preference #} {%
               if 'low' in fans %}\n  low\n  {% elif 'Low' in fans %}\n  Low\n  {%
               elif '1' in fans %}\n  1\n  {% elif 'Level 1' in fans %}\n  Level 1\n
@@ -11902,6 +12267,15 @@ action:
               - condition: template
                 value_template: '{{ ceiling_fan_has_speed_switches }}'
               sequence:
+              # M38: break-before-make — release medium+high before energizing low
+              - service: switch.turn_off
+                target:
+                  entity_id:
+                  - '{{ ceiling_fan_medium_switch }}'
+                  - '{{ ceiling_fan_high_switch }}'
+                continue_on_error: true
+              - delay:
+                  milliseconds: 100
               - service: switch.turn_on
                 target:
                   entity_id: '{{ ceiling_fan_low_switch }}'
@@ -11994,9 +12368,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# For stability, prefer auto/heat_cool only if both enabled
                   #} {% if enable_cooling and enable_heating and 'auto' in modes %}\n
                   \ auto\n{% elif enable_cooling and enable_heating and 'Auto' in
@@ -12084,7 +12458,7 @@ action:
 
         '
     - condition: template
-      value_template: '{% set modes = state_attr(climate_list[0], ''hvac_modes'')
+      value_template: '{% set modes = (state_attr(climate_list[0], ''hvac_modes'') or [])
         | list %} {{ ''fan_only'' in modes or ''fan-only'' in modes or ''Fan Only''
         in modes or ''dry'' in modes }}
 
@@ -12142,17 +12516,6 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_text.set_value
-        target:
-          entity_id: '{{ helper_expected_hvac }}'
-        data:
-          value: fan_only
-        continue_on_error: true
-    - if:
-      - condition: template
         value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
           ''unknown''] }}'
       then:
@@ -12163,10 +12526,23 @@ action:
           value: '{{ target_temp }}'
         continue_on_error: true
     - variables:
-        selected_fan_only_hvac: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+        selected_fan_only_hvac: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'fan_only' in modes %}\n  fan_only\n{% elif 'fan-only' in
           modes %}\n  fan-only\n{% elif 'Fan Only' in modes %}\n  Fan Only\n{% elif
           'dry' in modes %}\n  dry\n{% else %}\n  off\n{% endif %}\n"
+    # LOW-expected-hvac-literal: write the ACTUALLY-commanded variant (not literal
+    # 'fan_only') so expected == sent and no false hvac_mismatch override fires.
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_hvac }}'
+        data:
+          value: '{{ selected_fan_only_hvac }}'
+        continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
@@ -12343,6 +12719,32 @@ action:
           target:
             entity_id: '{{ ceiling_fan_entities }}'
           continue_on_error: true
+    # H13: debug-only log moved OUT of the comfort-zone choose (it was branch 2 with
+    # only a {{ debug_enabled }} condition, so with debug ON it matched first and
+    # shadowed the fan_only/off action branches). Now a standalone debug step BEFORE
+    # the choose so the real action branches always run.
+    - if:
+      - condition: template
+        value_template: '{{ debug_enabled }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "\U0001F50D {{ room_name | upper }} COMFORT ZONE BLOCK EVALUATION\n\U0001F4CA
+            Settings:\n    • comfort_zone_action: \"{{ comfort_zone_action }}\"\n
+            \   • last_mode: \"{{ last_mode }}\"\n    • actual_ac_state: \"{{ actual_ac_state
+            }}\"\n    • current_temp: {{ current_temp }}°C\n    • comfort_zone:
+            {{ comfort_min_temp }}-{{ comfort_max_temp }}°C\n\n\U0001F3AF Which
+            block will match?\n    • comfort_zone_action == 'off': {{ comfort_zone_action
+            == 'off' }}\n    • comfort_zone_action == 'eco': {{ comfort_zone_action
+            == 'eco' }}\n    • comfort_zone_action == 'fan_only' AND last_mode in
+            active modes: {{ comfort_zone_action == 'fan_only' and last_mode in
+            ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only',
+            'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}\n
+            \   • comfort_zone_action == 'fan_only' AND last_mode NOT in active
+            modes: {{ comfort_zone_action == 'fan_only' and last_mode not in ['cooling',
+            'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only',
+            'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}\n"
+          level: warning
     - choose:
       - conditions:
         - condition: template
@@ -12362,11 +12764,11 @@ action:
               level: warning
         - variables:
             entity_for_calculation: '{{ climate_list[0] }}'
-            available_modes_calc: '{{ state_attr(climate_list[0], ''hvac_modes'')
+            available_modes_calc: '{{ (state_attr(climate_list[0], ''hvac_modes'') or [])
               | list }}'
-            available_fans_calc: '{{ state_attr(climate_list[0], ''fan_modes'') |
+            available_fans_calc: '{{ (state_attr(climate_list[0], ''fan_modes'') or []) |
               list }}'
-            expected_hvac_mode_calc: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+            expected_hvac_mode_calc: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
               | list %} {% if enable_cooling and enable_heating and 'auto' in modes
               %}\n  auto\n{% elif enable_cooling and enable_heating and 'Auto' in
               modes %}\n  Auto\n{% elif enable_cooling and enable_heating and 'heat_cool'
@@ -12412,42 +12814,31 @@ action:
             continue_on_error: true
         - delay:
             milliseconds: 200
+        # LOW-dead-repeat-loop: removed a no-op repeat that computed expected_hvac_mode
+        # but issued no service call; the real command loop follows below.
+        # LOW-temp-set-log: gate this WARNING behind debug_enabled (ran every eco cycle).
+        - if:
+          - condition: template
+            value_template: '{{ debug_enabled }}'
+          then:
+          - service: system_log.write
+            data:
+              message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Comfort Zone Maintenance
+                (ECO Mode) Set AC to: {{ target_temp | round(0) }}°C (rounded for AC
+                compatibility) Actual value: {{ target_temp | round(1) }}°C Reason:
+                Maintaining target temperature within comfort zone Current: {{ current_temp
+                | round(1) }}°C → Target: {{ target_temp | round(1) }}°C\n"
+              level: warning
         - repeat:
             for_each: '{{ climate_list }}'
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                expected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
-                  | list %} {# For stability, prefer auto/heat_cool only if both enabled
-                  #} {% if enable_cooling and enable_heating and 'auto' in modes %}\n
-                  \ auto\n{% elif enable_cooling and enable_heating and 'Auto' in
-                  modes %}\n  Auto\n{% elif enable_cooling and enable_heating and
-                  'heat_cool' in modes %}\n  heat_cool\n{% elif enable_cooling and
-                  enable_heating and 'Heat/Cool' in modes %}\n  Heat/Cool\n{% elif
-                  enable_cooling and 'cool' in modes %}\n  cool\n{% elif enable_cooling
-                  and 'Cool' in modes %}\n  Cool\n{% elif enable_heating and 'heat'
-                  in modes %}\n  heat\n{% elif enable_heating and 'Heat' in modes
-                  %}\n  Heat\n{% else %}\n  off\n{% endif %}\n"
-        - service: system_log.write
-          data:
-            message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Comfort Zone Maintenance
-              (ECO Mode) Set AC to: {{ target_temp | round(0) }}°C (rounded for AC
-              compatibility) Actual value: {{ target_temp | round(1) }}°C Reason:
-              Maintaining target temperature within comfort zone Current: {{ current_temp
-              | round(1) }}°C → Target: {{ target_temp | round(1) }}°C\n"
-            level: warning
-        - repeat:
-            for_each: '{{ climate_list }}'
-            sequence:
-            - variables:
-                current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list
                   }}'
-                available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list
-                  }}'
-                selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# For stability, prefer auto/heat_cool only if both enabled
                   #} {% if enable_cooling and enable_heating and 'auto' in modes %}\n
                   \ auto\n{% elif enable_cooling and enable_heating and 'Auto' in
@@ -12527,28 +12918,6 @@ action:
               title: '{{ room_name }} Climate Control'
               message: Eco mode - Comfort zone ({{ current_temp }}°C)
             continue_on_error: true
-      - conditions:
-        - condition: template
-          value_template: '{{ debug_enabled }}'
-        sequence:
-        - service: system_log.write
-          data:
-            message: "\U0001F50D {{ room_name | upper }} COMFORT ZONE BLOCK EVALUATION\n\U0001F4CA
-              Settings:\n    • comfort_zone_action: \"{{ comfort_zone_action }}\"\n
-              \   • last_mode: \"{{ last_mode }}\"\n    • actual_ac_state: \"{{ actual_ac_state
-              }}\"\n    • current_temp: {{ current_temp }}°C\n    • comfort_zone:
-              {{ comfort_min_temp }}-{{ comfort_max_temp }}°C\n\n\U0001F3AF Which
-              block will match?\n    • comfort_zone_action == 'off': {{ comfort_zone_action
-              == 'off' }}\n    • comfort_zone_action == 'eco': {{ comfort_zone_action
-              == 'eco' }}\n    • comfort_zone_action == 'fan_only' AND last_mode in
-              active modes: {{ comfort_zone_action == 'fan_only' and last_mode in
-              ['cooling', 'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only',
-              'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}\n
-              \   • comfort_zone_action == 'fan_only' AND last_mode NOT in active
-              modes: {{ comfort_zone_action == 'fan_only' and last_mode not in ['cooling',
-              'heating', 'bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only',
-              'comfort_fan_only', 'stability_fan_only', 'ceiling_fan_cooling'] }}\n"
-            level: warning
       - conditions:
         - condition: template
           value_template: '{{ comfort_zone_action == ''fan_only'' }}'
@@ -12632,7 +13001,7 @@ action:
             continue_on_error: true
           - if:
             - condition: template
-              value_template: '{{ helper_last_command not in [none, ''unavailable'',
+              value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
                 ''unknown''] }}'
             then:
             - variables:
@@ -12681,10 +13050,12 @@ action:
               data:
                 value: 'off'
               continue_on_error: true
+          # LOW-turnoff-continue-on-error: helpers were already written 'off' above;
+          # if the device times out, do NOT abort the run — coordinator polling reconciles.
           - service: climate.turn_off
             target:
               entity_id: !input climate_entities
-            continue_on_error: false
+            continue_on_error: true
       - conditions:
         - condition: template
           value_template: '{{ comfort_zone_action == ''fan_only'' }}'
@@ -12706,17 +13077,6 @@ action:
             data:
               datetime: '{{ now() }}'
             continue_on_error: true
-        - if:
-          - condition: template
-            value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
-              ''unknown''] }}'
-          then:
-          - service: input_text.set_value
-            target:
-              entity_id: '{{ helper_expected_hvac }}'
-            data:
-              value: fan_only
-            continue_on_error: true
         - service: input_text.set_value
           target:
             entity_id: !input helper_last_mode
@@ -12726,14 +13086,27 @@ action:
             milliseconds: 200
         - variables:
             entity_for_check: '{{ climate_list[0] }}'
-            available_modes: '{{ state_attr(entity_for_check, ''hvac_modes'') | list
+            available_modes: '{{ (state_attr(entity_for_check, ''hvac_modes'') or []) | list
               }}'
-            selected_fan_only_hvac: "{% set modes = state_attr(entity_for_check, 'hvac_modes')
+            selected_fan_only_hvac: "{% set modes = (state_attr(entity_for_check, 'hvac_modes') or [])
               | list %} {% if 'fan_only' in modes %}\n  fan_only\n{% elif 'fan-only'
               in modes %}\n  fan-only\n{% elif 'Fan Only' in modes %}\n  Fan Only\n{%
               elif 'dry' in modes %}\n  dry\n{% else %}\n  off\n{% endif %}\n"
             supports_fan_only: '{{ selected_fan_only_hvac in [''fan_only'', ''fan-only'',
               ''Fan Only'', ''dry''] }}'
+        # LOW-expected-hvac-literal: write the ACTUALLY-commanded variant (selected_fan_only_hvac
+        # may resolve to fan-only/Fan Only/dry/off), not the literal 'fan_only'.
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
+              ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_hvac }}'
+            data:
+              value: '{{ selected_fan_only_hvac }}'
+            continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ debug_enabled }}'
@@ -12770,9 +13143,9 @@ action:
                   selected_fan_only_hvac }}\"\n    • Is string: {{ selected_fan_only_hvac
                   is string }}\n    • Length: {{ selected_fan_only_hvac | length }}\n
                   \   • Raw value: {{ selected_fan_only_hvac | tojson }}\n\n\U0001F50D
-                  Variable Calculation:\n    • available_modes from AC: {{ state_attr(climate_list[0],
-                  'hvac_modes') | list }}\n    • 'fan_only' in modes: {{ 'fan_only'
-                  in state_attr(climate_list[0], 'hvac_modes') | list }}\n    • selected_fan_only_hvac
+                  Variable Calculation:\n    • available_modes from AC: {{ (state_attr(climate_list[0],
+                  'hvac_modes') or []) | list }}\n    • 'fan_only' in modes: {{ 'fan_only'
+                  in (state_attr(climate_list[0], 'hvac_modes') or []) | list }}\n    • selected_fan_only_hvac
                   result: {{ selected_fan_only_hvac }}\n"
                 level: warning
           - repeat:
@@ -12851,7 +13224,7 @@ action:
               continue_on_error: true
           - if:
             - condition: template
-              value_template: '{{ helper_last_command not in [none, ''unavailable'',
+              value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
                 ''unknown''] }}'
             then:
             - service: input_text.set_value
@@ -12918,7 +13291,7 @@ action:
           value: 'off'
       - if:
         - condition: template
-          value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+          value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
             }}'
         then:
         - service: input_text.set_value
@@ -12972,7 +13345,7 @@ action:
             comfort_max_temp }}'
         sequence:
         - variables:
-            selected_fan_only_hvac: "{% set modes = state_attr(climate_list[0], 'hvac_modes')
+            selected_fan_only_hvac: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
               | list %} {% if 'fan_only' in modes %}\n  fan_only\n{% elif 'fan-only'
               in modes %}\n  fan-only\n{% elif 'Fan Only' in modes %}\n  Fan Only\n{%
               elif 'dry' in modes %}\n  dry\n{% else %}\n  off\n{% endif %}\n"
@@ -13083,7 +13456,7 @@ action:
       value_template: '{{ last_mode not in [''off'', ''stability_off'', ''stability_eco'',
         ''stability_fan_only'', ''auto_off_off'', ''auto_off_eco'', ''auto_off_fan_only'',
         ''comfort_fan_only'', ''bed_comfort_eco'', ''bed_comfort_quiet'', ''bed_eco_fan_only'',
-        ''unavailable'', ''unknown'', none] }}'
+        ''ceiling_fan_cooling'', ''unavailable'', ''unknown'', none] }}'
     - condition: template
       value_template: '{{ time_since_change >= (runtime_min | float(0)) }}'
     - condition: template
@@ -13162,6 +13535,15 @@ action:
             - condition: template
               value_template: '{{ ceiling_fan_has_speed_switches }}'
             sequence:
+            # M38: break-before-make — release medium+high before energizing low
+            - service: switch.turn_off
+              target:
+                entity_id:
+                - '{{ ceiling_fan_medium_switch }}'
+                - '{{ ceiling_fan_high_switch }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 100
             - service: switch.turn_on
               target:
                 entity_id: '{{ ceiling_fan_low_switch }}'
@@ -13239,7 +13621,7 @@ action:
             continue_on_error: true
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - service: input_text.set_value
@@ -13294,9 +13676,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list
+                available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list
                   }}'
                 expected_hvac_mode: "{% if current_temp > comfort_max_temp %}\n  {%
                   if 'cool' in available_modes %}\n    cool\n    {% elif 'auto' in
@@ -13382,6 +13764,22 @@ action:
             data:
               datetime: '{{ now() }}'
             continue_on_error: true
+        - service: input_text.set_value
+          target:
+            entity_id: !input helper_last_mode
+          data:
+            value: stability_fan_only
+        - variables:
+            entity_for_check: '{{ climate_list[0] }}'
+            available_modes: '{{ (state_attr(entity_for_check, ''hvac_modes'') or []) | list
+              }}'
+            selected_fan_only_hvac: "{% set modes = (state_attr(entity_for_check, 'hvac_modes') or [])
+              | list %} {% if 'fan_only' in modes %}\n  fan_only\n{% elif 'fan-only'
+              in modes %}\n  fan-only\n{% elif 'Fan Only' in modes %}\n  Fan Only\n{%
+              elif 'dry' in modes %}\n  dry\n{% else %}\n  off\n{% endif %}\n"
+            supports_fan_only: '{{ selected_fan_only_hvac in [''fan_only'', ''fan-only'',
+              ''Fan Only'', ''dry''] }}'
+        # LOW-expected-hvac-literal: write the ACTUALLY-commanded variant, not literal 'fan_only'.
         - if:
           - condition: template
             value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'',
@@ -13391,23 +13789,8 @@ action:
             target:
               entity_id: '{{ helper_expected_hvac }}'
             data:
-              value: fan_only
+              value: '{{ selected_fan_only_hvac }}'
             continue_on_error: true
-        - service: input_text.set_value
-          target:
-            entity_id: !input helper_last_mode
-          data:
-            value: stability_fan_only
-        - variables:
-            entity_for_check: '{{ climate_list[0] }}'
-            available_modes: '{{ state_attr(entity_for_check, ''hvac_modes'') | list
-              }}'
-            selected_fan_only_hvac: "{% set modes = state_attr(entity_for_check, 'hvac_modes')
-              | list %} {% if 'fan_only' in modes %}\n  fan_only\n{% elif 'fan-only'
-              in modes %}\n  fan-only\n{% elif 'Fan Only' in modes %}\n  Fan Only\n{%
-              elif 'dry' in modes %}\n  dry\n{% else %}\n  off\n{% endif %}\n"
-            supports_fan_only: '{{ selected_fan_only_hvac in [''fan_only'', ''fan-only'',
-              ''Fan Only'', ''dry''] }}'
         - if:
           - condition: template
             value_template: '{{ debug_enabled }}'
@@ -13444,9 +13827,9 @@ action:
                   selected_fan_only_hvac }}\"\n    • Is string: {{ selected_fan_only_hvac
                   is string }}\n    • Length: {{ selected_fan_only_hvac | length }}\n
                   \   • Raw value: {{ selected_fan_only_hvac | tojson }}\n\n\U0001F50D
-                  Variable Calculation:\n    • available_modes from AC: {{ state_attr(climate_list[0],
-                  'hvac_modes') | list }}\n    • 'fan_only' in modes: {{ 'fan_only'
-                  in state_attr(climate_list[0], 'hvac_modes') | list }}\n    • selected_fan_only_hvac
+                  Variable Calculation:\n    • available_modes from AC: {{ (state_attr(climate_list[0],
+                  'hvac_modes') or []) | list }}\n    • 'fan_only' in modes: {{ 'fan_only'
+                  in (state_attr(climate_list[0], 'hvac_modes') or []) | list }}\n    • selected_fan_only_hvac
                   result: {{ selected_fan_only_hvac }}\n"
                 level: warning
           - repeat:
@@ -13511,7 +13894,7 @@ action:
               continue_on_error: true
           - if:
             - condition: template
-              value_template: '{{ helper_last_command not in [none, ''unavailable'',
+              value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
                 ''unknown''] }}'
             then:
             - service: input_text.set_value
@@ -13562,10 +13945,9 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ notification_service is defined and notification_service
-          not in [none, ''''] }}'
+        value_template: '{{ enable_notifications }}'
       then:
-      - service: '{{ notification_service }}'
+      - service: !input notification_service
         data:
           title: '{{ room_name }} Climate Control'
           message: 'Temperature Stability: {{ stability_behavior }} (stable {{ time_in_current_mode
@@ -13630,7 +14012,7 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - service: input_text.set_value
@@ -13690,7 +14072,7 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ event_logging_enabled and states(helper_mode) not in [''smart_off'',
+        value_template: '{{ event_logging_enabled and last_mode not in [''smart_off'',
           ''away_off'', ''auto_off_off'', ''off''] }}'
       then:
       - service: system_log.write
@@ -13783,7 +14165,7 @@ action:
             continue_on_error: true
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - service: input_text.set_value
@@ -13823,9 +14205,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                expected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                expected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# Prefer auto/heat_cool only if both heating and cooling
                   enabled #} {% if enable_cooling and enable_heating and 'auto' in
                   modes %}\n  auto\n{% elif enable_cooling and enable_heating and
@@ -13863,11 +14245,11 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list
+                available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list
                   }}'
-                expected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+                expected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
                   | list %} {# Prefer auto/heat_cool only if both heating and cooling
                   enabled #} {% if enable_cooling and enable_heating and 'auto' in
                   modes %}\n  auto\n{% elif enable_cooling and enable_heating and
@@ -14088,7 +14470,7 @@ action:
           continue_on_error: true
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - service: input_text.set_value
@@ -14127,9 +14509,9 @@ action:
             sequence:
             - variables:
                 current_entity: '{{ repeat.item }}'
-                available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list
+                available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list
                   }}'
-                available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list
+                available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list
                   }}'
                 selected_hvac_mode: "{% if 'auto' in available_modes %}\n  auto\n
                   \ {% elif 'Auto' in available_modes %}\n  Auto\n  {% elif 'heat_cool'
@@ -14309,12 +14691,12 @@ action:
         sequence:
         - variables:
             current_entity: '{{ repeat.item }}'
-            available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list }}'
-            available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list }}'
+            available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list }}'
+            available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list }}'
             selected_hvac_mode: "{% if current_temp > comfort_max_temp %}\n  cool\n{%
               elif current_temp < comfort_min_temp %}\n  heat\n{% else %}\n  heat_cool\n{%
               endif %}\n"
-            selected_fan_mode: "{% set fans = state_attr(repeat.item, 'fan_modes')
+            selected_fan_mode: "{% set fans = (state_attr(repeat.item, 'fan_modes') or [])
               | list %}\n{# Try low speed equivalents in order of preference #} {%
               if 'low' in fans %}\n  low\n  {% elif 'Low' in fans %}\n  Low\n  {%
               elif '1' in fans %}\n  1\n  {% elif 'Level 1' in fans %}\n  Level 1\n
@@ -14449,9 +14831,9 @@ action:
         sequence:
         - variables:
             current_entity: '{{ repeat.item }}'
-            available_modes: '{{ state_attr(repeat.item, ''hvac_modes'') | list }}'
-            available_fans: '{{ state_attr(repeat.item, ''fan_modes'') | list }}'
-            selected_hvac_mode: "{% set modes = state_attr(repeat.item, 'hvac_modes')
+            available_modes: '{{ (state_attr(repeat.item, ''hvac_modes'') or []) | list }}'
+            available_fans: '{{ (state_attr(repeat.item, ''fan_modes'') or []) | list }}'
+            selected_hvac_mode: "{% set modes = (state_attr(repeat.item, 'hvac_modes') or [])
               | list %} {# For heating, try heating-capable modes #} {% if 'heat'
               in modes %}\n  heat\n{% elif 'Heat' in modes %}\n  Heat\n{% elif enable_cooling
               and 'auto' in modes %}\n  auto\n{% elif enable_cooling and 'Auto' in
@@ -14629,7 +15011,7 @@ action:
           }}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ \U0001F50D DEBUG DATA (for
           troubleshooting): ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Deactivation
           Conditions:\n    • actual_ac_state: {{ actual_ac_state }}\n    • time_since_change:
-          {{ time_since_change | round(1) }}s\n    • control_mode: {{ control_mode
+          {{ time_since_change | round(1) }}min\n    • control_mode: {{ control_mode
           }}\n\nTrigger Info:\n    • trigger.id: {{ trigger.id }}\n"
         level: warning
   - if:
@@ -14656,7 +15038,7 @@ action:
       continue_on_error: true
   - if:
     - condition: template
-      value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+      value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
         }}'
     then:
     - service: input_text.set_value
@@ -14795,7 +15177,7 @@ action:
         continue_on_error: true
       - if:
         - condition: template
-          value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+          value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
             }}'
         then:
         - variables:
@@ -14876,7 +15258,7 @@ action:
       continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+        value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
@@ -15086,7 +15468,7 @@ action:
         sequence:
         - if:
           - condition: template
-            value_template: '{{ helper_last_command not in [none, ''unavailable'',
+            value_template: '{{ helper_last_command not in [none, '''', ''unavailable'',
               ''unknown''] }}'
           then:
           - service: input_text.set_value
@@ -15179,7 +15561,7 @@ action:
         level: warning
   - if:
     - condition: template
-      value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+      value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
         }}'
     then:
     - service: input_text.set_value
@@ -15288,7 +15670,7 @@ action:
     continue_on_error: true
 - if:
   - condition: template
-    value_template: '{{ helper_last_command not in [none, ''unavailable'', ''unknown'']
+    value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
       and climate_list | length > 0 }}'
   then:
   - variables:
