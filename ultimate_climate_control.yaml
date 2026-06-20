@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.10.0
-  description: "**Ultimate Smart Climate Control v9.10.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.11.0
+  description: "**Ultimate Smart Climate Control v9.11.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,13 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.10.0 - Dormant features wired up:**\n•
+    UPDATES:**\n\n**v9.11.0 - Manual as a Default Control Mode:**\n•
+    **NEW**: `Manual` is now selectable as the **Default Control Mode** (alongside
+    Smart and Auto) - the mode a room restores to after Override/Pre-conditioning,
+    and the mode used when no prior mode is known.\n•
+    **Self-consistent**: when Manual is the default, the **Manual Mode Timeout** no
+    longer reverts the room to Smart, so Manual stays the steady state. Existing
+    Smart/Auto setups are unaffected.\n\n**v9.10.0 - Dormant features wired up:**\n•
     **Time-Based Scheduling** is now active (morning/day/evening/night + weekend bands
     drive the operative target).\n•
     **Window-open AC shutdown**: opening a configured window/door past the open-delay turns
@@ -350,7 +356,11 @@ blueprint:
             **Smart:** Presence-aware. Turns off when nobody is in the room. Best
             for rooms\n  that are only used sometimes (offices, bedrooms).\n- **Auto:**
             Always runs regardless of presence. Best for shared/common areas\n  (living
-            rooms) where someone is usually around.\n"
+            rooms) where someone is usually around.\n- **Manual:** Full user control
+            - automation never turns the AC on/off on its own\n  (emergency temperature
+            limits still apply). Best for rooms you drive\n  entirely by remote/app.
+            **Tip:** when Manual is the default, the Manual Mode\n  Timeout no longer
+            reverts the room to Smart - Manual stays the steady state.\n"
           default: Smart
           selector:
             select:
@@ -359,6 +369,8 @@ blueprint:
                 value: Smart
               - label: Auto (always runs - for common areas)
                 value: Auto
+              - label: Manual (full user control - no auto on/off)
+                value: Manual
               multiple: false
               custom_value: false
               sort: false
@@ -9358,6 +9370,10 @@ action:
     - if:
       - condition: template
         value_template: '{{ manual_timeout_hours > 0 }}'
+      # v9.11.0: When Manual is the room's Default Control Mode, Manual IS the
+      # intended steady state - never auto-revert it to Smart on timeout.
+      - condition: template
+        value_template: "{{ default_control_mode != 'Manual' }}"
       - condition: template
         value_template: "{% if helper_change and states(helper_change) not in ['unknown',
           'unavailable', ''] %}\n  {% set change_timestamp = as_timestamp(states(helper_change))
