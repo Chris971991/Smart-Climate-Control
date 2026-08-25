@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.11.0
-  description: "**Ultimate Smart Climate Control v9.11.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.12.0
+  description: "**Ultimate Smart Climate Control v9.12.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,16 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.11.0 - Manual as a Default Control Mode:**\n•
+    UPDATES:**\n\n**v9.12.0 - Your chosen mode stops getting overwritten:**\n•
+    **Fixed**: a room could silently switch its own control mode hours after you set it.
+    Using a ceiling fan by hand started a fan-only override, and when that override
+    timed out the room restored an old, remembered mode instead of leaving your choice
+    alone. A room set to Smart would turn up as Auto two hours later.\n•
+    **Fixed**: the remembered \"mode before override\" was never cleared once used, so
+    a value left over from an old override kept coming back. It is now cleared each
+    time it is used, and the room falls back to its **Default Control Mode**.\n•
+    **Note**: fan-only overrides no longer touch the AC control mode at all. Only a
+    real AC override restores a mode when it clears.\n\n**v9.11.0 - Manual as a Default Control Mode:**\n•
     **NEW**: `Manual` is now selectable as the **Default Control Mode** (alongside
     Smart and Auto) - the mode a room restores to after Override/Pre-conditioning,
     and the mode used when no prior mode is known.\n•
@@ -6060,16 +6069,41 @@ action:
           '
         level: warning
     - stop: Fan-only override cleared by user
-  - variables:
-      return_to_mode: '{{ states(helper_mode_before_override) if helper_mode_before_override
-        and states(helper_mode_before_override) in [''Auto'', ''Smart''] else default_control_mode
-        }}'
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: '{{ return_to_mode }}'
-    continue_on_error: true
+  # v9.12.0 M27: only restore the AC control mode when the helper is ACTUALLY in
+  # Override. The independent fan-override expiry (~line 8590) clears
+  # helper_override_source BEFORE turning the override boolean off, and it is that
+  # boolean going on->off which fires this run — so by the time we get here
+  # fan_override_active reads false and the fan-only stop above is skipped. Without
+  # this gate the block stamped a stale helper_mode_before_override over whatever
+  # mode the user had chosen (Office: Smart -> Auto, two hours after any ceiling fan
+  # press). Nothing to restore when the AC was never in Override.
+  - if:
+    - condition: template
+      value_template: '{{ is_state(control_mode_helper, ''Override'') }}'
+    then:
+    - variables:
+        return_to_mode: '{{ states(helper_mode_before_override) if helper_mode_before_override
+          and states(helper_mode_before_override) in [''Auto'', ''Smart''] else default_control_mode
+          }}'
+    - service: input_select.select_option
+      target:
+        entity_id: '{{ control_mode_helper }}'
+      data:
+        option: '{{ return_to_mode }}'
+      continue_on_error: true
+    # v9.12.0 M28: consume the snapshot. Nothing else ever cleared it, so a value
+    # left over from an old override leaked into every later restore.
+    - if:
+      - condition: template
+        value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_mode_before_override }}'
+        data:
+          value: ''
+        continue_on_error: true
   - if:
     - condition: template
       value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
@@ -8392,6 +8426,18 @@ action:
     data:
       option: '{{ return_to_mode }}'
     continue_on_error: true
+  # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
+  - if:
+    - condition: template
+      value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: '{{ helper_mode_before_override }}'
+      data:
+        value: ''
+      continue_on_error: true
   - if:
     - condition: template
       value_template: '{{ helper_override_source not in [none, '''', ''unavailable'',
@@ -8484,6 +8530,18 @@ action:
     data:
       option: '{{ return_to_mode }}'
     continue_on_error: true
+  # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
+  - if:
+    - condition: template
+      value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: '{{ helper_mode_before_override }}'
+      data:
+        value: ''
+      continue_on_error: true
   - if:
     - condition: template
       value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'',
