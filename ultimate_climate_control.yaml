@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.12.0
-  description: "**Ultimate Smart Climate Control v9.12.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.13.0
+  description: "**Ultimate Smart Climate Control v9.13.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,25 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.12.0 - Your chosen mode stops getting overwritten:**\n•
+    UPDATES:**\n\n**v9.13.0 - Override clearing made reliable, false overrides after
+    a network blip removed:**\n•
+    **Fixed**: clearing an override (button, timeout, or picking a mode from the dropdown)
+    sometimes left the Override Active indicator stuck on and the automation remembering
+    the wrong AC settings, so the very next change could count as a new override.
+    Every mode change now happens as the final step of its handler, so the cleanup
+    always completes.\n•
+    **Fixed**: an AC or ceiling fan reconnecting after a WiFi or Zigbee dropout no
+    longer counts as a remote press.\n•
+    **Fixed**: 22 internal yes/no values were being stored as text, which made a
+    handful of checks (away mode, pre-conditioning end, room-empty handling in rooms
+    without presence sensors) always read as \"yes\". They are real yes/no values now.\n•
+    **Fixed**: pre-conditioning no longer leaves an old start time behind when it ends,
+    and its notifications always send.\n•
+    **Fixed**: the \"override cleared\" log line no longer prints an undefined value.\n•
+    **Improved**: temperature sensor housekeeping updates (signal strength and the like)
+    no longer restart the automation every minute; only a real temperature change does.\n•
+    **Improved**: the override timeout helper is written only when it actually
+    changes instead of on every trigger.\n\n**v9.12.0 - Your chosen mode stops getting overwritten:**\n•
     **Fixed**: a room could silently switch its own control mode hours after you set it.
     Using a ceiling fan by hand started a fan-only override, and when that override
     timed out the room restored an old, remembered mode instead of leaving your choice
@@ -5426,10 +5444,10 @@ variables:
     if '.' in ceiling_fan_entity else 'unknown' }}\n{% else %}\n  unknown\n{% endif
     %}\n"
   ceiling_fan_is_on: "{% if ceiling_fan_configured %}\n  {{ is_state(ceiling_fan_entity,
-    'on') }}\n{% else %}\n  false\n{% endif %}\n"
+    'on') }}\n{% else %}\n  False\n{% endif %}\n"
   ceiling_fan_has_presets: "{% if ceiling_fan_configured and ceiling_fan_domain ==
     'fan' %}\n  {{ state_attr(ceiling_fan_entity, 'preset_modes') not in [none, []]
-    }}\n{% else %}\n  false\n{% endif %}\n"
+    }}\n{% else %}\n  False\n{% endif %}\n"
   ceiling_fan_has_speed_switches: "{{ ceiling_fan_low_switch_input not in [none, '',
     [], 'unknown', 'unavailable']\n   and ceiling_fan_medium_switch_input not in [none,
     '', [], 'unknown', 'unavailable']\n   and ceiling_fan_high_switch_input not in
@@ -5724,9 +5742,11 @@ condition:
          from killing the override-activation sequence between fan shutdown and
          select_option Override #}
       {{ trigger.from_state.state != trigger.to_state.state and (trigger.to_state.context.parent_id is none) }}
-    {% elif trigger.id in ['presence_change', 'device_change', 'room_presence_change', 'auto_off_person_change', 'auto_off_sensor_1_change', 'auto_off_sensor_all_change'] %}
+    {% elif trigger.id in ['presence_change', 'device_change', 'room_presence_change', 'auto_off_person_change', 'auto_off_sensor_1_change', 'auto_off_sensor_all_change', 'external_temp_change'] %}
       {# M30: Ignore attribute-only updates (GPS coords, RSSI) — only real state transitions.
-         none-guards let entity-appeared/removed events pass through (startup behavior). #}
+         none-guards let entity-appeared/removed events pass through (startup behavior).
+         v9.13.0: external_temp_change added — Zigbee temperature sensors re-report link
+         quality every minute with an unchanged reading; each one restarted the run. #}
       {{ trigger.from_state is none or trigger.to_state is none or trigger.from_state.state != trigger.to_state.state }}
     {% else %}
       {# All other triggers pass through #}
@@ -5751,6 +5771,11 @@ action:
   - condition: template
     value_template: '{{ helper_override_timeout_storage not in [none, '''', ''unavailable'',
       ''unknown''] }}'
+  # v9.13.0: only write when the stored value differs. This ran on EVERY trigger of
+  # every room (thousands of no-op state writes a day).
+  - condition: template
+    value_template: '{{ (states(helper_override_timeout_storage) | float(-1)) != (override_timeout
+      | float(-2)) }}'
   then:
   - service: input_number.set_value
     target:
@@ -5902,8 +5927,8 @@ action:
       | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
     should_proceed: "{% if trigger.id == 'periodic_check' %}\n  {% set mins = now().minute
       %}\n  {% set interval = check_interval | int(1) %}\n  {% if interval > 0 %}\n
-      \   {{ (mins % interval) == 0 }}\n  {% else %}\n    true\n  {% endif %}\n{%
-      else %}\n  true\n{% endif %}\n"
+      \   {{ (mins % interval) == 0 }}\n  {% else %}\n    True\n  {% endif %}\n{%
+      else %}\n  True\n{% endif %}\n"
 - condition: template
   value_template: '{{ should_proceed }}'
 - if:
@@ -6027,6 +6052,32 @@ action:
         message: "[EVENT] {{ room_name }} 🔄 | Mode Change: {{ from_mode }} → {{
           to_mode }} | Room {{ state_attr(climate_list[0], 'current_temperature') | default('N/A') }}°C, AC {{ states(climate_list[0]) | default('unknown') }}"
         level: warning
+  # v9.13.0: keep the Override Active indicator in step with the control mode. A user
+  # who picks Override or Smart straight from the dropdown never touches the boolean,
+  # so it went stale (seen: Master Bedroom flag ON for hours while the room read Smart,
+  # which also meant the next "clear" could never fire override_cleared_by_user).
+  # The turn_off is deliberately the LAST step of this handler: it fires
+  # override_cleared_by_user, and that run resyncs the expected-state snapshot to the
+  # real AC state (it skips the mode restore because the helper is no longer Override).
+  - if:
+    - condition: template
+      value_template: '{{ to_mode == ''Override'' and helper_override_flag not in [none,
+        '''', ''unavailable'', ''unknown''] and is_state(helper_override_flag, ''off'') }}'
+    then:
+    - service: input_boolean.turn_on
+      target:
+        entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
+  - if:
+    - condition: template
+      value_template: '{{ from_mode == ''Override'' and to_mode != ''Override'' and helper_override_flag
+        not in [none, '''', ''unavailable'', ''unknown''] and is_state(helper_override_flag,
+        ''on'') }}'
+    then:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
 - if:
   - condition: template
     value_template: '{{ trigger.id == ''override_cleared_by_user'' }}'
@@ -6077,33 +6128,30 @@ action:
   # this gate the block stamped a stale helper_mode_before_override over whatever
   # mode the user had chosen (Office: Smart -> Auto, two hours after any ceiling fan
   # press). Nothing to restore when the AC was never in Override.
+  # v9.13.0: decide the restore up front, but perform the select_option as the LAST
+  # step of this handler (see the end of the block). select_option fires mode_change and
+  # mode:restart then races to cancel this run; with the select in the middle, the
+  # snapshot/expected-state resync below only ran when the race was won.
+  # return_to_mode is also defined unconditionally now — it was only set inside the
+  # gate, so the "OVERRIDE CLEARED BY USER" log rendered 'return_to_mode is undefined'.
+  - variables:
+      override_was_active: '{{ is_state(control_mode_helper, ''Override'') }}'
+      return_to_mode: '{{ states(helper_mode_before_override) if helper_mode_before_override
+        and states(helper_mode_before_override) in [''Auto'', ''Smart''] else default_control_mode
+        }}'
+  # v9.12.0 M28: consume the snapshot. Nothing else ever cleared it, so a value
+  # left over from an old override leaked into every later restore.
   - if:
     - condition: template
-      value_template: '{{ is_state(control_mode_helper, ''Override'') }}'
+      value_template: '{{ (override_was_active | bool) and helper_mode_before_override
+        not in [none, '''', ''unavailable'', ''unknown''] }}'
     then:
-    - variables:
-        return_to_mode: '{{ states(helper_mode_before_override) if helper_mode_before_override
-          and states(helper_mode_before_override) in [''Auto'', ''Smart''] else default_control_mode
-          }}'
-    - service: input_select.select_option
+    - service: input_text.set_value
       target:
-        entity_id: '{{ control_mode_helper }}'
+        entity_id: '{{ helper_mode_before_override }}'
       data:
-        option: '{{ return_to_mode }}'
+        value: ''
       continue_on_error: true
-    # v9.12.0 M28: consume the snapshot. Nothing else ever cleared it, so a value
-    # left over from an old override leaked into every later restore.
-    - if:
-      - condition: template
-        value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_text.set_value
-        target:
-          entity_id: '{{ helper_mode_before_override }}'
-        data:
-          value: ''
-        continue_on_error: true
   - if:
     - condition: template
       value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
@@ -6225,13 +6273,25 @@ action:
       continue_on_error: true
   - service: system_log.write
     data:
-      message: '✅ {{ room_name | upper }} OVERRIDE CLEARED BY USER • User clicked
-        "Clear Override" button • Returning to: {{ return_to_mode }} mode • Synced
-        snapshot to actual AC state • Updated helper_change to NOW for grace period
-        • Automation will resume on next trigger
+      message: '✅ {{ room_name | upper }} OVERRIDE CLEARED BY USER • Override flag turned
+        off • {{ ''Returning to: '' ~ return_to_mode ~ '' mode'' if (override_was_active
+        | bool) else ''Control mode already '' ~ states(control_mode_helper) ~ '' - nothing
+        to restore'' }} • Synced snapshot to actual AC state • Updated helper_change to
+        NOW for grace period • Automation will resume on next trigger
 
         '
       level: warning
+  # v9.13.0: the mode restore is the LAST action (fires mode_change -> restart).
+  - if:
+    - condition: template
+      value_template: '{{ override_was_active | bool }}'
+    then:
+    - service: input_select.select_option
+      target:
+        entity_id: '{{ control_mode_helper }}'
+      data:
+        option: '{{ return_to_mode }}'
+      continue_on_error: true
   - stop: Override cleared - stopping to prevent immediate re-detection on this cycle
 - variables:
     helper_last_mode_at_start: '{{ states(helper_mode) | default(''off'') }}'
@@ -6361,7 +6421,7 @@ action:
     window_open: "{% if enable_window_detection %}\n  {% set open = namespace(value=false)
       %}\n  {% for sensor in window_sensors %}\n    {% if is_state(sensor, 'on') %}\n
       \     {% set open.value = true %}\n    {% endif %}\n  {% endfor %}\n  {{ open.value
-      }}\n{% else %}\n  false\n{% endif %}\n"
+      }}\n{% else %}\n  False\n{% endif %}\n"
     window_open_over_delay: >-
       {% if enable_window_detection and (window_sensors | list | length) > 0 %}
         {% set od = namespace(value=false) %}
@@ -6376,13 +6436,13 @@ action:
         {% endfor %}
         {{ od.value }}
       {% else %}
-        false
+        False
       {% endif %}
     windows_closed_over_delay: >-
       {% if not enable_window_detection or (window_sensors | list | length) == 0 %}
-        true
+        True
       {% elif (window_open | bool) %}
-        false
+        False
       {% else %}
         {% set cd = namespace(value=true) %}
         {% set delay = window_close_delay | float(1) %}
@@ -6404,7 +6464,7 @@ action:
       {# 'arrived' means already home, not approaching. Use anyone_home for at-home detection instead #}\n
       {% if direction_sensor and proximity_sensor %}\n  {{ is_state(direction_sensor,
       'towards') and\n     states(proximity_sensor) | float(10000) < home_zone_distance
-      }}\n{% else %}\n  false\n{% endif %}\n"
+      }}\n{% else %}\n  False\n{% endif %}\n"
     time_since_change: "{% if helper_change and states(helper_change) not in ['unknown',
       'unavailable', ''] %}\n  {% set change_timestamp = as_timestamp(states(helper_change))
       %}\n  {% if change_timestamp %}\n    {{ (as_timestamp(now()) - change_timestamp)
@@ -6449,9 +6509,9 @@ action:
       and not_too_cold) or slightly_above }}
 
       '
-    bed_eco_should_fan_only: "{% if bed_eco_fan_only_mode != 'enabled' %}\n  false\n{%
-      elif last_mode != 'bed_comfort_eco' %}\n  false\n{% elif not bed_eco_at_target
-      %}\n  false\n{% else %}\n  {% set stability_met = bed_eco_temp_stable and (time_in_current_mode
+    bed_eco_should_fan_only: "{% if bed_eco_fan_only_mode != 'enabled' %}\n  False\n{%
+      elif last_mode != 'bed_comfort_eco' %}\n  False\n{% elif not bed_eco_at_target
+      %}\n  False\n{% else %}\n  {% set stability_met = bed_eco_temp_stable and (time_in_current_mode
       | float(0)) >= bed_eco_stability_minutes %}\n  {% set overshoot_target = target_temp
       - target_overshoot %}\n  {% set temp_met = current_temp <= overshoot_target
       %}\n  {% if bed_eco_fan_only_trigger == 'temperature' %}\n    {{ temp_met }}\n
@@ -6474,9 +6534,9 @@ action:
       'stable' and in_comfort_zone %}\n    {% if temp_stability_time >= time_threshold
       %}\n      {% if last_mode not in ['off', 'stability_off', 'stability_eco', 'stability_fan_only',
       'auto_off_off', 'auto_off_eco', 'auto_off_fan_only', 'bed_comfort_eco', 'bed_comfort_quiet',
-      'bed_eco_fan_only', 'unavailable', 'unknown', none] %}\n        true\n      {%
-      else %}\n        false\n      {% endif %}\n    {% else %}\n      false\n    {%
-      endif %}\n  {% else %}\n    false\n  {% endif %}\n{% else %}\n  false\n{% endif
+      'bed_eco_fan_only', 'unavailable', 'unknown', none] %}\n        True\n      {%
+      else %}\n        False\n      {% endif %}\n    {% else %}\n      False\n    {%
+      endif %}\n  {% else %}\n    False\n  {% endif %}\n{% else %}\n  False\n{% endif
       %}\n"
     distance_from_target: "{# v3.9.25 FIX: Calculate distance from OVERSHOOT target,
       not user target #} {# De-escalation must allow AC to reach overshoot target
@@ -6904,20 +6964,20 @@ action:
     precond_minutes_since_arrival: "{% if precond_arrival_timestamp > 0 %}\n  {{ ((as_timestamp(now())
       - precond_arrival_timestamp) / 60) | round(1) }}\n{% else %}\n  0\n{% endif
       %}\n"
-    precond_grace_expired: "{% if precond_expiry_mode == 'Temperature Only' %}\n  false\n{%
+    precond_grace_expired: "{% if precond_expiry_mode == 'Temperature Only' %}\n  False\n{%
       elif precond_arrival_occurred %}\n  {{ precond_minutes_since_arrival >= (precond_grace_period
-      | float(15)) }}\n{% else %}\n  false\n{% endif %}\n"
+      | float(15)) }}\n{% else %}\n  False\n{% endif %}\n"
     precond_safety_timeout_exceeded: "{% if enable_precond_max_runtime and (precond_max_runtime
       | float(60)) > 0 %}\n  {{ precond_runtime_minutes >= (precond_max_runtime |
-      float(60)) }}\n{% else %}\n  false\n{% endif %}\n"
-    precond_temp_reached: "{% if precond_expiry_mode == 'Timer Only' %}\n  false\n{%
+      float(60)) }}\n{% else %}\n  False\n{% endif %}\n"
+    precond_temp_reached: "{% if precond_expiry_mode == 'Timer Only' %}\n  False\n{%
       else %}\n  {% set current = current_temp | float(0) %}\n  {% set target = precond_target
       | float(0) %}\n  {% set threshold = precond_temp_threshold | float(1.0) %}\n
       \ {% set hvac_mode = states(climate_list[0]) if climate_list | length > 0 else
       'off' %}\n  {% if hvac_mode == 'cool' %}\n    {{ current <= (target + threshold)
       }}\n  {% elif hvac_mode == 'heat' %}\n    {{ current >= (target - threshold)
       }}\n  {% elif hvac_mode == 'off' %}\n    {# AC is off - can't have reached target
-      yet #}\n    false\n  {% else %}\n    {# For other modes (fan_only, dry, auto),
+      yet #}\n    False\n  {% else %}\n    {# For other modes (fan_only, dry, auto),
       check if within threshold of target #}\n    {{ (current >= (target - threshold))
       and (current <= (target + threshold)) }}\n  {% endif %}\n{% endif %}\n"
     precond_was_automation_triggered: '{% set start_ts = precond_start_timestamp |
@@ -6928,11 +6988,11 @@ action:
       < max_age_seconds }}
 
       '
-    precond_should_end: "{% if not is_precond_mode %}\n  false\n{% elif precond_runtime_minutes
+    precond_should_end: "{% if not is_precond_mode %}\n  False\n{% elif precond_runtime_minutes
       >= 480 %}\n  {# v9.3.1: HARD 8-HOUR ABSOLUTE TIMEOUT - no pre-conditioning should
-      ever run this long #}\n  true\n{% elif not precond_was_automation_triggered
+      ever run this long #}\n  True\n{% elif not precond_was_automation_triggered
       %}\n  {# User manually set Pre-conditioning mode - respect their choice, don't
-      auto-exit #}\n  false\n{% elif precond_safety_timeout_exceeded %}\n  true\n{%
+      auto-exit #}\n  False\n{% elif precond_safety_timeout_exceeded %}\n  True\n{%
       elif precond_expiry_mode == 'Timer Only' %}\n  {{ precond_grace_expired }}\n{%
       elif precond_expiry_mode == 'Temperature Only' %}\n  {{ precond_temp_reached
       }}\n{% else %}\n  {# Both mode - either condition triggers end #}\n  {{ precond_grace_expired
@@ -6956,8 +7016,9 @@ action:
       else %}{{ fan_modes[-1] | default('auto') }}{% endif %}\n{% else %}\n  {{ fan_modes[0]
       | default('auto') }}\n{% endif %}\n"
     current_state_machine: "{% if control_mode == 'Manual' %}\n  MANUAL_CONTROL\n{%
-      elif control_mode == 'Override' %}\n  MANUAL_OVERRIDE_ACTIVE\n{% elif actual_ac_state
-      == 'unavailable' %}\n  LOCKED\n{% elif last_mode == 'cooling_high' or last_mode
+      elif control_mode == 'Override' %}\n  MANUAL_OVERRIDE_ACTIVE\n{% elif any_ac_unavailable
+      | bool %}\n  {# v9.13.0: actual_ac_state is only ever 'on'/'off', so LOCKED was unreachable #}\n
+      \ LOCKED\n{% elif last_mode == 'cooling_high' or last_mode
       == 'cooling_medium' or last_mode == 'cooling_low' %}\n  AUTOMATION_COOLING\n{%
       elif last_mode == 'heating_high' or last_mode == 'heating_medium' or last_mode
       == 'heating_low' %}\n  AUTOMATION_HEATING\n{% elif last_mode == 'eco' or last_mode
@@ -6988,7 +7049,7 @@ action:
       %}\n"
     room_presence_detected: "{% set validation_mode = presence_validation | default('any')
       | lower %} {% set sensor_count = room_sensors | length %}\n{# If no sensors
-      configured, always return false #} {% if sensor_count == 0 %}\n  false\n{% else
+      configured, always return false #} {% if sensor_count == 0 %}\n  False\n{% else
       %}\n  {# Categorize sensors and check their states #}\n  {% set sensors_triggered
       = namespace(count=0) %}\n  {% set ble_detected = namespace(value=false) %}\n
       \ {% set motion_detected = namespace(value=false) %}\n  {% set other_detected
@@ -7105,10 +7166,10 @@ action:
       defeating the turn-off logic! #} {# The exit grace period (presence_timeout)
       already handles \"leave and come back\" scenarios #} {# If grace period expired
       and AC turned off, user MUST wait confirmation delay before re-activation #}
-      {% if control_mode == 'Manual' %}\n  false\n{% elif control_mode == 'Pre-conditioning'
+      {% if control_mode == 'Manual' %}\n  False\n{% elif control_mode == 'Pre-conditioning'
       %}\n  {# v6.6.0: Pre-conditioning mode - AC stays on until target temp reached
       or grace period expires #}\n  {# This prevents the AC from turning off when
-      someone arrives home during pre-conditioning #}\n  true\n{% elif effective_mode
+      someone arrives home during pre-conditioning #}\n  True\n{% elif effective_mode
       == 'Smart' %}\n  {# v4.3.0: Bed sensor counts as confirmed presence for Smart
       mode #}\n  {# This prevents Smart mode from turning off AC while person is sleeping
       #}\n  {# v7.3.0 FIX: Bed sensor must ALSO respect presence_confirmation_delay
@@ -7116,8 +7177,8 @@ action:
       causing instant AC turn-on when entering room #}\n  {# If AC is already in a
       bed comfort mode, bed_occupied keeps it on (no delay needed) #}\n  {% if bed_occupied
       and last_mode in ['bed_comfort_quiet', 'bed_comfort_eco', 'bed_eco_fan_only']
-      %}\n    true\n  {% elif bed_occupied and (presence_confirmation_delay == 0 or
-      minutes_with_presence >= (presence_confirmation_delay - 0.17)) %}\n    true\n
+      %}\n    True\n  {% elif bed_occupied and (presence_confirmation_delay == 0 or
+      minutes_with_presence >= (presence_confirmation_delay - 0.17)) %}\n    True\n
       \ {# v4.3.0: Bed absence grace period - bathroom breaks during sleep #}\n  {#
       v9.7.0 FIX: Apply grace period in ANY active mode, not just bed_comfort modes #}\n  {#
       The bed sensor can flicker while user is still in bed. If last_mode was cooling #}\n  {#
@@ -7125,12 +7186,12 @@ action:
       turned off immediately. Now applies whenever bed sensor was recently on. #}\n  {%
       elif bed_sensor_manual and not is_state(bed_sensor_manual, 'on') and
       minutes_since_bed_off < bed_absence_grace and last_mode not in ['off',
-      'smart_off', 'away_off', 'auto_off_off', 'window_off'] %}\n    true\n  {# Smart mode: require
+      'smart_off', 'away_off', 'auto_off_off', 'window_off'] %}\n    True\n  {# Smart mode: require
       confirmation delay before activation #}\n  {# v5.0.8 FIX: Add 10-second hysteresis
       buffer to prevent timing fluctuation flip-flop #}\n  {# v5.3.5 FIX: REMOVED
       can_bypass_delay - grace period handles re-entry, confirmation delay is mandatory
       #}\n  {% elif room_presence_detected and minutes_with_presence >= (presence_confirmation_delay
-      - 0.17) %}\n    true\n  {% elif not room_presence_detected and minutes_since_presence
+      - 0.17) %}\n    True\n  {% elif not room_presence_detected and minutes_since_presence
       < presence_timeout %}\n    {# Grace period applies when: #}\n    {# 1. Instant
       activation (no confirmation delay) - always applies #}\n    {# 2. Had prior
       confirmed presence - left after AC was already running #}\n    {# v3.8.2 FIX:
@@ -7160,7 +7221,7 @@ action:
       \       {% set ac_currently_running.value = true %}\n      {% endif %}\n    {%
       endfor %}\n    {% if all_ble_in_different_room and not ac_currently_running.value
       %}\n      {# ALL BLE sensors show different rooms AND AC is OFF - don't START
-      it via grace period #}\n      false\n    {% else %}\n      {# Either BLE ok,
+      it via grace period #}\n      False\n    {% else %}\n      {# Either BLE ok,
       OR AC already running (preserve grace period functionality) #}\n      {# v6.6.3
       FIX: Check if validation helper is currently ON (presence was JUST active) #}\n
       \     {# This fixes race condition where helper timestamp is stale but presence
@@ -7169,7 +7230,7 @@ action:
       \     {% set validation_currently_on = presence_validation_helper not in [none,
       '', 'unavailable', 'unknown'] and is_state(presence_validation_helper, 'on')
       %}\n      {% if validation_currently_on %}\n        {# Presence was JUST active
-      (validation helper still ON) - grace period definitely applies #}\n        true\n
+      (validation helper still ON) - grace period definitely applies #}\n        True\n
       \     {% else %}\n        {# Fallback to timestamp-based check for legacy/edge
       cases #}\n        {% set last_timer_val = states(presence_detected_helper) if
       presence_detected_helper else 'unknown' %}\n        {% if last_timer_val not
@@ -7180,35 +7241,41 @@ action:
       \         {# time_at_timeout = \"N minutes ago\", time_when_left = last presence
       timestamp #}\n          {# Grace period active if presence was detected AFTER
       the timeout boundary #}\n          {{ (presence_confirmation_delay == 0) or
-      (time_when_left > time_at_timeout) }}\n        {% else %}\n          false\n
+      (time_when_left > time_at_timeout) }}\n        {% else %}\n          False\n
       \       {% endif %}\n      {% endif %}\n    {% endif %}\n  {% elif approaching_home
       and not anyone_home %}\n    {# v3.11.7 FIX: Only use approaching_home if nobody
       is home yet (pre-conditioning) #}\n    {# This prevents AC activating when you're
-      already home in a different room #}\n    true\n  {% else %}\n    false\n  {%
+      already home in a different room #}\n    True\n  {% else %}\n    False\n  {%
       endif %}\n{% elif effective_mode == 'Auto' %}\n  {# Auto mode - more permissive
-      presence logic #}\n  {% if room_presence_detected %}\n    true\n  {% elif minutes_since_presence
-      < presence_timeout %}\n    true\n  {% elif proximity_zone == 'home' %}\n    true\n
-      \ {% elif anyone_home %}\n    true\n  {% else %}\n    false\n  {% endif %}\n{%
-      else %}\n  false\n{% endif %}\n"
-    fan_presence_ok: "{%- if control_mode != 'Smart' -%}true{%- elif (room_presence_detected
-      | default(false) | bool) -%}{%- if fan_presence_entry == 'instant' -%}true{%-
-      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
-      }}{%- endif -%}{%- else -%}{%- if fan_presence_exit == 'instant' -%}false{%-
-      else -%}{{ (smart_presence_active | default(false) | bool) | string | lower
+      presence logic #}\n  {% if room_presence_detected %}\n    True\n  {% elif minutes_since_presence
+      < presence_timeout %}\n    True\n  {% elif proximity_zone == 'home' %}\n    True\n
+      \ {% elif anyone_home %}\n    True\n  {% else %}\n    False\n  {% endif %}\n{%
+      else %}\n  False\n{% endif %}\n"
+    fan_presence_ok: "{%- if control_mode != 'Smart' -%}True{%- elif (room_presence_detected
+      | default(false) | bool) -%}{%- if fan_presence_entry == 'instant' -%}True{%-
+      else -%}{{ smart_presence_active | default(false) | bool
+      }}{%- endif -%}{%- else -%}{%- if fan_presence_exit == 'instant' -%}False{%-
+      else -%}{{ smart_presence_active | default(false) | bool
       }}{%- endif -%}{%- endif -%}"
-    extreme_temp_detected: "{% if not extreme_override %}\n  false\n{% elif current_temp
+    extreme_temp_detected: "{% if not extreme_override %}\n  False\n{% elif current_temp
       > extreme_high %}\n  hot\n{% elif current_temp < extreme_low %}\n  cold\n{%
-      else %}\n  false\n{% endif %}\n"
+      else %}\n  False\n{% endif %}\n"
     # H10: Unified command grace (seconds) for BOTH periodic_check and climate_state_change
     # override paths. MUST stay >= the integration's 45s _last_any_command_time grace
     # (homeassistant-daikin-optimized climate.py ~line 633/605). 50 gives 5s margin
     # for poll latency.
     override_command_grace: 50
     manual_override_detection: "{# Step 0: Quick validation checks #} {% if not enable_ac_override_detection
-      %}\n  false\n{% elif control_mode in ['Override', 'Manual', 'Pre-conditioning']
+      %}\n  False\n{% elif control_mode in ['Override', 'Manual', 'Pre-conditioning']
       %}\n  {# v6.6.0: Exclude Pre-conditioning mode from override detection #}\n
-      \ false\n{% elif states(helper_state_machine) == 'LOCKED' %}\n  false\n{% elif
-      trigger.id == 'override_cleared_by_user' %}\n  false\n\n{# ==============================================================
+      \ False\n{% elif states(helper_state_machine) == 'LOCKED' %}\n  False\n{% elif
+      trigger.id == 'override_cleared_by_user' %}\n  False\n{% elif trigger.id == 'climate_state_change'
+      and trigger.to_state is defined and trigger.from_state is defined and (trigger.from_state.state
+      in ['unavailable', 'unknown'] or trigger.to_state.state in ['unavailable', 'unknown'])
+      %}\n  {# v9.13.0: a unit dropping off / coming back on the network is not a remote press.\n
+      \    The fallback branch below ('no tracking info -> from != to') fired on the\n
+      \    unavailable -> cool transition after a WiFi blip while the AC was running. #}\n
+      \ False\n\n{# ==============================================================
       #} {# v6.4.0: CHECK FOR RECENT UI CLICK (PERSISTED ACROSS RESTARTS) #} {# ==============================================================
       #} {# This solves the race condition where mode:restart kills the UI- #} {#
       triggered run before Override activates. The UI click timestamp #} {# was recorded
@@ -7230,10 +7297,10 @@ action:
       wanted #}\n  {% set expected_hvac = states(helper_expected_hvac) | default('unknown')
       %}\n  {% set actual_hvac = states(climate_list[0]) %}\n  {% if expected_hvac
       in ['unknown', 'unavailable', '', none] %}\n    {# No expected state recorded
-      - can't determine if override, skip detection (v7.4.0 FIX: was 'true' which caused false positives after HA restart) #}\n    false\n  {% elif actual_hvac
+      - can't determine if override, skip detection (v7.4.0 FIX: was 'true' which caused false positives after HA restart) #}\n    False\n  {% elif actual_hvac
       != expected_hvac %}\n    {# User changed state to something different than automation
-      wanted - OVERRIDE #}\n    true\n  {% else %}\n    {# User clicked same state
-      automation wanted - NOT override (user agrees) #}\n    false\n  {% endif %}\n\n{%
+      wanted - OVERRIDE #}\n    True\n  {% else %}\n    {# User clicked same state
+      automation wanted - NOT override (user agrees) #}\n    False\n  {% endif %}\n\n{%
       elif trigger.id == 'periodic_check' %}\n  {# v6.1.3: PERIODIC CHECK OVERRIDE
       DETECTION #}\n  {# Handles physical remote changes that don't trigger climate_state_change
       #}\n  {# If automation expects AC ON but it's OFF → someone turned it off via
@@ -7261,9 +7328,9 @@ action:
       %}\n  {% set not_mid_command = time_since_cmd > mid_command_threshold %}\n
       \ {% set not_stale
       = time_since_cmd < 300 %}\n  {# v7.5.0: Tightened from 3600s to 300s (5 min). Periodic check is a safety net, #}\n  {# not primary detection. If command is >5 min old and we just noticed mismatch, #}\n  {# it's likely stale state (HA restart, failed command) not a physical remote press. #}\n  {# Real remote presses are caught within seconds by climate_state_change trigger. #}\n  {% set power_override = expected_on and actual_off %}\n\n  {# v7.7.0 FIX: Removed temp_override from periodic check - blueprint dynamically #}\n  {# changes AC setpoint via escalation (adjusted_target), so expected temp (user #}\n  {# target) will differ from actual setpoint when escalation is active. Same issue #}\n  {# as fan_override (removed in v7.4.1). Temp/fan override detection only works #}\n  {# via climate_state_change trigger where context can identify the source. #}\n\n  {{ power_override and not_mid_command
-      and not_stale }}\n{% elif trigger.id != 'climate_state_change' %}\n  false\n{%
+      and not_stale }}\n{% elif trigger.id != 'climate_state_change' %}\n  False\n{%
       elif not (trigger.to_state is defined and trigger.from_state is defined) %}\n
-      \ false\n{% else %}\n  {# ========================================= #}\n  {#
+      \ False\n{% else %}\n  {# ========================================= #}\n  {#
       INTEGRATION-AWARE DETECTION (v6.1.0)     #}\n  {# =========================================
       #}\n  {# v6.1.0: Complete rewrite to detect ALL changes (HVAC, temp, fan, swing)
       #}\n  {# Using new extra_state_attributes from Daikin integration: #}\n  {#
@@ -7306,7 +7373,7 @@ action:
       set integration_supports_tracking = (last_cmd_time is not none or expected_hvac
       is not none) %}\n\n  {% if in_startup_grace and expected_hvac is none %}\n    {#
       Still in startup grace period AND no command sent yet - skip detection #}\n
-      \   false\n  {% elif integration_supports_tracking %}\n    {# ===== INTEGRATION-AWARE
+      \   False\n  {% elif integration_supports_tracking %}\n    {# ===== INTEGRATION-AWARE
       DETECTION ===== #}\n\n    {# Calculate time since last automation command #}\n
       \   {% set time_since_cmd = ((now() - as_datetime(last_cmd_time)).total_seconds())
       if last_cmd_time else 9999 %}\n\n    {# H10: Unified device-agnostic command
@@ -7340,9 +7407,9 @@ action:
       _last_any_command_time suppression: pow/mode bounces during transitions must not
       fire overrides; real remote presses within the grace are caught by periodic_check
       (design decision #2). Subsumes the former likely_automation_change gate and makes
-      on_to_off / bare hvac_mismatch / no-tracking fallback all respect the 50s grace. #}\n    {% if recent_automation and not state_change_from_user %}\n      false\n    {% elif state_change_from_user %}\n      {# STATE CHANGE
+      on_to_off / bare hvac_mismatch / no-tracking fallback all respect the 50s grace. #}\n    {% if recent_automation and not state_change_from_user %}\n      False\n    {% elif state_change_from_user %}\n      {# STATE CHANGE
       was caused by user clicking in HA UI = MANUAL OVERRIDE #}\n      {# context
-      has user_id but no parent_id = direct user action #}\n      true\n    {% elif
+      has user_id but no parent_id = direct user action #}\n      True\n    {% elif
       state_change_from_automation %}\n      {# STATE CHANGE was caused by an automation
       (has parent_id) = NOT manual override #}\n      {# Unless there's a mismatch
       (user changed via remote during command window) #}\n      {{ hvac_mismatch }}\n
@@ -7350,10 +7417,10 @@ action:
       turned OFF and we EXPECTED it to turn off = NOT override #}\n      {# This happens
       when automation sends turn_off - context.parent_id is not #}\n      {# propagated
       to the state change event, but expected_hvac IS set by the #}\n      {# integration
-      when we send the command. Trust expected_hvac over context. #}\n      false\n
+      when we send the command. Trust expected_hvac over context. #}\n      False\n
       \   {% elif on_to_off %}\n      {# AC turned OFF with no user_id and no parent_id
       = physical remote or external #}\n      {# And expected_hvac is NOT 'off' =
-      user turned it off unexpectedly #}\n      true\n    {% elif expected_hvac is
+      user turned it off unexpectedly #}\n      True\n    {% elif expected_hvac is
       not none %}\n      {# Coordinator poll revealed state - check for HVAC mode
       mismatch #}\n      {{ hvac_mismatch }}\n    {% else %}\n      {# No tracking
       info at all - only trigger on actual HVAC mode changes #}\n      {{ from_hvac
@@ -7361,18 +7428,20 @@ action:
       DISABLED (v6.3.0) ===== #}\n    {# Integration now handles detection via extra_state_attributes
       #}\n    {# This code path only executes if integration_supports_tracking is
       false #}\n    {# which should never happen with the current Daikin integration
-      #}\n    false\n  {% endif %}\n{% endif %}\n"
+      #}\n    False\n  {% endif %}\n{% endif %}\n"
     ceiling_fan_override_detection: "{# Only check if fan is configured and override
       detection is enabled #} {% if not ceiling_fan_configured or not enable_ceiling_fan_override_detection
-      %}\n  false\n{% elif control_mode in ['Manual', 'Pre-conditioning']
-      %}\n  false\n{% elif control_mode == 'Override' and override_behavior != 'independent'
-      %}\n  {# Linked mode: skip fan detection when AC is already in override #}\n  false\n{%
+      %}\n  False\n{% elif control_mode in ['Manual', 'Pre-conditioning']
+      %}\n  False\n{% elif control_mode == 'Override' and override_behavior != 'independent'
+      %}\n  {# Linked mode: skip fan detection when AC is already in override #}\n  False\n{%
       elif control_mode == 'Override' and override_behavior == 'independent' and fan_override_active
-      %}\n  {# Independent mode: skip if fan is ALREADY overridden #}\n  false\n{%
-      elif trigger.id != 'ceiling_fan_state_change' %}\n  false\n{%
+      %}\n  {# Independent mode: skip if fan is ALREADY overridden #}\n  False\n{%
+      elif trigger.id != 'ceiling_fan_state_change' %}\n  False\n{%
       elif not (trigger.to_state is defined and trigger.from_state is defined) %}\n
-      \ false\n{% elif helper_expected_ceiling_fan in [none, '', 'unavailable', 'unknown']
-      %}\n  false\n{% else %}\n  {# Get context - who caused this change? #}\n  {%
+      \ False\n{% elif trigger.from_state.state in ['unavailable', 'unknown'] or trigger.to_state.state
+      in ['unavailable', 'unknown'] %}\n  {# v9.13.0: fan entity reconnecting (Zigbee/WiFi blip) is not a wall-switch press #}\n
+      \ False\n{% elif helper_expected_ceiling_fan in [none, '', 'unavailable', 'unknown']
+      %}\n  False\n{% else %}\n  {# Get context - who caused this change? #}\n  {%
       set ctx_user_id = trigger.to_state.context.user_id | default(none) %}\n  {%
       set ctx_parent_id = trigger.to_state.context.parent_id | default(none) %}\n
       \ {% set from_automation = (ctx_parent_id is not none) %}\n  {% set from_user_ui
@@ -7380,8 +7449,8 @@ action:
       state from helper #}\n  {% set expected = states(helper_expected_ceiling_fan)
       | default('unknown') %}\n  {% set actual = trigger.to_state.state %}\n\n  {#
       If automation caused this change, not an override #}\n  {% if from_automation
-      %}\n    false\n  {% elif expected in ['unknown', 'unavailable', ''] %}\n    {#
-      No expected state tracked yet - can't detect override #}\n    false\n  {% elif
+      %}\n    False\n  {% elif expected in ['unknown', 'unavailable', ''] %}\n    {#
+      No expected state tracked yet - can't detect override #}\n    False\n  {% elif
       from_user_ui %}\n    {# User clicked in HA UI - override if state differs from
       expected #}\n    {{ actual != expected }}\n  {% else %}\n    {# Physical wall
       switch (no context) - check expected vs actual #}\n    {{ actual != expected
@@ -7400,10 +7469,10 @@ action:
       | float(0) %} {% set already_in_auto_off = last_mode in ['auto_off_off', 'auto_off_eco',
       'auto_off_fan_only'] %} {# Skip entry delay if already in auto-off (prevents
       gap when re-entering after exit grace) #} {% set effective_entry = 0 if already_in_auto_off
-      else entry_delay %} {% if total == 0 or people_home == 0 %}\n  false\n{% elif
+      else entry_delay %} {% if total == 0 or people_home == 0 %}\n  False\n{% elif
       people_home < total %}\n  {# Not everyone home: ANY sensor ON (with grace periods)
       #}\n  {% set sensors = auto_off_sensors_1_home %}\n  {% if sensors | length
-      == 0 %}\n    false\n  {% else %}\n    {% set ns = namespace(any_on_ready=false,
+      == 0 %}\n    False\n  {% else %}\n    {% set ns = namespace(any_on_ready=false,
       any_recently_off=false) %}\n    {% for s in sensors %}\n      {% set mins =
       ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) | float(0)
       %}\n      {% if is_state(s, 'on') %}\n        {% if effective_entry <= 0 or
@@ -7414,7 +7483,7 @@ action:
       %}\n      {% endif %}\n    {% endfor %}\n    {{ ns.any_on_ready or ns.any_recently_off
       }}\n  {% endif %}\n{% else %}\n  {# Everyone home: ALL sensors ON (with grace
       periods) #}\n  {% set sensors = auto_off_sensors_all_home %}\n  {% if sensors
-      | length == 0 %}\n    false\n  {% else %}\n    {% set ns = namespace(all_on=true,
+      | length == 0 %}\n    False\n  {% else %}\n    {% set ns = namespace(all_on=true,
       min_on_time=9999, any_still_on=false, any_recently_off=false) %}\n    {% for
       s in sensors %}\n      {% set mins = ((as_timestamp(now()) - as_timestamp(states[s].last_changed))
       / 60) | float(0) %}\n      {% if is_state(s, 'on') %}\n        {% set ns.any_still_on
@@ -7426,9 +7495,9 @@ action:
       \   {% endfor %}\n    {% if ns.all_on %}\n      {# All sensors ON — check entry
       delay #}\n      {{ effective_entry <= 0 or ns.min_on_time >= effective_entry
       }}\n    {% elif ns.any_recently_off and ns.any_still_on %}\n      {# Exit grace:
-      one sensor just turned off but others still on #}\n      true\n    {% else %}\n
-      \     false\n    {% endif %}\n  {% endif %}\n{% endif %}\n"
-    auto_off_in_schedule: "{% if not auto_off_schedule_enabled %}\n  false\n{% else
+      one sensor just turned off but others still on #}\n      True\n    {% else %}\n
+      \     False\n    {% endif %}\n  {% endif %}\n{% endif %}\n"
+    auto_off_in_schedule: "{% if not auto_off_schedule_enabled %}\n  False\n{% else
       %}\n  {% set now_time = now().strftime('%H:%M:%S') %}\n  {% set start = auto_off_schedule_start
       %}\n  {% set end_time = auto_off_schedule_end %}\n  {% if start <= end_time
       %}\n    {# Normal window: e.g., 09:00-17:00 #}\n    {{ now_time >= start and
@@ -7447,20 +7516,20 @@ action:
     should_activate: "{# v3.11.0: Override mode = automation paused, just like Manual
       mode #} {# v9.7.8: Independent mode with AC-only override lets fan handlers run #}
       {% if control_mode == 'Override' and not (override_behavior == 'independent'
-      and override_source == 'ac') %}\n  false\n{% elif control_mode == 'Override'
+      and override_source == 'ac') %}\n  False\n{% elif control_mode == 'Override'
       and override_behavior == 'independent' and override_source == 'ac' %}\n  {#
       AC overridden but fan is independent - evaluate normally for fan handlers #}\n
       \ {{ smart_presence_active if states(helper_mode_before_override) == 'Smart'
       else (anyone_home or approaching_home) }}\n{# v7.0.3 FIX: Manual
       override (physical remote) takes priority over runtime protection #} {# If user
       pressed physical remote to turn off AC, respect that immediately #} {% elif
-      manual_override_detection | bool %}\n  false\n{# v3.9.20 FIX: Runtime protection
+      manual_override_detection | bool %}\n  False\n{# v3.9.20 FIX: Runtime protection
       overrides ALL activation logic #} {# v3.11.8 FIX: Runtime protection should
       only apply when AC is actually still running #} {# If user manually turned off
       AC, respect that even if runtime_min not reached #} {% elif last_mode in ['cooling',
       'heating'] and (time_in_current_mode | float(0)) < (runtime_min | float(0))
       and actual_ac_state == 'on' %}\n  {# ABSOLUTE RUNTIME PROTECTION: AC must stay
-      on for minimum runtime regardless of presence, temperature, or mode #}\n  true\n{%
+      on for minimum runtime regardless of presence, temperature, or mode #}\n  True\n{%
       elif (last_mode == 'off' or actual_ac_state == 'off') and enforce_offtime and
       (effective_off_time | float(0)) <= (offtime_min | float(0)) and control_mode
       != 'Pre-conditioning' %}\n  {# ABSOLUTE OFF-TIME PROTECTION: AC must stay off
@@ -7468,11 +7537,11 @@ action:
       Pre-conditioning mode bypasses off-time protection - user explicitly requested
       pre-conditioning #}\n  {# v7.2.0 FIX: Use effective_off_time instead of time_in_current_mode
       - fallback to AC entity last_changed #}\n  {# when mode:restart race condition
-      prevents helper_mode_start_time from being updated after turn-off #}\n  false\n{%
+      prevents helper_mode_start_time from being updated after turn-off #}\n  False\n{%
       elif control_mode == 'Manual' %}\n  {# In manual mode, only activate for extreme
       temperatures with presence #}\n  {% if extreme_temp_detected not in [false,
-      'false'] and (room_presence_detected or approaching_home) %}\n    true\n  {%
-      else %}\n    false\n  {% endif %}\n{% elif control_mode == 'Smart' %}\n  {#
+      'false'] and (room_presence_detected or approaching_home) %}\n    True\n  {%
+      else %}\n    False\n  {% endif %}\n{% elif control_mode == 'Smart' %}\n  {#
       v4.7.2 FIX: Smart mode should ALWAYS respect smart_presence_active #}\n  {#
       Removed redundant \"AC running\" check that prevented turn-off when presence
       lost #}\n  {{ smart_presence_active }}\n{% elif control_mode == 'Pre-conditioning'
@@ -7686,12 +7755,10 @@ action:
 
           '
         level: warning
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: '{{ precond_previous_mode_value }}'
-    continue_on_error: true
+  # v9.13.0: the select_option that used to sit here was moved to the END of this
+  # block. It fires mode_change, and mode:restart raced to cancel this run before the
+  # start/arrival helpers were reset (Office and Master Bedroom both carried a
+  # months-old precond start time because of it).
   - if:
     - condition: template
       value_template: '{{ helper_precond_start not in [none, '''', ''unavailable'',
@@ -7751,6 +7818,15 @@ action:
 
         '
       level: warning
+  # v9.13.0: mode restore LAST (fires mode_change -> restart), then stop; the
+  # mode_change run takes over the bookkeeping for the restored mode.
+  - service: input_select.select_option
+    target:
+      entity_id: '{{ control_mode_helper }}'
+    data:
+      option: '{{ precond_previous_mode_value }}'
+    continue_on_error: true
+  - stop: Pre-conditioning complete - mode restored
 - if:
   - condition: template
     value_template: '{{ debug_enabled }}'
@@ -8089,12 +8165,9 @@ action:
       data:
         datetime: '1970-01-01 00:00:00'
       continue_on_error: true
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: Override
-    continue_on_error: true
+  # v9.13.0: select_option Override moved to just before the stop (H11 rule: select
+  # LAST). The log writes below used to sit after it and only survived when the
+  # mode:restart race was won.
   - if:
     - condition: template
       value_template: '{{ debug_enabled }}'
@@ -8209,6 +8282,12 @@ action:
 
         '
       level: error
+    continue_on_error: true
+  - service: input_select.select_option
+    target:
+      entity_id: '{{ control_mode_helper }}'
+    data:
+      option: Override
     continue_on_error: true
   - stop: Manual override detected - stopping automation to prevent interference with
       user's manual changes
@@ -8420,12 +8499,7 @@ action:
       return_to_mode: '{{ states(helper_mode_before_override) if helper_mode_before_override
         and states(helper_mode_before_override) in [''Auto'', ''Smart''] else default_control_mode
         }}'
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: '{{ return_to_mode }}'
-    continue_on_error: true
+  # v9.13.0: select_option moved to the END of this block (H11 rule: select LAST).
   # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
   - if:
     - condition: template
@@ -8496,6 +8570,14 @@ action:
       data:
         value: '{{ states(ceiling_fan_entity) }}'
       continue_on_error: true
+  # v9.13.0: mode restore LAST, then stop (the mode_change run takes over).
+  - service: input_select.select_option
+    target:
+      entity_id: '{{ control_mode_helper }}'
+    data:
+      option: '{{ return_to_mode }}'
+    continue_on_error: true
+  - stop: Override flag was off while mode read Override - mode restored
 - if:
   - condition: template
     value_template: '{{ control_mode == ''Override'' and override_timeout > 0 }}'
@@ -8524,12 +8606,10 @@ action:
       data:
         datetime: '{{ now() }}'
       continue_on_error: true
-  - service: input_select.select_option
-    target:
-      entity_id: '{{ control_mode_helper }}'
-    data:
-      option: '{{ return_to_mode }}'
-    continue_on_error: true
+  # v9.13.0: the select_option and the flag turn_off that used to sit here both fire
+  # triggers that restart this run; they are now the LAST two steps of the block.
+  # Before this, the expiry regularly lost the race and left the Override Active flag
+  # stuck ON and the expected-state snapshot unsynced (Master Bedroom, 2026-09-02).
   # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
   - if:
     - condition: template
@@ -8541,15 +8621,6 @@ action:
         entity_id: '{{ helper_mode_before_override }}'
       data:
         value: ''
-      continue_on_error: true
-  - if:
-    - condition: template
-      value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'',
-        ''unknown''] }}'
-    then:
-    - service: input_boolean.turn_off
-      target:
-        entity_id: '{{ helper_override_flag }}'
       continue_on_error: true
   - if:
     - condition: template
@@ -8619,6 +8690,25 @@ action:
 
           '
         level: warning
+  # v9.13.0: flag off first (if it is on, override_cleared_by_user takes over and does
+  # the restore itself, select LAST); if the flag was already off no trigger fires and
+  # the select below performs the restore. Either way nothing important follows.
+  - if:
+    - condition: template
+      value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'',
+        ''unknown''] and is_state(helper_override_flag, ''on'') }}'
+    then:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
+  - service: input_select.select_option
+    target:
+      entity_id: '{{ control_mode_helper }}'
+    data:
+      option: '{{ return_to_mode }}'
+    continue_on_error: true
+  - stop: Override timeout expired - mode restored
 - if:
   - condition: template
     value_template: '{{ fan_override_active and control_mode != ''Override'' and override_timeout
@@ -8643,15 +8733,6 @@ action:
       continue_on_error: true
   - if:
     - condition: template
-      value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'',
-        ''unknown''] }}'
-    then:
-    - service: input_boolean.turn_off
-      target:
-        entity_id: '{{ helper_override_flag }}'
-      continue_on_error: true
-  - if:
-    - condition: template
       value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
         ''unknown''] and ceiling_fan_configured }}'
     then:
@@ -8669,6 +8750,18 @@ action:
 
         '
       level: warning
+  # v9.13.0: flag off LAST - it fires override_cleared_by_user (restart), which then
+  # only resyncs the snapshot because the control mode was never Override here.
+  - if:
+    - condition: template
+      value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
+  - stop: Fan override timeout expired - fan automation resumed
 - if:
   - condition: template
     value_template: '{{ helper_temp_stable_since not in [none, '''', ''unavailable'',
@@ -9451,17 +9544,6 @@ action:
 
             '
           level: warning
-      - if:
-        - condition: template
-          value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
-            ''unknown''] }}'
-        then:
-        - service: input_select.select_option
-          target:
-            entity_id: '{{ control_mode_helper }}'
-          data:
-            option: Smart
-          continue_on_error: true
       - service: input_text.set_value
         target:
           entity_id: !input helper_last_mode
@@ -9481,6 +9563,18 @@ action:
                 message: Manual timeout ({{ manual_timeout_hours }}h) - switched back
                   to Smart mode
               continue_on_error: true
+      # v9.13.0: select LAST (fires mode_change -> restart).
+      - if:
+        - condition: template
+          value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
+            ''unknown''] }}'
+        then:
+        - service: input_select.select_option
+          target:
+            entity_id: '{{ control_mode_helper }}'
+          data:
+            option: Smart
+          continue_on_error: true
       - stop: Manual mode timeout - returned to Smart mode
       else:
       - if:
@@ -12249,17 +12343,8 @@ action:
         data:
           datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
         continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_select.select_option
-        target:
-          entity_id: '{{ control_mode_helper }}'
-        data:
-          option: Pre-conditioning
-        continue_on_error: true
+    # v9.13.0: select_option Pre-conditioning moved to the END of this branch (H11
+    # rule: select LAST) so the logs and notifications below always run.
     - service: system_log.write
       data:
         message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Pre-conditioning Set
@@ -12304,6 +12389,17 @@ action:
           title: '{{ room_name }} Pre-conditioning'
           message: 'Pre-conditioning activated! {{ room_name }} is {{ current_temp
             }}°C, cooling to {{ adjusted_target }}°C before you arrive.'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_select.select_option
+        target:
+          entity_id: '{{ control_mode_helper }}'
+        data:
+          option: Pre-conditioning
         continue_on_error: true
   - conditions:
     - condition: template
