@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.13.1
-  description: "**Ultimate Smart Climate Control v9.13.1**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.13.2
+  description: "**Ultimate Smart Climate Control v9.13.2**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,15 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.13.1 - Pre-conditioning switches the room over properly:**\n•
+    UPDATES:**\n\n**v9.13.2 - Pre-conditioning actually pre-cools, and override timeouts
+    return you to the right mode:**\n•
+    **Fixed**: on hot afternoons pre-conditioning would switch the room over correctly but
+    then cool at the ordinary target instead of the full pre-cool boost, because the normal
+    cooling logic claimed the room first. It now stands aside until pre-conditioning has
+    started the unit.\n•
+    **Fixed**: when a manual override timed out, the room always fell back to its
+    Default Control Mode instead of the mode it was actually in beforehand.\n\n**v9.13.1
+    - Pre-conditioning switches the room over properly:**\n•
     **Fixed**: a room could start pre-conditioning, turn the air conditioner on, and then
     switch it straight back off about a minute later. The room was put into pre-conditioning
     mode only AFTER the air conditioner had been told to start, and switching the unit on
@@ -8620,18 +8628,8 @@ action:
   # triggers that restart this run; they are now the LAST two steps of the block.
   # Before this, the expiry regularly lost the race and left the Override Active flag
   # stuck ON and the expected-state snapshot unsynced (Master Bedroom, 2026-09-02).
-  # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
-  - if:
-    - condition: template
-      value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
-        ''unknown''] }}'
-    then:
-    - service: input_text.set_value
-      target:
-        entity_id: '{{ helper_mode_before_override }}'
-      data:
-        value: ''
-      continue_on_error: true
+  # v9.13.2: the M28 snapshot blank that used to sit here has moved to just BEHIND the
+  # flag turn_off at the end of this block — see the note there for why.
   - if:
     - condition: template
       value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
@@ -8711,6 +8709,29 @@ action:
     - service: input_boolean.turn_off
       target:
         entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
+  # v9.12.0 M28: consume the snapshot so it can't leak into a later restore.
+  # v9.13.2: this blank MUST stay BEHIND the turn_off above. The turn_off fires
+  # override_cleared_by_user, mode:restart kills this run, and the restore is handed to
+  # that handler — which recomputes return_to_mode from THIS helper. Blanking it first
+  # therefore made EVERY override timeout restore default_control_mode instead of the
+  # mode the room was actually in. Deterministic, not a race: the flag-already-off path
+  # is unreachable here (the block above ends in a stop). Invisible where the default
+  # happens to match (Office, Master Bedroom: Smart), wrong for Living Room (Auto), and
+  # since v9.11.0 allows Manual as a default it could silently stop a room automating.
+  # The select below uses the return_to_mode variable captured at the top of this block,
+  # not a re-read, so the local path is unaffected. M28 still holds: whichever run
+  # survives consumes the snapshot.
+  - if:
+    - condition: template
+      value_template: '{{ helper_mode_before_override not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: '{{ helper_mode_before_override }}'
+      data:
+        value: ''
       continue_on_error: true
   - service: input_select.select_option
     target:
@@ -10473,8 +10494,19 @@ action:
       value_template: '{{ should_activate }}'
     - condition: template
       value_template: "{# v9.8.0: Defer to pre-conditioning branch when approaching home #}\n
+        {# v9.13.2: ALSO defer while the room is ALREADY in Pre-conditioning with the AC
+        still off — that is the pre-conditioning branch's own manual_precond_needs_setup
+        contract. Entering Pre-conditioning fires mode_change and mode:restart kills the
+        run that issued it, so the AC command can only land on the NEXT run. Note the
+        v9.8.0 term above disarms itself the moment is_precond_mode goes true, so without
+        this second term THIS branch claims that next run: the unit then gets the plain
+        cooling target instead of the pre-conditioning boost, last_mode reads 'cooling',
+        and no TEMP SET: Pre-conditioning is ever written. It only leaks above the
+        ceiling-fan zone (see the in_ceiling_fan_zone condition below) — i.e. on exactly
+        the hot afternoons pre-conditioning exists for. #}\n
         {{ not (enable_pre_conditioning and approaching_home and not anyone_home and
-        not is_precond_mode) }}\n"
+        not is_precond_mode)\n   and not (enable_pre_conditioning and is_precond_mode
+        and actual_ac_state == 'off') }}\n"
     - condition: template
       value_template: '{% set bed_eco_active = bed_comfort_mode != ''off'' and bed_eco_fan_only_mode
         == ''enabled'' and bed_sensor_manual and is_state(bed_sensor_manual, ''on'')
