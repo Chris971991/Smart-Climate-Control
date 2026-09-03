@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.13.0
-  description: "**Ultimate Smart Climate Control v9.13.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.13.1
+  description: "**Ultimate Smart Climate Control v9.13.1**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,17 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.13.0 - Override clearing made reliable, false overrides after
+    UPDATES:**\n\n**v9.13.1 - Pre-conditioning switches the room over properly:**\n•
+    **Fixed**: a room could start pre-conditioning, turn the air conditioner on, and then
+    switch it straight back off about a minute later. The room was put into pre-conditioning
+    mode only AFTER the air conditioner had been told to start, and switching the unit on
+    interrupts the automation, so the mode was never set. The next check then saw an
+    ordinary empty room and shut it down. The mode is now set first and the air
+    conditioner is commanded last. A room whose unit happened to be running already was
+    never affected, which is why this could look random.\n•
+    **Fixed**: pre-conditioning could overwrite its own record of the mode to return to,
+    and could clear the time you got home, so it would not have ended when it should.\n\n**v9.13.0
+    - Override clearing made reliable, false overrides after
     a network blip removed:**\n•
     **Fixed**: clearing an override (button, timeout, or picking a mode from the dropdown)
     sometimes left the Override Active indicator stuck on and the automation remembering
@@ -12221,10 +12231,17 @@ action:
             {{ states(proximity_sensor) }}m{% endif %} • Temperature: {{ current_temp
             }}°C needs adjustment\n"
           level: warning
+    # v9.13.1: these three are the pre-conditioning SNAPSHOT. This branch legitimately
+    # RE-ENTERS while the mode is already Pre-conditioning (its own
+    # manual_precond_needs_setup path), and an unguarded re-entry would overwrite the
+    # snapshot with 'Pre-conditioning' itself — trapping the room in pre-conditioning
+    # forever — and wipe a recorded arrival time, so the grace period could never expire.
+    # Only write them on a genuine ENTRY. The mode_change handler writes the same three
+    # from trigger.from_state, which is the authoritative source.
     - if:
       - condition: template
-        value_template: '{{ helper_precond_previous_mode not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+        value_template: '{{ control_mode != ''Pre-conditioning'' and helper_precond_previous_mode
+          not in [none, '''', ''unavailable'', ''unknown''] }}'
       then:
       - service: input_text.set_value
         target:
@@ -12234,8 +12251,8 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_precond_start not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+        value_template: '{{ control_mode != ''Pre-conditioning'' and helper_precond_start
+          not in [none, '''', ''unavailable'', ''unknown''] }}'
       then:
       - service: input_datetime.set_datetime
         target:
@@ -12245,8 +12262,8 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_precond_arrival not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+        value_template: '{{ control_mode != ''Pre-conditioning'' and helper_precond_arrival
+          not in [none, '''', ''unavailable'', ''unknown''] }}'
       then:
       - service: input_datetime.set_datetime
         target:
@@ -12271,6 +12288,30 @@ action:
       data:
         value: pre_conditioning
       continue_on_error: true
+    # v9.13.1 THE FIX: set the control mode BEFORE any AC command.
+    # Switching the AC off->cool fires this automation's own climate_state_change trigger
+    # (the global condition filters ceiling-fan changes by context but NOT climate ones),
+    # and mode:restart then cancels this run. On 2026-09-03 14:33 that killed Office and
+    # Master Bedroom mid-branch: helpers written, AC switched on, mode never set — and
+    # 60s later the Smart-mode logic saw an empty house and switched them straight back
+    # off. Living Room ran the same branch in the same minute and survived ONLY because
+    # its AC was already 'cool', so its command produced no state change and no restart.
+    # Setting the mode here fires mode_change and restarts too, but that is harmless and
+    # self-healing: the new run re-enters this branch via manual_precond_needs_setup
+    # (is_precond_mode and AC still off), this select is then a no-op (selecting the
+    # option already active fires nothing), the guards above protect the snapshot, and
+    # the AC commands — now the LAST thing in the branch — run with the mode correct.
+    - if:
+      - condition: template
+        value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_select.select_option
+        target:
+          entity_id: '{{ control_mode_helper }}'
+        data:
+          option: Pre-conditioning
+        continue_on_error: true
     - variables:
         precond_hvac_mode: "{% if current_temp > comfort_max_temp and enable_cooling
           %}\n  cool\n{% elif current_temp < comfort_min_temp and enable_heating %}\n
@@ -12312,39 +12353,9 @@ action:
       data:
         value: '{{ precond_fan_mode }}'
       continue_on_error: true
-    - delay:
-        milliseconds: 200
-    - repeat:
-        for_each: '{{ climate_list }}'
-        sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ precond_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - service: climate.set_fan_mode
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            fan_mode: '{{ precond_fan_mode }}'
-          continue_on_error: false
-    - if:
-      - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
-      then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
-    # v9.13.0: select_option Pre-conditioning moved to the END of this branch (H11
-    # rule: select LAST) so the logs and notifications below always run.
+    # v9.13.1: the AC commands moved to the END of this branch (see THE FIX above) —
+    # they fire climate_state_change and restart the run, so every step that has to
+    # survive now happens before them.
     - service: system_log.write
       data:
         message: "\U0001F321️ {{ room_name | upper }} TEMP SET: Pre-conditioning Set
@@ -12390,17 +12401,40 @@ action:
           message: 'Pre-conditioning activated! {{ room_name }} is {{ current_temp
             }}°C, cooling to {{ adjusted_target }}°C before you arrive.'
         continue_on_error: true
+    # v9.13.1: fan-change timestamp written BEFORE the command it describes — the same
+    # "snapshot before service call" pattern the cooling/heating branches already use —
+    # because the command below ends this run.
     - if:
       - condition: template
-        value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
+          '''', ''unavailable'', ''unknown''] }}'
       then:
-      - service: input_select.select_option
+      - service: input_datetime.set_datetime
         target:
-          entity_id: '{{ control_mode_helper }}'
+          entity_id: '{{ helper_last_fan_change }}'
         data:
-          option: Pre-conditioning
+          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
         continue_on_error: true
+    - delay:
+        milliseconds: 200
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ precond_hvac_mode }}'
+          continue_on_error: false
+        - delay:
+            milliseconds: 500
+        - service: climate.set_fan_mode
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            fan_mode: '{{ precond_fan_mode }}'
+          continue_on_error: false
   - conditions:
     - condition: template
       value_template: '{{ (should_activate | bool) and (approaching_home | bool) and
