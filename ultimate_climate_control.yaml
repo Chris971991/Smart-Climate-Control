@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.13.2
-  description: "**Ultimate Smart Climate Control v9.13.2**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.14.0
+  description: "**Ultimate Smart Climate Control v9.14.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,28 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.13.2 - Pre-conditioning actually pre-cools, and override timeouts
+    UPDATES:**\n\n**v9.14.0 - Ten fixes from the September settings audit:**\n•
+    **Fixed**: a temperature sensor dropping off the network was read as 25°C, so the air
+    conditioner could start cooling a cold room (observed: two hours cooling a 19°C bedroom).
+    The last real reading is used instead, and nothing can start while every sensor is
+    unavailable.\n•
+    **Fixed**: the moment a room was judged empty it was treated as having been empty for the
+    whole time you were there, so the unit was switched off at once with no minimum runtime.\n•
+    **Fixed**: the setpoint and swing were re-sent every run even when unchanged, which left
+    physical-remote detection blind for most of every cooling run.\n•
+    **Fixed**: ceiling-fan escalation now compares against the temperature when the fan
+    started (new optional Fan Entry Temperature helper) and escalates immediately if the room
+    rises 0.5°C despite the fan.\n•
+    **Fixed**: clearing a ceiling-fan override by hand left the override flag switched on.\n•
+    **Fixed**: the Manual Mode timeout always returned the room to Smart instead of its
+    Default Control Mode.\n•
+    **Fixed**: the no-presence safety net could switch the unit off inside its minimum
+    runtime.\n•
+    **Fixed**: switching from Pre-conditioning to Smart wiped the presence timer.\n•
+    **Fixed**: the ceiling fan stayed on whatever speed it had when the air conditioner
+    started, and the Fan With AC = On path always chose High, ignoring the in-bed speed cap.\n•
+    **Fixed**: escalation on the very first cooling command was computed from how long the
+    room had been idle, so every start jumped straight to maximum escalation.\n\n**v9.13.2 - Pre-conditioning actually pre-cools, and override timeouts
     return you to the right mode:**\n•
     **Fixed**: on hot afternoons pre-conditioning would switch the room over correctly but
     then cool at the ordinary target instead of the full pre-cool boost, because the normal
@@ -4241,9 +4262,16 @@ blueprint:
             keeps rising.**
 
 
-            When enabled, the system monitors temperature while the ceiling fan is
-            running. If the temp rises ≥0.5°C after the timeout period, it escalates
-            to AC.
+            When enabled, the system records the room temperature when the ceiling fan
+            starts. It escalates to AC as soon as the room rises 0.5°C above that (the
+            fan is losing), or once the Fan Escalation Timeout has passed and the room
+            has not dropped below it (the fan is not winning). If the fan is bringing
+            the temperature down it keeps running past the timeout.
+
+
+            v9.14.0: needs the optional Fan Entry Temperature helper for the true
+            start-of-fan reading. Without it the comparison uses the last periodic
+            reading, which is only one check interval old.
 
 
             When disabled, the system will only switch to AC when the temperature
@@ -4264,8 +4292,9 @@ blueprint:
             ⚠️ *Only applies if Fan Escalation is enabled above.*
 
 
-            The watchdog monitors temperature while the ceiling fan is active. If
-            temp rises ≥0.5°C after this many minutes, the system escalates to AC.
+            After this many minutes of ceiling fan the system escalates to AC, unless
+            the room has dropped below the temperature it had when the fan started. A
+            rise of 0.5°C or more escalates immediately, before the timeout.
 
 
             **Recommendations:**
@@ -4977,6 +5006,28 @@ blueprint:
               - input_datetime
               reorder: false
               multiple: false
+        helper_fan_entry_temp:
+          name: Fan Entry Temperature Helper (optional)
+          description: 'v9.14.0: Records the room temperature at the moment the ceiling
+            fan starts, so Fan Escalation can tell whether the fan is actually helping.
+
+
+            **Optional.** Without it, escalation falls back to comparing against the
+            last periodic reading, which is only one check interval old.
+
+
+            Create: Settings > Helpers > Number (min 0, max 50, step 0.1)
+
+            Naming: input_number.climate_fan_entry_temp_[roomname]
+
+            '
+          default: ''
+          selector:
+            entity:
+              domain:
+              - input_number
+              reorder: false
+              multiple: false
         helper_state_checksum:
           name: State Checksum Helper
           description: 'MD5 hash for fast change detection.
@@ -5338,6 +5389,7 @@ variables:
   helper_state_start: !input helper_state_start
   helper_last_command: !input helper_last_command
   helper_last_fan_change: !input helper_last_fan_change
+  helper_fan_entry_temp: !input helper_fan_entry_temp
   helper_state_checksum: !input helper_state_checksum
   helper_precond_start: !input helper_precond_start_time
   helper_precond_previous_mode: !input helper_precond_previous_mode
@@ -6027,8 +6079,11 @@ action:
         datetime: '{{ now() }}'
       continue_on_error: true
   - if:
+    # v9.14.0 (bug 8): Pre-conditioning -> Smart is the normal arrival handoff, and this
+    # reset switched the validation helper off and re-stamped the presence timer on it,
+    # which killed a 9-minute cooling run 163 ms after the handoff on 3 Sep. Exempt it.
     - condition: template
-      value_template: '{{ to_mode == ''Smart'' and from_mode not in [''Override'']
+      value_template: '{{ to_mode == ''Smart'' and from_mode not in [''Override'', ''Pre-conditioning'']
         and presence_confirmation_delay > 0 }}'
     then:
     - if:
@@ -6113,11 +6168,12 @@ action:
         value_template: '{{ helper_override_source not in [none, '''', ''unavailable'',
           ''unknown''] }}'
       then:
+      # v9.14.0 (bug 5): a 'both' override keeps its AC half; anything else clears fully.
       - service: input_text.set_value
         target:
           entity_id: '{{ helper_override_source }}'
         data:
-          value: none
+          value: '{{ ''ac'' if states(helper_override_source) == ''both'' else ''none'' }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -6137,6 +6193,20 @@ action:
 
           '
         level: warning
+    # v9.14.0 (bug 5): the override BOOLEAN was never switched off here, so a
+    # functionally-ended fan override read as active for hours (observed 9 h 42 m).
+    # Nothing was blocked (the gate reads the source text) but it misled every reader.
+    # Turn it off unless the AC half of a 'both' override is still live. LAST before
+    # the stop: it fires a trigger that mode:restart uses to cancel this run.
+    - if:
+      - condition: template
+        value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'', ''unknown'']
+          and states(helper_override_source) != ''ac'' }}'
+      then:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: '{{ helper_override_flag }}'
+        continue_on_error: true
     - stop: Fan-only override cleared by user
   # v9.12.0 M27: only restore the AC control mode when the helper is ACTUALLY in
   # Override. The independent fan-override expiry (~line 8590) clears
@@ -6313,9 +6383,16 @@ action:
   - stop: Override cleared - stopping to prevent immediate re-detection on this cycle
 - variables:
     helper_last_mode_at_start: '{{ states(helper_mode) | default(''off'') }}'
-    current_temp: "{% if temp_sensor %}\n  {# v3.9.0: Multi-sensor support for rooms
+    current_temp: "{# v9.14.0 (bug 1): an unavailable sensor used to read as a hardcoded
+      25°C and start cooling a cold room (observed 2 Sep: 2 h 8 m cooling a 19.2°C bedroom
+      after a 5-second dropout). Fall back to the last REAL reading held in the temp-history
+      helper, and to the target if that is also invalid. temp_sensor_available (below) stops
+      a dropout from STARTING anything. #}\n{% set _lk = states(helper_temp_history) if helper_temp_history
+      not in [none, '', 'unavailable', 'unknown'] else 'unknown' %}\n{% set safe_fallback
+      = (_lk | float(-999)) if (_lk not in ['unknown', 'unavailable', ''] and (_lk | float(-999))
+      > -50) else (target_temp | float(22)) %}\n{% if temp_sensor %}\n  {# v3.9.0: Multi-sensor support for rooms
       cooled/heated by one AC unit #}\n  {% if temp_sensor is string %}\n    {# Single
-      sensor (backward compatibility) #}\n    {{ states(temp_sensor) | float(25) }}\n
+      sensor (backward compatibility) #}\n    {{ states(temp_sensor) | float(safe_fallback) }}\n
       \ {% else %}\n    {# Multiple sensors - use min/max/avg strategy based on HVAC
       mode #}\n    {% set temps = namespace(values=[]) %}\n    {% for sensor in temp_sensor
       %}\n      {# M29: distinguish unavailable sensor from legitimately cold (<=0) reading #}\n
@@ -6333,7 +6410,7 @@ action:
       Heating: Use MIN temp (coldest room drives heating) #}\n        {{ temps.values
       | min | round(1) }}\n      {% else %}\n        {# Both or neither: Use AVERAGE
       #}\n        {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
-      \     {% endif %}\n    {% else %}\n      25\n    {% endif %}\n  {% endif %}\n{%
+      \     {% endif %}\n    {% else %}\n      {{ safe_fallback }}\n    {% endif %}\n  {% endif %}\n{%
       elif use_avg %}\n  {% set temps = namespace(values=[]) %}\n  {% for entity in
       climate_list %}\n    {# M29: None attribute test IS the availability check; <=0 readings kept #}\n
       \   {% set raw = state_attr(entity, 'current_temperature') %}\n    {% if raw is
@@ -6341,8 +6418,18 @@ action:
       > -50 %}\n        {% set temps.values = temps.values + [temp_value] %}\n      {%
       endif %}\n    {% endif %}\n  {% endfor %}\n  {% if temps.values | length
       > 0 %}\n    {{ ((temps.values | sum) / (temps.values | length)) | round(1) }}\n
-      \ {% else %}\n    25\n  {% endif %}\n{% else %}\n  {{ state_attr(climate_list[0],
-      'current_temperature') | float(25) }}\n{% endif %}\n"
+      \ {% else %}\n    {{ safe_fallback }}\n  {% endif %}\n{% else %}\n  {{ state_attr(climate_list[0],
+      'current_temperature') | float(safe_fallback) }}\n{% endif %}\n"
+    temp_sensor_available: "{# v9.14.0 (bug 1): True when at least one configured sensor has
+      a real reading. Gates the start-cooling and ceiling-fan-entry branches so a sensor
+      dropout can never START anything. Renders True/False (real booleans). #}\n{% if temp_sensor
+      %}\n  {% if temp_sensor is string %}\n    {{ states(temp_sensor) not in ['unknown',
+      'unavailable', ''] and (states(temp_sensor) | float(-999)) > -50 }}\n  {% else %}\n
+      \   {% set ns = namespace(ok=false) %}\n    {% for sensor in temp_sensor %}\n      {%
+      if states(sensor) not in ['unknown', 'unavailable', ''] and (states(sensor) | float(-999))
+      > -50 %}\n        {% set ns.ok = true %}\n      {% endif %}\n    {% endfor %}\n    {{
+      ns.ok }}\n  {% endif %}\n{% else %}\n  {{ climate_list | length > 0 and state_attr(climate_list[0],
+      'current_temperature') is not none }}\n{% endif %}\n"
     outdoor_temperature: "{% if enable_outside_temp_compensation or enable_outside_temp_fan_boost %}\n  {% if outdoor_temp_sensor
       %}\n    {{ states(outdoor_temp_sensor) | float(25) }}\n  {% else %}\n    {{
       state_attr(weather_entity, 'temperature') | float(25) }}\n  {% endif %}\n{%
@@ -6428,13 +6515,23 @@ action:
       and states(helper_change) not in ['unknown', 'unavailable', ''] %}\n  {{ ((as_timestamp(now())
       - as_timestamp(states(helper_change))) / 60) | round(1) }}\n{% else %}\n  0\n{%
       endif %}\n"
-    ceiling_fan_entry_temp: "{% if ceiling_fan_mode_active and helper_temp_history
-      not in [none, '', 'unavailable', 'unknown'] %}\n  {{ states(helper_temp_history)
+    ceiling_fan_entry_temp: "{# v9.14.0 (bug 4): the TRUE start-of-fan temperature, from the
+      optional Fan Entry Temperature helper. Falls back to the temp-history helper (only one
+      check old) when the new helper is not configured. #}\n{% if ceiling_fan_mode_active
+      and helper_fan_entry_temp not in [none, '', 'unavailable', 'unknown'] and states(helper_fan_entry_temp)
+      not in ['unknown', 'unavailable', ''] and (states(helper_fan_entry_temp) | float(0))
+      > 0 %}\n  {{ states(helper_fan_entry_temp) | float(0) }}\n{% elif ceiling_fan_mode_active
+      and helper_temp_history not in [none, '', 'unavailable', 'unknown'] %}\n  {{ states(helper_temp_history)
       | float(0) }}\n{% else %}\n  0\n{% endif %}\n"
-    ceiling_fan_should_escalate: "{% set runtime = ceiling_fan_runtime_minutes | float(0)
-      %} {% set timeout = fan_escalation_timeout | float(10) %} {% set entry = ceiling_fan_entry_temp
-      | float(0) %} {% set temp = current_temp | float(0) %} {{ enable_fan_escalation\n
-      \  and ceiling_fan_mode_active\n   and runtime >= timeout\n   and temp >= entry
+    ceiling_fan_should_escalate: "{# v9.14.0 (bug 4): escalate at the timeout unless the fan
+      has brought the room BELOW its start temperature, and escalate immediately if the room
+      has RISEN 0.5°C despite the fan. Previously the temperature term compared against a
+      reading only one check old, so it reduced to 'did not tick down in the last minute'
+      (true in 76 of 77 sessions). With no entry reading at all, timeout-only (old behaviour).
+      #}\n{% set runtime = ceiling_fan_runtime_minutes | float(0) %} {% set timeout = fan_escalation_timeout
+      | float(10) %} {% set entry = ceiling_fan_entry_temp | float(0) %} {% set temp = current_temp
+      | float(0) %} {{ enable_fan_escalation\n   and ceiling_fan_mode_active\n   and ((runtime
+      >= timeout and (entry <= 0 or temp >= entry)) or (entry > 0 and temp >= (entry + 0.5)))
       }}\n"
     window_open: "{% if enable_window_detection %}\n  {% set open = namespace(value=false)
       %}\n  {% for sensor in window_sensors %}\n    {% if is_state(sensor, 'on') %}\n
@@ -6619,9 +6716,14 @@ action:
       else %}\n    {# CLOSE to target OR periodic check - calculate fresh escalation
       (allows de-escalation) #}\n    {# Calculate effectiveness-based level (existing
       time-based logic) #}\n    {% set effectiveness_level = 0 %}\n\n  {# Level 0:
-      No escalation needed - minimum checks only #}\n  {% if last_mode in ['off',
-      'eco'] or (time_in_current_mode | float(0)) < min_check_time %}\n    {% set
-      effectiveness_level = 0 %}  {# Too early to evaluate #}\n\n  {# Level 4: EMERGENCY
+      No escalation needed - minimum checks only #}\n  {# v9.14.0 (bug 10): on an ENTRY run
+      last_mode is the previous idle mode and time_in_current_mode is that mode's duration
+      (often hours), so every time gate below was trivially satisfied and the first cooling
+      command jumped to Level 4. Only escalate inside an established cooling/heating run;
+      the distance floor still applies on entry. #}\n  {% if last_mode not in ['cooling',
+      'cooling_low', 'cooling_medium', 'cooling_high', 'heating'] or (time_in_current_mode
+      | float(0)) < min_check_time %}\n    {% set effectiveness_level = 0 %}  {# Not in an
+      active run yet, or too early to evaluate #}\n\n  {# Level 4: EMERGENCY
       - Immediate maximum power #}\n  {% elif distance_from_target > emergency_threshold
       and (time_in_current_mode | float(0)) >= min_check_time %}\n    {% set effectiveness_level
       = 4 %}  {# Far from target - emergency escalation #}\n  {% elif current_effectiveness
@@ -7134,7 +7236,13 @@ action:
     last_presence_time: "{% if presence_detected_helper and states(presence_detected_helper)
       not in ['unknown', 'unavailable', ''] %}\n  {{ states(presence_detected_helper)
       | as_datetime }}\n{% else %}\n  {{ now() }}\n{% endif %}\n"
-    minutes_since_presence: "{% if room_presence_detected %}\n  0\n{% else %}\n  {%
+    minutes_since_presence: "{% if room_presence_detected %}\n  0\n{% elif presence_validation_helper
+      not in [none, '', 'unavailable', 'unknown'] and is_state(presence_validation_helper,
+      'on') %}\n  {# v9.14.0 (bug 2): falling-edge run. The validation helper is still ON, so
+      the timestamp below still holds the ACQUIRED time, not the loss time (the write block
+      later this run flips the helper and stamps the real loss time). Reporting the whole
+      session length here killed running units instantly with no runtime guard. Report 0. #}\n
+      \ 0\n{% else %}\n  {%
       set presence_time_val = states(presence_detected_helper) if presence_detected_helper
       else 'unknown' %}\n  {% if presence_time_val not in ['unknown', 'unavailable',
       '', None] %}\n    {% set presence_timestamp = as_timestamp(presence_time_val)
@@ -9570,7 +9678,7 @@ action:
             %} ⏰ {{ room_name | upper }} MANUAL MODE TIMEOUT: Returning to automation
             • Manual timeout reached: {{ manual_timeout_hours }} hours • Time in manual:
             {{ ((as_timestamp(now()) - change_timestamp) / 3600) | round(1) if change_timestamp
-            else ''N/A'' }}h • Switching back to Smart mode - automation will resume
+            else ''N/A'' }}h • Switching back to {{ default_control_mode }} mode - automation will resume
             • AC will continue running under normal automation control
 
             '
@@ -9592,7 +9700,7 @@ action:
               data:
                 title: '{{ room_name }} Climate Control'
                 message: Manual timeout ({{ manual_timeout_hours }}h) - switched back
-                  to Smart mode
+                  to {{ default_control_mode }} mode
               continue_on_error: true
       # v9.13.0: select LAST (fires mode_change -> restart).
       - if:
@@ -9600,13 +9708,15 @@ action:
           value_template: '{{ control_mode_helper not in [none, '''', ''unavailable'',
             ''unknown''] }}'
         then:
+        # v9.14.0 (bug 6): was a hardcoded 'Smart'. A room whose default is Auto has
+        # no presence sensors and Smart is structurally dead there.
         - service: input_select.select_option
           target:
             entity_id: '{{ control_mode_helper }}'
           data:
-            option: Smart
+            option: '{{ default_control_mode }}'
           continue_on_error: true
-      - stop: Manual mode timeout - returned to Smart mode
+      - stop: Manual mode timeout - returned to default control mode
       else:
       - if:
         - condition: template
@@ -9754,15 +9864,25 @@ action:
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ continue_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
+        # v9.14.0 (bug 3): only re-send the setpoint when OUR target changed or the unit is
+        # not in the expected mode. Re-sending an unchanged setpoint every run (34 commands
+        # in 9 min observed) re-armed the integration's 45 s command grace and left
+        # physical-remote detection ~95% blind while cooling.
+        - if:
+          - condition: template
+            value_template: '{% set exp = (states(helper_expected_temp) | float(-1)) if helper_expected_temp
+              not in [none, '''', ''unavailable'', ''unknown''] else -1 %} {{ (adjusted_target
+              | float(0)) != exp or states(repeat.item) != continue_hvac_mode }}'
+          then:
+          - service: climate.set_temperature
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              temperature: '{{ adjusted_target }}'
+              hvac_mode: '{{ continue_hvac_mode }}'
+            continue_on_error: false
+          - delay:
+              milliseconds: 500
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed }}'
@@ -9836,6 +9956,56 @@ action:
         data:
           value: '{{ continue_hvac_mode }}'
         continue_on_error: true
+    # v9.14.0 (bug 9): keep the ceiling fan speed tracking the room while the AC cools.
+    # The standalone in-zone speed handler is a sibling branch of this one in the same
+    # choose, so it never runs during 'cooling'; the fan was left on whatever speed it had
+    # at AC start (observed: HIGH over an occupied bed for 2 h). ceiling_fan_target_speed
+    # applies the in-bed cap. Only when Fan With AC = On (Low is a deliberate fixed speed),
+    # and only issues a call when the fan is not already at the target.
+    - if:
+      - condition: template
+        value_template: '{{ ceiling_fan_configured and not fan_override_active and (ceiling_fan_is_on
+          | bool) and fan_with_ac_mode == ''on'' and ceiling_fan_speed_mode != ''static'' }}'
+      then:
+      - choose:
+        - conditions:
+          - condition: template
+            value_template: '{{ ceiling_fan_has_speed_switches and ceiling_fan_target_switch
+              not in [none, '''', ''none''] and is_state(ceiling_fan_target_switch, ''off'') }}'
+          sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: '{{ ceiling_fan_other_switches }}'
+            continue_on_error: true
+          - delay:
+              milliseconds: 100
+          - service: switch.turn_on
+            target:
+              entity_id: '{{ ceiling_fan_target_switch }}'
+            continue_on_error: true
+        - conditions:
+          - condition: template
+            value_template: '{{ ceiling_fan_has_presets and state_attr(ceiling_fan_entity, ''preset_mode'')
+              != ceiling_fan_target_speed }}'
+          sequence:
+          - service: fan.set_preset_mode
+            target:
+              entity_id: '{{ ceiling_fan_entities }}'
+            data:
+              preset_mode: '{{ ceiling_fan_target_speed }}'
+            continue_on_error: true
+        - conditions:
+          - condition: template
+            value_template: '{{ not ceiling_fan_has_speed_switches and not ceiling_fan_has_presets
+              and ceiling_fan_domain == ''fan'' and (state_attr(ceiling_fan_entity, ''percentage'')
+              | int(-1)) != (ceiling_fan_target_pct | int(0)) }}'
+          sequence:
+          - service: fan.set_percentage
+            target:
+              entity_id: '{{ ceiling_fan_entities }}'
+            data:
+              percentage: '{{ ceiling_fan_target_pct }}'
+            continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
@@ -9983,12 +10153,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ repeat.item }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(repeat.item, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -10328,12 +10503,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -10492,6 +10672,9 @@ action:
   - conditions:
     - condition: template
       value_template: '{{ should_activate }}'
+    # v9.14.0 (bug 1): never START cooling on a phantom reading.
+    - condition: template
+      value_template: '{{ temp_sensor_available | bool }}'
     - condition: template
       value_template: "{# v9.8.0: Defer to pre-conditioning branch when approaching home #}\n
         {# v9.13.2: ALSO defer while the room is ALREADY in Pre-conditioning with the AC
@@ -10671,18 +10854,19 @@ action:
           - condition: template
             value_template: '{{ ceiling_fan_has_speed_switches }}'
           sequence:
-          # M38: release low+medium before energizing high (uniformity — clears stuck relays)
+          # v9.14.0 (bug 9): was hardcoded to HIGH, bypassing ceiling_fan_bed_max_speed
+          # (observed: HIGH over an occupied bed within 32 ms of cooling start). Use the
+          # target-speed relay; the in-bed cap is applied inside ceiling_fan_target_speed.
+          # M38: release the non-target relays before energising the target.
           - service: switch.turn_off
             target:
-              entity_id:
-              - '{{ ceiling_fan_low_switch }}'
-              - '{{ ceiling_fan_medium_switch }}'
+              entity_id: '{{ ceiling_fan_other_switches }}'
             continue_on_error: true
           - delay:
               milliseconds: 100
           - service: switch.turn_on
             target:
-              entity_id: '{{ ceiling_fan_high_switch }}'
+              entity_id: '{{ ceiling_fan_target_switch }}'
             continue_on_error: true
         default:
         - service: homeassistant.turn_on
@@ -10884,6 +11068,9 @@ action:
         and (approaching_home | bool) and not (anyone_home | bool) and not (is_precond_mode
         | bool) and fan_precondition_mode == 'skip')\n   and not (bed_occupied and
         fan_bed_comfort_mode == 'off') }}\n"
+    # v9.14.0 (bug 1): never START the ceiling fan on a phantom reading either.
+    - condition: template
+      value_template: '{{ temp_sensor_available | bool }}'
     sequence:
     - if:
       - condition: template
@@ -10895,6 +11082,18 @@ action:
           entity_id: '{{ helper_mode }}'
         data:
           value: ceiling_fan_cooling
+        continue_on_error: true
+    # v9.14.0 (bug 4): snapshot the start-of-fan temperature for Fan Escalation.
+    - if:
+      - condition: template
+        value_template: '{{ helper_fan_entry_temp not in [none, '''', ''unavailable'', ''unknown'']
+          }}'
+      then:
+      - service: input_number.set_value
+        target:
+          entity_id: '{{ helper_fan_entry_temp }}'
+        data:
+          value: '{{ current_temp }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -11966,12 +12165,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
             - if:
               - condition: template
                 value_template: '{{ debug_enabled }}'
@@ -12177,12 +12381,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
             - if:
               - condition: template
                 value_template: '{{ debug_enabled }}'
@@ -12613,12 +12822,17 @@ action:
           continue_on_error: false
         - delay:
             milliseconds: 500
-        - service: climate.set_swing_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            swing_mode: '{{ validated_swing_mode }}'
-          continue_on_error: true
+        # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+        - if:
+          - condition: template
+            value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+          then:
+          - service: climate.set_swing_mode
+            target:
+              entity_id: '{{ current_entity }}'
+            data:
+              swing_mode: '{{ validated_swing_mode }}'
+            continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ debug_enabled }}'
@@ -12941,12 +13155,17 @@ action:
                 value_template: '{{ validated_swing_mode not in [''none'', '''', ''unavailable'',
                   ''unknown''] }}'
               then:
-              - service: climate.set_swing_mode
-                target:
-                  entity_id: '{{ current_entity }}'
-                data:
-                  swing_mode: '{{ validated_swing_mode }}'
-                continue_on_error: true
+              # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+              - if:
+                - condition: template
+                  value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+                then:
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: '{{ current_entity }}'
+                  data:
+                    swing_mode: '{{ validated_swing_mode }}'
+                  continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ debug_enabled }}'
@@ -13400,12 +13619,17 @@ action:
                 value_template: '{{ validated_swing_mode not in [''none'', '''', ''unavailable'',
                   ''unknown''] }}'
               then:
-              - service: climate.set_swing_mode
-                target:
-                  entity_id: '{{ current_entity }}'
-                data:
-                  swing_mode: '{{ validated_swing_mode }}'
-                continue_on_error: true
+              # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+              - if:
+                - condition: template
+                  value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+                then:
+                - service: climate.set_swing_mode
+                  target:
+                    entity_id: '{{ current_entity }}'
+                  data:
+                    swing_mode: '{{ validated_swing_mode }}'
+                  continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -14118,6 +14342,18 @@ action:
             entity_id: !input helper_last_mode
           data:
             value: ceiling_fan_cooling
+        # v9.14.0 (bug 4): snapshot the start-of-fan temperature for Fan Escalation.
+        - if:
+          - condition: template
+            value_template: '{{ helper_fan_entry_temp not in [none, '''', ''unavailable'', ''unknown'']
+              }}'
+          then:
+          - service: input_number.set_value
+            target:
+              entity_id: '{{ helper_fan_entry_temp }}'
+            data:
+              value: '{{ current_temp }}'
+            continue_on_error: true
         - service: system_log.write
           data:
             message: "\U0001F33F {{ room_name | upper }} ECO TRANSITION: AC → Ceiling
@@ -14255,12 +14491,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -14824,12 +15065,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -15090,12 +15336,17 @@ action:
               continue_on_error: false
             - delay:
                 milliseconds: 500
-            - service: climate.set_swing_mode
-              target:
-                entity_id: '{{ current_entity }}'
-              data:
-                swing_mode: '{{ validated_swing_mode }}'
-              continue_on_error: true
+            # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+            - if:
+              - condition: template
+                value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+              then:
+              - service: climate.set_swing_mode
+                target:
+                  entity_id: '{{ current_entity }}'
+                data:
+                  swing_mode: '{{ validated_swing_mode }}'
+                continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ fan_mode_changed and helper_last_fan_change not in
@@ -15276,12 +15527,17 @@ action:
           continue_on_error: false
         - delay:
             milliseconds: 500
-        - service: climate.set_swing_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            swing_mode: '{{ validated_swing_mode }}'
-          continue_on_error: true
+        # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+        - if:
+          - condition: template
+            value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+          then:
+          - service: climate.set_swing_mode
+            target:
+              entity_id: '{{ current_entity }}'
+            data:
+              swing_mode: '{{ validated_swing_mode }}'
+            continue_on_error: true
         - if:
           - condition: template
             value_template: '{{ debug_enabled }}'
@@ -15418,12 +15674,17 @@ action:
           continue_on_error: false
         - delay:
             milliseconds: 500
-        - service: climate.set_swing_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            swing_mode: '{{ validated_swing_mode }}'
-          continue_on_error: true
+        # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+        - if:
+          - condition: template
+            value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+          then:
+          - service: climate.set_swing_mode
+            target:
+              entity_id: '{{ current_entity }}'
+            data:
+              swing_mode: '{{ validated_swing_mode }}'
+            continue_on_error: true
     - if:
       - condition: template
         value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
@@ -15455,11 +15716,16 @@ action:
           data:
             value: '{{ validated_swing_mode }}'
           continue_on_error: true
-        - service: climate.set_swing_mode
-          target:
-            entity_id: '{{ current_entity }}'
-          data:
-            swing_mode: '{{ validated_swing_mode }}'
+        # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+        - if:
+          - condition: template
+            value_template: '{{ state_attr(current_entity, ''swing_mode'') != validated_swing_mode }}'
+          then:
+          - service: climate.set_swing_mode
+            target:
+              entity_id: '{{ current_entity }}'
+            data:
+              swing_mode: '{{ validated_swing_mode }}'
     - service: input_text.set_value
       target:
         entity_id: !input helper_last_mode
@@ -15762,12 +16028,17 @@ action:
             continue_on_error: false
           - delay:
               milliseconds: 500
-          - service: climate.set_swing_mode
-            target:
-              entity_id: '{{ repeat.item }}'
-            data:
-              swing_mode: '{{ validated_swing_mode }}'
-            continue_on_error: true
+          # v9.14.0 (bug 3): swing is a fixed input; only send it when the unit differs.
+          - if:
+            - condition: template
+              value_template: '{{ state_attr(repeat.item, ''swing_mode'') != validated_swing_mode }}'
+            then:
+            - service: climate.set_swing_mode
+              target:
+                entity_id: '{{ repeat.item }}'
+              data:
+                swing_mode: '{{ validated_swing_mode }}'
+              continue_on_error: true
       - if:
         - condition: template
           value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
@@ -16089,11 +16360,16 @@ action:
           \"off\" \U0001F4CB Helper now matches AC state - manual override cleared
           automatically\n"
         level: warning
+# v9.14.0 (bug 7): this safety net issued climate.turn_off with NO minimum-runtime term,
+# overriding the runtime guard the vacancy branch above already applies. Mirror that
+# guard: idle/fan modes may stop at once, an established run must have met runtime_min.
 - if:
   - condition: template
     value_template: '{{ control_mode == ''Smart'' and not (smart_presence_active
       | bool) and not bed_occupied and actual_ac_state == ''on'' and last_mode not
-      in [''auto_off_off'', ''auto_off_eco'', ''auto_off_fan_only''] }}'
+      in [''auto_off_off'', ''auto_off_eco'', ''auto_off_fan_only''] and (last_mode in
+      [''ceiling_fan_cooling'', ''smart_off'', ''off'', ''away_off'', ''auto_off_off''] or
+      (time_in_current_mode | float(0)) >= (runtime_min | float(0))) }}'
   then:
   - if:
     - condition: template
