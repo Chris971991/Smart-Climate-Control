@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.16.0
-  description: "**Ultimate Smart Climate Control v9.16.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.16.1
+  description: "**Ultimate Smart Climate Control v9.16.1**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,14 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.16.0 - Bed ECO can keep pushing until the room sensor reaches target:**\n•
+    UPDATES:**\n\n**v9.16.1 - Ceiling fan override detection works straight after a restart:**\n•
+    **Fixed**: turning a ceiling fan on or off by hand (wall switch, dashboard, app) was
+    ignored for hours after every Home Assistant restart. The expected-fan tracker starts
+    blank after a restart and the detector treated blank as \"cannot tell\". It now treats
+    the state the fan just left as the expected state, so a change with no automation
+    behind it counts as yours. The automation's own fan commands still write the tracker
+    first, so they are never mistaken for a hand change. Speed-only changes (Low to High
+    while running) are still not treated as an override; only on/off is tracked.\n\n**v9.16.0 - Bed ECO can keep pushing until the room sensor reaches target:**\n•
     **New**: Bed ECO Keeps Pushing (off by default). Bed ECO used to ask the unit for exactly
     the target and nothing more, so a unit whose own return-air sensor was satisfied could
     idle while the room sensor sat half a degree above target for hours. When on, the
@@ -7751,10 +7758,16 @@ action:
       \ {% set from_automation = (ctx_parent_id is not none) %}\n  {% set from_user_ui
       = (ctx_user_id is not none and ctx_parent_id is none) %}\n\n  {# Get expected
       state from helper #}\n  {% set expected = states(helper_expected_ceiling_fan)
-      | default('unknown') %}\n  {% set actual = trigger.to_state.state %}\n\n  {#
+      | default('unknown') %}\n  {# v9.16.1: the expected helper is blank after every HA
+      restart (the wizard created it with initial \"\") and stays blank until this automation
+      next commands the fan, which used to make every hand change invisible for hours.
+      With nothing tracked, the state the fan just LEFT is what we expected: our own
+      commands always write the helper before calling the fan, so a blank helper plus a
+      change with no automation parent is the user. #}\n  {% if expected in ['unknown',
+      'unavailable', ''] %}\n    {% set expected = trigger.from_state.state %}\n  {%
+      endif %}\n  {% set actual = trigger.to_state.state %}\n\n  {#
       If automation caused this change, not an override #}\n  {% if from_automation
-      %}\n    False\n  {% elif expected in ['unknown', 'unavailable', ''] %}\n    {#
-      No expected state tracked yet - can't detect override #}\n    False\n  {% elif
+      %}\n    False\n  {% elif
       from_user_ui %}\n    {# User clicked in HA UI - override if state differs from
       expected #}\n    {{ actual != expected }}\n  {% else %}\n    {# Physical wall
       switch (no context) - check expected vs actual #}\n    {{ actual != expected

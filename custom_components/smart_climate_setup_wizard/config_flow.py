@@ -156,32 +156,33 @@ HELPER_DEFINITIONS = {
         "unit_of_measurement": "°C",
         "mode": "box",
     },
+    # v4.3.2: the expected_* trackers carry NO `initial` on purpose. HA resets an input_text
+    # to its `initial` on every restart, which blanked these and disabled the blueprint's
+    # ceiling-fan override detection until the automation next commanded the fan. Without
+    # `initial` they restore their last value; a brand-new helper simply starts empty, which
+    # the blueprint already treats as "nothing tracked yet".
     "expected_fan": {
         "domain": "input_text",
         "name": "{room} Climate Expected Fan Mode",
         "icon": "mdi:fan",
-        "initial": "unknown",
         "max_length": 50,
     },
     "expected_swing": {
         "domain": "input_text",
         "name": "{room} Climate Expected Swing Mode",
         "icon": "mdi:arrow-oscillating",
-        "initial": "unknown",
         "max_length": 50,
     },
     "expected_hvac": {
         "domain": "input_text",
         "name": "{room} Climate Expected HVAC Mode",
         "icon": "mdi:air-conditioner",
-        "initial": "unknown",
         "max_length": 50,
     },
     "expected_ceiling_fan": {
         "domain": "input_text",
         "name": "{room} Climate Expected Ceiling Fan State",
         "icon": "mdi:ceiling-fan",
-        "initial": "",
         "max_length": 50,
     },
     "override_source": {
@@ -1476,7 +1477,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                 helper_config["icon"] = helper_def["icon"]
 
             if domain == "input_text":
-                helper_config["initial"] = helper_def.get("initial", "")
+                # v4.3.2: only pin an initial value when the template asks for one. An
+                # input_text with `initial` is reset to it on EVERY Home Assistant restart
+                # (initial beats restore), which blanked the expected_* trackers and switched
+                # the blueprint's ceiling-fan override detection off until the automation
+                # next commanded the fan. Trackers without `initial` restore their last value.
+                if "initial" in helper_def:
+                    helper_config["initial"] = helper_def["initial"]
                 helper_config["max"] = helper_def.get("max_length", 255)
 
             elif domain == "input_datetime":
