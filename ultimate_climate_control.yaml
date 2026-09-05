@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.14.0
-  description: "**Ultimate Smart Climate Control v9.14.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.14.1
+  description: "**Ultimate Smart Climate Control v9.14.1**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,12 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.14.0 - Ten fixes from the September settings audit:**\n•
+    UPDATES:**\n\n**v9.14.1 - Walking back into a room no longer switches the air conditioner off:**\n•
+    **Fixed**: if you left a room briefly and came back while the air conditioner or ceiling fan
+    was still running, the moment the sensor saw you again the unit was switched off, because the
+    presence-confirmation delay was being applied to a unit that was already running. Confirmation
+    is now only required to start a unit, never to keep one running while someone is in the
+    room.\n\n**v9.14.0 - Ten fixes from the September settings audit:**\n•
     **Fixed**: a temperature sensor dropping off the network was read as 25°C, so the air
     conditioner could start cooling a cold room (observed: two hours cooling a 19°C bedroom).
     The last real reading is used instead, and nothing can start while every sensor is
@@ -7317,7 +7322,14 @@ action:
       buffer to prevent timing fluctuation flip-flop #}\n  {# v5.3.5 FIX: REMOVED
       can_bypass_delay - grace period handles re-entry, confirmation delay is mandatory
       #}\n  {% elif room_presence_detected and minutes_with_presence >= (presence_confirmation_delay
-      - 0.17) %}\n    True\n  {% elif not room_presence_detected and minutes_since_presence
+      - 0.17) %}\n    True\n  {# v9.14.1 (bug 11): presence re-acquired inside the confirmation
+      window while a run is ALREADY active. The delay gates STARTING, not continuing: without
+      this branch smart_presence_active was False for the whole window even with someone in
+      the room (the grace branch below only covers ABSENCE), and the safety net / away branch
+      killed the unit. 05/09: a 54-second trip to the blinds killed an 11-minute Office cooling
+      run 66 ms after re-entry; the same path killed the ceiling fan at 13:09. #}\n  {% elif
+      room_presence_detected and (actual_ac_state == 'on' or last_mode == 'ceiling_fan_cooling')
+      %}\n    True\n  {% elif not room_presence_detected and minutes_since_presence
       < presence_timeout %}\n    {# Grace period applies when: #}\n    {# 1. Instant
       activation (no confirmation delay) - always applies #}\n    {# 2. Had prior
       confirmed presence - left after AC was already running #}\n    {# v3.8.2 FIX:
