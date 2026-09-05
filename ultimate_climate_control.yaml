@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.14.1
-  description: "**Ultimate Smart Climate Control v9.14.1**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.15.0
+  description: "**Ultimate Smart Climate Control v9.15.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,13 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.14.1 - Walking back into a room no longer switches the air conditioner off:**\n•
+    UPDATES:**\n\n**v9.15.0 - Powerful boost when the room is a long way off target:**\n•
+    **New**: Daikin units that expose a Powerful (boost) preset can now be pushed into it
+    automatically when escalation reaches Level 4, the point where the automation has decided
+    the room is far from target or not responding. Boost is cleared as soon as escalation drops
+    back below Level 4, and never used while the bed is occupied unless you allow it. Daikin
+    cancels Powerful itself after about 20 minutes; the automation re-engages it on the next
+    check if the room is still stalled. Off by default (Escalation section).\n\n**v9.14.1 - Walking back into a room no longer switches the air conditioner off:**\n•
     **Fixed**: if you left a room briefly and came back while the air conditioner or ceiling fan
     was still running, the moment the sensor saw you again the unit was switched off, because the
     presence-confirmation delay was being applied to a unit that was already running. Confirmation
@@ -4057,6 +4063,42 @@ blueprint:
               max: 2.0
               step: 1.0
               mode: slider
+        enable_powerful_boost:
+          name: Powerful Boost at Escalation Level 4
+          description: '**Push the air conditioner into Daikin Powerful (boost) when escalation
+            reaches Level 4.**
+
+
+            Level 4 means the automation has decided the room is far from target or is not
+            responding. Only units that expose a **boost** preset take part (most Daikin units
+            on the older firmware; firmware 2.8.0 units do not expose it yet). Boost is cleared
+            as soon as escalation drops below Level 4 or the room reaches target.
+
+
+            Daikin cancels Powerful by itself after about 20 minutes; the automation re-engages
+            it on the next check if the room is still stalled. It is never used while the bed
+            is occupied unless the option below allows it.
+
+
+            v9.15.0. Off by default.
+
+            '
+          default: false
+          selector:
+            boolean: {}
+        powerful_boost_allow_in_bed:
+          name: Allow Powerful Boost While In Bed
+          description: '**Let Powerful boost run while the bed sensor says someone is in bed.**
+
+
+            Powerful runs the indoor fan at maximum and is loud. Leave this off unless the
+            bedroom regularly gets far enough above target overnight that noise is the lesser
+            evil.
+
+            '
+          default: false
+          selector:
+            boolean: {}
         wrong_direction_min_rate:
           name: Wrong Direction Minimum Rate
           description: 'Minimum temperature change rate to trigger WRONG DIRECTION
@@ -6804,6 +6846,9 @@ action:
       | max }}\n  {% endif %}\n{% endif %}\n"
     wrong_direction_enabled: !input enable_wrong_direction_escalation
     wrong_direction_per_check: !input wrong_direction_escalation_per_check
+    # v9.15.0: Powerful boost at escalation Level 4
+    powerful_boost_enabled: !input enable_powerful_boost
+    powerful_boost_in_bed: !input powerful_boost_allow_in_bed
     wrong_direction_min_rate: !input wrong_direction_min_rate
     wrong_direction_detected: "{{\n  (wrong_direction_enabled and wrong_direction_per_check
       > 0) and\n  (\n    (last_mode == 'cooling' and temp_change_rate >= -effective_min_progress_rate)
@@ -9895,9 +9940,12 @@ action:
             continue_on_error: false
           - delay:
               milliseconds: 500
+        # v9.15.0: never re-send a fan speed while the unit is in Powerful boost.
+        # On a Daikin a fan command cancels Powerful, and boost owns the fan.
         - if:
           - condition: template
-            value_template: '{{ fan_mode_changed }}'
+            value_template: '{{ fan_mode_changed and state_attr(repeat.item, ''preset_mode'')
+              != ''boost'' }}'
           then:
           - service: climate.set_fan_mode
             target:
@@ -10018,6 +10066,65 @@ action:
             data:
               percentage: '{{ ceiling_fan_target_pct }}'
             continue_on_error: true
+    # v9.15.0: Powerful boost. At escalation Level 4 (far from target, or not
+    # responding) push any unit that exposes a 'boost' preset into Daikin Powerful;
+    # clear it the moment escalation drops below Level 4. Only ever sends a command
+    # when the unit's reported preset differs from what we want, so a Powerful that
+    # the unit cancels itself (~20 min) is simply re-engaged on the next check while
+    # the room is still stalled, and nothing is re-sent every minute (each preset
+    # command re-arms the integration's 45 s override grace). Never while the bed is
+    # occupied unless allowed. Units without the preset (BRP084) are skipped.
+    - if:
+      - condition: template
+        value_template: '{{ powerful_boost_enabled | bool }}'
+      then:
+      - repeat:
+          for_each: '{{ climate_list }}'
+          sequence:
+          - variables:
+              boost_supported: "{{ 'boost' in (state_attr(repeat.item, 'preset_modes') or []) }}"
+              boost_active: "{{ state_attr(repeat.item, 'preset_mode') == 'boost' }}"
+              boost_wanted: "{{ (final_escalation_level | int(0)) >= 4 and ((powerful_boost_in_bed
+                | bool) or not (bed_occupied | bool)) }}"
+          - choose:
+            - conditions:
+              - condition: template
+                value_template: '{{ (boost_supported | bool) and (boost_wanted | bool) and not
+                  (boost_active | bool) }}'
+              sequence:
+              - service: climate.set_preset_mode
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  preset_mode: boost
+                continue_on_error: true
+              - if:
+                - condition: template
+                  value_template: '{{ event_logging_enabled }}'
+                then:
+                - service: system_log.write
+                  data:
+                    message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost ON | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C, {{ distance_from_target | round(1) }}°C away | {{ repeat.item }}"
+                    level: warning
+            - conditions:
+              - condition: template
+                value_template: '{{ (boost_supported | bool) and (boost_active | bool) and not
+                  (boost_wanted | bool) }}'
+              sequence:
+              - service: climate.set_preset_mode
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  preset_mode: none
+                continue_on_error: true
+              - if:
+                - condition: template
+                  value_template: '{{ event_logging_enabled }}'
+                then:
+                - service: system_log.write
+                  data:
+                    message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost OFF | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C | {{ repeat.item }}"
+                    level: warning
     - if:
       - condition: template
         value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
