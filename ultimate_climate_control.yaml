@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.15.3
-  description: "**Ultimate Smart Climate Control v9.15.3**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.15.4
+  description: "**Ultimate Smart Climate Control v9.15.4**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,12 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.15.3 - Setpoint Hold now covers every change:**\n•
+    UPDATES:**\n\n**v9.15.4 - Setpoint Hold clock now counts from the last setpoint actually sent:**\n•
+    **Fixed**: in v9.15.2 and v9.15.3 the hold was timed from the last time the wanted
+    setpoint changed, not from the last time one was sent, so a target that kept flickering
+    could postpone the next command indefinitely, and the stored last-command snapshot could
+    drift away from what the unit was really set to. The decision is now made once per check
+    and the helpers only record setpoints the unit actually received.\n\n**v9.15.3 - Setpoint Hold now covers every change:**\n•
     **Fixed**: v9.15.2 still let a change of a full degree or more through at once, and the
     escalation ladder's swing between its lowest and highest level is exactly two degrees, so
     the churn only halved. The hold now applies to every change; only a unit that is not in
@@ -9966,6 +9971,29 @@ action:
         continue_hvac_mode: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'cool' in modes %}\n  cool\n{% elif 'Cool' in modes %}\n
           \ Cool\n{% else %}\n  {{ modes[0] if modes else 'cool' }}\n{% endif %}\n"
+        # v9.15.4: the setpoint decision is made ONCE per run and shared by the
+        # command and by every helper write below. v9.15.2/3 decided it per entity
+        # and still wrote the expected-temp helper with the NEW target even when the
+        # hold suppressed the command, so the hold clock (that helper's last_changed)
+        # restarted without a command and the setpoint could be starved indefinitely,
+        # while the last-command snapshot drifted away from the unit. Now:
+        #   setpoint_send  = a unit is out of its expected mode, OR the target changed
+        #                    and the last SENT setpoint is older than setpoint_hold.
+        #   commanded_temp = adjusted_target when sending, else the last SENT value,
+        #                    so the helpers only move when a command actually went out
+        #                    (input_number ignores same-value writes).
+        setpoint_send: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
+          %}{% set exp = (states(helper_expected_temp) | float(-1)) if exp_ok else -1 %}{%
+          set want = adjusted_target | float(0) %}{% set ns = namespace(wrong=false) %}{%
+          for e in climate_list %}{% if states(e) != continue_hvac_mode %}{% set ns.wrong
+          = true %}{% endif %}{% endfor %}{% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
+          / 60) if exp_ok else 999 %}{{ ns.wrong or (want != exp and (not exp_ok or held_min
+          >= (setpoint_hold | float(5)))) }}"
+        commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
+          %}{{ (adjusted_target | float(0)) if (setpoint_send | bool) or not exp_ok else (states(helper_expected_temp)
+          | float(adjusted_target)) }}"
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
@@ -9984,16 +10012,11 @@ action:
         # degree through at once, and the ladder's Level 1 <-> Level 4 flip is exactly a
         # 2°C move, so the churn merely halved (18.5 -> 20.5 -> 18.5 every two minutes).
         # Only a unit that is out of its expected mode is re-commanded inside the hold.
+        # v9.15.4: decision comes from setpoint_send (computed once above).
         - if:
           - condition: template
-            value_template: '{% set exp_ok = helper_expected_temp not in [none, '''', ''unavailable'',
-              ''unknown''] and states(helper_expected_temp) not in [''unknown'', ''unavailable'',
-              ''''] %} {% set exp = (states(helper_expected_temp) | float(-1)) if exp_ok else
-              -1 %} {% set want = adjusted_target | float(0) %} {% set mode_wrong = states(repeat.item)
-              != continue_hvac_mode %} {% set changed = want != exp %} {% set held_min = ((as_timestamp(now())
-              - as_timestamp(states[helper_expected_temp].last_changed)) / 60) if exp_ok else
-              999 %} {{ mode_wrong or (changed and (not exp_ok or held_min >= (setpoint_hold
-              | float(5)))) }}'
+            value_template: '{{ (setpoint_send | bool) or states(repeat.item) != continue_hvac_mode
+              }}'
           then:
           - service: climate.set_temperature
             target:
@@ -10189,6 +10212,8 @@ action:
                   data:
                     message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost OFF | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C | {{ repeat.item }}"
                     level: warning
+    # v9.15.4: record the setpoint the unit actually received (commanded_temp), so this
+    # helper's last_changed is the hold clock and only moves when a command went out.
     - if:
       - condition: template
         value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
@@ -10198,7 +10223,7 @@ action:
         target:
           entity_id: '{{ helper_expected_temp }}'
         data:
-          value: '{{ adjusted_target }}'
+          value: '{{ commanded_temp }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -10218,7 +10243,7 @@ action:
       then:
       - variables:
           snapshot_hvac: '{{ continue_hvac_mode }}'
-          snapshot_temp: '{{ adjusted_target }}'
+          snapshot_temp: '{{ commanded_temp }}'
           snapshot_fan: '{{ continue_fan_mode }}'
           snapshot_swing: '{{ validated_swing_mode }}'
           update_snapshot: hvac={{ snapshot_hvac }},temp={{ snapshot_temp }},fan={{
