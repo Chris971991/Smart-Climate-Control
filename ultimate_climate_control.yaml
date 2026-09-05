@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.15.4
-  description: "**Ultimate Smart Climate Control v9.15.4**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.15.5
+  description: "**Ultimate Smart Climate Control v9.15.5**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,15 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.15.4 - Setpoint Hold clock now counts from the last setpoint actually sent:**\n•
+    UPDATES:**\n\n**v9.15.5 - Setpoint Hold survives an interrupted check:**\n•
+    **Fixed**: a check that was still sending commands to a slow unit could be cancelled by
+    the next minute tick or temperature reading before it recorded what it sent, so the hold
+    clock never advanced and the setpoint kept changing. The record is now written before
+    each command, the check-interval gate runs before a check can be interrupted, and
+    minute ticks and temperature readings no longer interrupt a check that is busy sending
+    (for at most two minutes).\n• **Improved**: whether the setpoint needs re-sending is now
+    judged against the unit's own reported setpoint (within 0.3°C, and allowing for a unit
+    sitting on its temperature limit), so nothing is trusted forever.\n\n**v9.15.4 - Setpoint Hold clock now counts from the last setpoint actually sent:**\n•
     **Fixed**: in v9.15.2 and v9.15.3 the hold was timed from the last time the wanted
     setpoint changed, not from the last time one was sent, so a target that kept flickering
     could postpone the next command indefinitely, and the stored last-command snapshot could
@@ -5461,6 +5469,9 @@ blueprint:
               value: info_only
 variables:
   climate_list: !input climate_entities
+  # v9.15.5: top-level variables are rendered before the global condition runs, so the
+  # check-interval gate there can read this.
+  check_interval_gate: !input check_interval_minutes
   persons: !input presence_persons
   devices: !input presence_devices
   comfort_zone_action: !input comfort_zone_action
@@ -5903,7 +5914,29 @@ trigger:
 condition:
 - condition: template
   value_template: |
-    {% if trigger.id == 'climate_state_change' %}
+    {# v9.15.5: 'busy' = a run started less than 120 s ago is still in flight. Under
+       mode: restart every accepted trigger cancels it, and a continue-cooling run on a
+       BRP072C spends 40 to 70 s inside set-temperature and fan calls. Triggers that carry
+       nothing the next check cannot pick up (the minute tick, the unit's own temperature
+       reading, the room sensor's 0.1°C steps) no longer cancel a busy run. Observed
+       05/09 19:41 to 19:47 on the Office: no continue-cooling run reached its helper
+       writes, the setpoint-hold clock never advanced, and the setpoint changed four
+       times in five minutes. Bounded to 120 s (the blueprint has no long delays or
+       waits) so a stuck run can never suspend the periodic duties. #}
+    {% set ns = namespace(busy=false) %}
+    {% if this is defined and this.attributes is defined and (this.attributes.current | int(0)) > 0 and this.attributes.last_triggered is not none %}
+      {% set ns.busy = (as_timestamp(now()) - (as_timestamp(this.attributes.last_triggered) | float(0))) < 120 %}
+    {% endif %}
+    {% if trigger.id == 'periodic_check' %}
+      {# v9.15.5: the check-interval gate lived in the action (should_proceed), so every
+         minute's tick restarted the run in flight and then bailed out. Gated here. #}
+      {% set interval = check_interval_gate | int(1) %}
+      {{ (not ns.busy) and (interval <= 0 or (now().minute % interval) == 0) }}
+    {% elif trigger.id == 'temp_change' %}
+      {{ not ns.busy }}
+    {% elif trigger.id == 'external_temp_change' %}
+      {{ (not ns.busy) and (trigger.from_state is none or trigger.to_state is none or trigger.from_state.state != trigger.to_state.state) }}
+    {% elif trigger.id == 'climate_state_change' %}
       {# Only accept if HVAC mode actually changed (off↔cool↔heat↔dry↔fan_only) #}
       {{ trigger.from_state.state != trigger.to_state.state }}
     {% elif trigger.id == 'ceiling_fan_state_change' %}
@@ -9982,13 +10015,23 @@ action:
         #   commanded_temp = adjusted_target when sending, else the last SENT value,
         #                    so the helpers only move when a command actually went out
         #                    (input_number ignores same-value writes).
+        # v9.15.5: "the target changed" is now judged against the UNIT's reported setpoint,
+        # not the helper, so a command that was sent but never recorded (run cancelled) or
+        # recorded but never sent is corrected on the next check instead of being trusted
+        # forever. Within 0.3°C counts as equal (a BRP072C rounds 18.6 to 18.5), and a unit
+        # sitting on its min/max limit with the target beyond it counts as equal (BRP084
+        # clipping). The helper is still the hold clock, written just BEFORE the command.
         setpoint_send: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
           'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
-          %}{% set exp = (states(helper_expected_temp) | float(-1)) if exp_ok else -1 %}{%
-          set want = adjusted_target | float(0) %}{% set ns = namespace(wrong=false) %}{%
-          for e in climate_list %}{% if states(e) != continue_hvac_mode %}{% set ns.wrong
-          = true %}{% endif %}{% endfor %}{% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
-          / 60) if exp_ok else 999 %}{{ ns.wrong or (want != exp and (not exp_ok or held_min
+          %}{% set want = adjusted_target | float(0) %}{% set ns = namespace(wrong=false, differs=false)
+          %}{% for e in climate_list %}{% if states(e) != continue_hvac_mode %}{% set ns.wrong
+          = true %}{% endif %}{% set dev = state_attr(e, 'temperature') %}{% if dev is none
+          %}{% set ns.differs = true %}{% else %}{% set dev = dev | float(0) %}{% set lo = state_attr(e,
+          'min_temp') | float(16) %}{% set hi = state_attr(e, 'max_temp') | float(30) %}{% set
+          clipped = (want < dev and dev <= lo + 0.01) or (want > dev and dev >= hi - 0.01) %}{%
+          if ((dev - want) | abs) >= 0.3 and not clipped %}{% set ns.differs = true %}{% endif
+          %}{% endif %}{% endfor %}{% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
+          / 60) if exp_ok else 999 %}{{ ns.wrong or (ns.differs and (not exp_ok or held_min
           >= (setpoint_hold | float(5)))) }}"
         commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
           'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
@@ -10013,11 +10056,25 @@ action:
         # 2°C move, so the churn merely halved (18.5 -> 20.5 -> 18.5 every two minutes).
         # Only a unit that is out of its expected mode is re-commanded inside the hold.
         # v9.15.4: decision comes from setpoint_send (computed once above).
+        # v9.15.5: the hold clock (the expected-temp helper) is written BEFORE the command.
+        # A run cancelled between the command and the write (observed four times on the
+        # Office, 05/09 19:41 to 19:47) left the clock in the past and the churn came back.
         - if:
           - condition: template
             value_template: '{{ (setpoint_send | bool) or states(repeat.item) != continue_hvac_mode
               }}'
           then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_number.set_value
+              target:
+                entity_id: '{{ helper_expected_temp }}'
+              data:
+                value: '{{ adjusted_target }}'
+              continue_on_error: true
           - service: climate.set_temperature
             target:
               entity_id: '{{ repeat.item }}'
@@ -10034,6 +10091,19 @@ action:
             value_template: '{{ fan_mode_changed and state_attr(repeat.item, ''preset_mode'')
               != ''boost'' }}'
           then:
+          # v9.15.5: the fan-change timestamp (the fan band hold clock) is written BEFORE
+          # the command, for the same reason as the setpoint clock above.
+          - if:
+            - condition: template
+              value_template: '{{ helper_last_fan_change not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - service: climate.set_fan_mode
             target:
               entity_id: '{{ repeat.item }}'
@@ -10212,30 +10282,9 @@ action:
                   data:
                     message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost OFF | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C | {{ repeat.item }}"
                     level: warning
-    # v9.15.4: record the setpoint the unit actually received (commanded_temp), so this
-    # helper's last_changed is the hold clock and only moves when a command went out.
-    - if:
-      - condition: template
-        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_number.set_value
-        target:
-          entity_id: '{{ helper_expected_temp }}'
-        data:
-          value: '{{ commanded_temp }}'
-        continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
-      then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
+    # v9.15.5: the expected-temp and fan-change helpers are written before their commands
+    # (inside the repeat above); the trailing writes that used to sit here were the ones a
+    # cancelled run never reached.
     - if:
       - condition: template
         value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
