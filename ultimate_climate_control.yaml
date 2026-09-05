@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.15.2
-  description: "**Ultimate Smart Climate Control v9.15.2**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.15.3
+  description: "**Ultimate Smart Climate Control v9.15.3**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,11 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.15.2 - The setpoint no longer changes every minute while cooling:**\n•
+    UPDATES:**\n\n**v9.15.3 - Setpoint Hold now covers every change:**\n•
+    **Fixed**: v9.15.2 still let a change of a full degree or more through at once, and the
+    escalation ladder's swing between its lowest and highest level is exactly two degrees, so
+    the churn only halved. The hold now applies to every change; only a unit that is not in
+    the expected mode is re-commanded inside it.\n\n**v9.15.2 - The setpoint no longer changes every minute while cooling:**\n•
     **Fixed**: while a room was cooling, the escalation logic could send a new setpoint on
     nearly every check, swinging by up to two degrees as the one-minute progress reading
     flickered between \"stalled\" and \"dropping\". Every new setpoint makes a Daikin rev its
@@ -3910,12 +3914,13 @@ blueprint:
             churn is audible.
 
 
-            Once a setpoint has been sent it is now held for this many minutes. A change of a
-            full degree or more still goes out immediately, and a unit that is not in the
-            expected mode is always re-commanded. 0 restores the old behaviour.
+            Once a setpoint has been sent it is held for this many minutes, whatever the size
+            of the change (the escalation ladder can swing two degrees between two checks,
+            and that swing is exactly what this stops). A unit that is not in the expected
+            mode is always re-commanded. 0 restores the old behaviour.
 
 
-            v9.15.2. Recommended: 5.
+            v9.15.2, tightened in v9.15.3. Recommended: 5.
 
             '
           default: 5
@@ -9975,17 +9980,20 @@ action:
         # Office, 05/09). Each new setpoint makes a Daikin rev its indoor fan for a
         # moment. Time since the last change is the expected-temp helper's last_changed
         # (input_number ignores same-value writes, so it only moves when the setpoint
-        # did). A change of a full degree or more still goes out immediately.
+        # did). v9.15.3: the hold applies to EVERY change. v9.15.2 let moves of a full
+        # degree through at once, and the ladder's Level 1 <-> Level 4 flip is exactly a
+        # 2°C move, so the churn merely halved (18.5 -> 20.5 -> 18.5 every two minutes).
+        # Only a unit that is out of its expected mode is re-commanded inside the hold.
         - if:
           - condition: template
             value_template: '{% set exp_ok = helper_expected_temp not in [none, '''', ''unavailable'',
               ''unknown''] and states(helper_expected_temp) not in [''unknown'', ''unavailable'',
               ''''] %} {% set exp = (states(helper_expected_temp) | float(-1)) if exp_ok else
               -1 %} {% set want = adjusted_target | float(0) %} {% set mode_wrong = states(repeat.item)
-              != continue_hvac_mode %} {% set changed = want != exp %} {% set big = ((want - exp)
-              | abs) >= 1.0 %} {% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
-              / 60) if exp_ok else 999 %} {{ mode_wrong or (changed and (not exp_ok or big or
-              held_min >= (setpoint_hold | float(5)))) }}'
+              != continue_hvac_mode %} {% set changed = want != exp %} {% set held_min = ((as_timestamp(now())
+              - as_timestamp(states[helper_expected_temp].last_changed)) / 60) if exp_ok else
+              999 %} {{ mode_wrong or (changed and (not exp_ok or held_min >= (setpoint_hold
+              | float(5)))) }}'
           then:
           - service: climate.set_temperature
             target:
