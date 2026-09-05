@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.15.0
-  description: "**Ultimate Smart Climate Control v9.15.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.15.2
+  description: "**Ultimate Smart Climate Control v9.15.2**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,17 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.15.0 - Powerful boost when the room is a long way off target:**\n•
+    UPDATES:**\n\n**v9.15.2 - The setpoint no longer changes every minute while cooling:**\n•
+    **Fixed**: while a room was cooling, the escalation logic could send a new setpoint on
+    nearly every check, swinging by up to two degrees as the one-minute progress reading
+    flickered between \"stalled\" and \"dropping\". Every new setpoint makes a Daikin rev its
+    indoor fan for a moment, which is audible. A setpoint is now held for at least the new
+    Setpoint Hold time (default 5 minutes) unless the change is a full degree or more, or the
+    unit is not in the expected mode.\n\n**v9.15.1 - Comfort Zone Range can now go up to ±5°C:**\n•
+    **Changed**: the Comfort Zone Range slider used to stop at ±3°C, which made it impossible
+    to cool a room to a low target and then leave it alone until it was properly warm again
+    without switching to the advanced temperature inputs. The slider now goes to ±5°C, so one
+    target and one range cover that case.\n\n**v9.15.0 - Powerful boost when the room is a long way off target:**\n•
     **New**: Daikin units that expose a Powerful (boost) preset can now be pushed into it
     automatically when escalation reaches Level 4, the point where the automation has decided
     the room is far from target or not responding. Boost is cleared as soon as escalation drops
@@ -632,19 +642,22 @@ blueprint:
           description: 'Temperature tolerance around target (plus/minus).
 
 
-            - **Wider (2-3°C):** Fewer AC cycles, more efficient
+            - **Wider (2-5°C):** Fewer AC cycles, more efficient. Wide bands suit a
+            room you want cooled hard and then left alone until it is genuinely warm again.
 
             - **Narrower (0.5-1°C):** Tighter control, more cycling
 
 
             Example: 23°C target with ±2°C = comfort zone 21-25°C
 
+            v9.15.1: range extended to ±5°C.
+
             '
           default: 2
           selector:
             number:
               min: 0.5
-              max: 3.0
+              max: 5.0
               step: 0.1
               unit_of_measurement: °C
               mode: slider
@@ -3885,6 +3898,34 @@ blueprint:
               step: 0.1
               unit_of_measurement: °C
               mode: slider
+        setpoint_hold_minutes:
+          name: Setpoint Hold Time
+          description: '**Minimum minutes between setpoint changes while the unit is running.**
+
+
+            The escalation logic re-evaluates on every check, and with a sensor that reports
+            in 0.1°C steps the one-minute progress reading flickers between "stalled" and
+            "dropping", which used to move the setpoint up and down by up to two degrees every
+            minute. A Daikin revs its indoor fan for a moment on every new setpoint, so that
+            churn is audible.
+
+
+            Once a setpoint has been sent it is now held for this many minutes. A change of a
+            full degree or more still goes out immediately, and a unit that is not in the
+            expected mode is always re-commanded. 0 restores the old behaviour.
+
+
+            v9.15.2. Recommended: 5.
+
+            '
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 30
+              step: 1
+              unit_of_measurement: min
+              mode: slider
         check_interval_minutes:
           name: Check Interval
           description: '**How often to check conditions** and evaluate temperature
@@ -5639,6 +5680,8 @@ variables:
     = true %}\n    {% endif %}\n  {% endif %}\n{% endfor %} {{ 'on' if ac_states.any_running
     else 'off' }}\n"
   runtime_min: !input min_runtime_minutes
+  # v9.15.2: minimum minutes between setpoint changes while running
+  setpoint_hold: !input setpoint_hold_minutes
   offtime_min: !input min_off_time_minutes
   enforce_offtime: !input enforce_off_time_protection
   control_mode_helper: !input helper_control_mode
@@ -9925,11 +9968,24 @@ action:
         # not in the expected mode. Re-sending an unchanged setpoint every run (34 commands
         # in 9 min observed) re-armed the integration's 45 s command grace and left
         # physical-remote detection ~95% blind while cooling.
+        # v9.15.2: and HOLD a sent setpoint for setpoint_hold minutes. The escalation
+        # ladder flips between Level 1 and Level 4 as the one-minute progress reading
+        # flickers between 0.0 and -0.1 on a 0.1°C sensor, which moved the setpoint by
+        # up to 2°C on nearly every run (nine commands in eight minutes observed on the
+        # Office, 05/09). Each new setpoint makes a Daikin rev its indoor fan for a
+        # moment. Time since the last change is the expected-temp helper's last_changed
+        # (input_number ignores same-value writes, so it only moves when the setpoint
+        # did). A change of a full degree or more still goes out immediately.
         - if:
           - condition: template
-            value_template: '{% set exp = (states(helper_expected_temp) | float(-1)) if helper_expected_temp
-              not in [none, '''', ''unavailable'', ''unknown''] else -1 %} {{ (adjusted_target
-              | float(0)) != exp or states(repeat.item) != continue_hvac_mode }}'
+            value_template: '{% set exp_ok = helper_expected_temp not in [none, '''', ''unavailable'',
+              ''unknown''] and states(helper_expected_temp) not in [''unknown'', ''unavailable'',
+              ''''] %} {% set exp = (states(helper_expected_temp) | float(-1)) if exp_ok else
+              -1 %} {% set want = adjusted_target | float(0) %} {% set mode_wrong = states(repeat.item)
+              != continue_hvac_mode %} {% set changed = want != exp %} {% set big = ((want - exp)
+              | abs) >= 1.0 %} {% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
+              / 60) if exp_ok else 999 %} {{ mode_wrong or (changed and (not exp_ok or big or
+              held_min >= (setpoint_hold | float(5)))) }}'
           then:
           - service: climate.set_temperature
             target:
