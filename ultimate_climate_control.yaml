@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.15.5
-  description: "**Ultimate Smart Climate Control v9.15.5**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.16.0
+  description: "**Ultimate Smart Climate Control v9.16.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,13 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.15.5 - Setpoint Hold survives an interrupted check:**\n•
+    UPDATES:**\n\n**v9.16.0 - Bed ECO can keep pushing until the room sensor reaches target:**\n•
+    **New**: Bed ECO Keeps Pushing (off by default). Bed ECO used to ask the unit for exactly
+    the target and nothing more, so a unit whose own return-air sensor was satisfied could
+    idle while the room sensor sat half a degree above target for hours. When on, the
+    escalation ladder applies in Bed ECO too, capped at the Bed ECO Maximum Overshoot
+    Tolerance below target; hand-over to fan-only still happens at target on the room
+    sensor.\n\n**v9.15.5 - Setpoint Hold survives an interrupted check:**\n•
     **Fixed**: a check that was still sending commands to a slow unit could be cancelled by
     the next minute tick or temperature reading before it recorded what it sent, so the hold
     clock never advanced and the setpoint kept changing. The record is now written before
@@ -1919,6 +1925,30 @@ blueprint:
               step: 0.1
               unit_of_measurement: °C
               mode: slider
+        bed_eco_allow_escalation:
+          name: Bed ECO Keeps Pushing Until the Room Sensor Reaches Target
+          description: '**Let Bed ECO ask the unit for less than the target while the
+            room sensor is still above it.**
+
+
+            Bed ECO normally asks the unit for exactly the target and nothing more. A unit
+            whose own return-air sensor is already satisfied then idles while the room
+            sensor sits half a degree above target for hours (seen 06/09/2026, 06:48 to
+            08:24: asked for 22, room 22.5 to 22.7, fan 2, for 96 minutes).
+
+
+            When ON, the normal escalation ladder applies in Bed ECO as well, capped at the
+            Bed ECO Maximum Overshoot Tolerance below target, so the unit keeps working
+            until the ROOM sensor reaches the target. Hand-over to fan-only still happens
+            at target on the room sensor, so the room does not go below it.
+
+
+            **Recommended:** ON if you sleep hot and the room sensor is near the bed.
+
+            '
+          default: false
+          selector:
+            boolean: {}
         bed_eco_near_target_threshold:
           name: Bed ECO Near-Target Threshold
           description: "**\"Good enough\" zone** - how close to target before BED
@@ -5781,6 +5811,7 @@ variables:
   bed_eco_stability_rate: !input bed_eco_stability_rate
   bed_eco_return_threshold: !input bed_eco_return_threshold
   bed_eco_max_overshoot: !input bed_eco_max_overshoot
+  bed_eco_allow_escalation: !input bed_eco_allow_escalation
   bed_eco_near_target_threshold: !input bed_eco_near_target_threshold
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
@@ -7156,10 +7187,14 @@ action:
       * scale) %}\n    {% endif %}\n    {# At or above target: no compensation - prevents
       overheating past target #}\n  {% endif %}\n{% endif %}\n{# Step 2: Apply dynamic
       escalation adjustment if enabled #} {# v7.2.0: Skip escalation in bed comfort
-      modes - gentle cooling to target then fan_only #} {% if enable_dynamic_target
+      modes - gentle cooling to target then fan_only #} {# v9.16.0: unless bed_eco_allow_escalation
+      is on, in which case it applies capped at bed_eco_max_overshoot below target, so a
+      unit whose own sensor is satisfied keeps working until the ROOM sensor reaches
+      target #} {% if enable_dynamic_target
       and (final_escalation_level | int(0)) > 0 and (is_cooling or is_heating) and
-      not in_bed_comfort %}\n  {% set escalation_adj = final_escalation_level * effective_escalation_offset
-      %}\n  {% if is_cooling %}\n    {% set base = base - escalation_adj %}\n  {%
+      (not in_bed_comfort or (bed_eco_allow_escalation | bool)) %}\n  {% set escalation_adj = final_escalation_level * effective_escalation_offset
+      %}\n  {% if in_bed_comfort %}\n    {% set escalation_adj = [escalation_adj, bed_eco_max_overshoot
+      | float(1.0)] | min %}\n  {% endif %}\n  {% if is_cooling %}\n    {% set base = base - escalation_adj %}\n  {%
       elif is_heating %}\n    {% set base = base + escalation_adj %}\n  {% endif %}\n{%
       endif %}\n{# Step 3: Apply heat source compensation if enabled (v6.5.0) #} {#
       When devices like gaming PCs are under load, proactively lower target to counteract
