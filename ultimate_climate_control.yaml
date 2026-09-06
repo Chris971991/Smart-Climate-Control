@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.16.1
-  description: "**Ultimate Smart Climate Control v9.16.1**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.16.2
+  description: "**Ultimate Smart Climate Control v9.16.2**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,13 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.16.1 - Ceiling fan override detection works straight after a restart:**\n•
+    UPDATES:**\n\n**v9.16.2 - Putting the ceiling fan back ends its override:**\n•
+    **New**: a ceiling-fan override starts when you move the fan away from what the
+    automation wanted. If you then put it back (fan on by hand, then off again while the
+    automation wanted it off), the override ends on the spot instead of running out its
+    timer, and fan automation resumes. Independent mode only; a 'both' override keeps its
+    AC half. The expected-fan tracker is now written when a fan override starts, so this
+    works even right after a restart.\n\n**v9.16.1 - Ceiling fan override detection works straight after a restart:**\n•
     **Fixed**: turning a ceiling fan on or off by hand (wall switch, dashboard, app) was
     ignored for hours after every Home Assistant restart. The expected-fan tracker starts
     blank after a restart and the detector treated blank as \"cannot tell\". It now treats
@@ -8608,6 +8614,63 @@ action:
     continue_on_error: true
   - stop: Manual override detected - stopping automation to prevent interference with
       user's manual changes
+# v9.16.2: undoing the hand change ends the fan override. A fan override starts because the
+# fan was put somewhere the automation did not expect; when the user then puts it back to
+# the tracked state (what the automation last wanted, written at activation), there is
+# nothing left to protect, so the override ends now instead of running out its timer.
+# Independent mode only: in linked mode the room-wide Override may also carry an AC change
+# this trigger cannot see. Only our own fan commands carry a parent_id, so a change with
+# none is the user (wall switch, dashboard or app). Mirrors the manual-clear handler:
+# 'both' keeps its AC half, the flag goes off only when nothing is left, flag LAST.
+- if:
+  - condition: template
+    value_template: '{{ trigger.id == ''ceiling_fan_state_change'' }}'
+  - condition: template
+    value_template: '{{ fan_override_active and override_behavior == ''independent'' and
+      ceiling_fan_configured }}'
+  - condition: template
+    value_template: "{{ trigger.to_state is defined and trigger.from_state is defined\n
+      \  and trigger.from_state.state not in ['unavailable', 'unknown']\n   and trigger.to_state.state
+      not in ['unavailable', 'unknown']\n   and (trigger.to_state.context.parent_id | default(none))
+      is none\n   and helper_expected_ceiling_fan not in [none, '', 'unavailable', 'unknown']\n
+      \  and states(helper_expected_ceiling_fan) in ['on', 'off']\n   and trigger.to_state.state
+      == states(helper_expected_ceiling_fan) }}\n"
+  then:
+  - if:
+    - condition: template
+      value_template: '{{ helper_override_source not in [none, '''', ''unavailable'',
+        ''unknown''] }}'
+    then:
+    - service: input_text.set_value
+      target:
+        entity_id: '{{ helper_override_source }}'
+      data:
+        value: '{{ ''ac'' if states(helper_override_source) == ''both'' else ''none'' }}'
+      continue_on_error: true
+  - service: input_text.set_value
+    target:
+      entity_id: '{{ helper_expected_ceiling_fan }}'
+    data:
+      value: '{{ states(ceiling_fan_entity) }}'
+    continue_on_error: true
+  - service: system_log.write
+    data:
+      message: "✅ {{ room_name | upper }} FAN OVERRIDE CLEARED - FAN PUT BACK (INDEPENDENT
+        MODE) • Fan changed: {{ trigger.from_state.state }} → {{ trigger.to_state.state
+        }}, which is what the automation wanted • Ceiling fan automation resuming • AC
+        {{ 'override still active' if states(helper_override_source) == 'ac' else 'was
+        not affected' }}\n"
+      level: warning
+  - if:
+    - condition: template
+      value_template: '{{ helper_override_flag not in [none, '''', ''unavailable'', ''unknown'']
+        and states(helper_override_source) != ''ac'' }}'
+    then:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: '{{ helper_override_flag }}'
+      continue_on_error: true
+  - stop: Fan override cleared - fan put back to the expected state
 - if:
   - condition: template
     value_template: '{{ enable_ceiling_fan_override_detection }}'
@@ -8666,6 +8729,20 @@ action:
           entity_id: '{{ helper_override_timeout_storage }}'
         data:
           value: '{{ override_timeout }}'
+        continue_on_error: true
+    # v9.16.2: remember what the automation wanted (the state the fan just LEFT) so that
+    # putting the fan back can end this override. Same value the detector compared
+    # against; fills the tracker when it was blank after a restart.
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_ceiling_fan }}'
+        data:
+          value: '{{ trigger.from_state.state }}'
         continue_on_error: true
     - service: system_log.write
       data:
@@ -8733,6 +8810,18 @@ action:
           entity_id: '{{ helper_override_timeout_storage }}'
         data:
           value: '{{ override_timeout }}'
+        continue_on_error: true
+    # v9.16.2: keep the tracker meaningful here too (see the independent branch).
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'',
+          ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_ceiling_fan }}'
+        data:
+          value: '{{ trigger.from_state.state }}'
         continue_on_error: true
     - service: system_log.write
       data:
