@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.16.2
-  description: "**Ultimate Smart Climate Control v9.16.2**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.17.0
+  description: "**Ultimate Smart Climate Control v9.17.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,12 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.16.2 - Putting the ceiling fan back ends its override:**\n•
+    UPDATES:**\n\n**v9.17.0 - Pre-conditioning can have its own trigger temperatures:**\n•
+    **New**: Pre-conditioning Trigger (Comfort zone, the previous behaviour, or Custom).
+    Pre-conditioning used to start only when the room was outside the normal comfort zone,
+    so with a wide zone an already-warm room got no pre-cooling on the way home. Custom
+    adds a pre-cooling trigger temperature (start at or above it) and a pre-heating trigger
+    temperature (start at or below it). Only the start decision changes.\n\n**v9.16.2 - Putting the ceiling fan back ends its override:**\n•
     **New**: a ceiling-fan override starts when you move the fan away from what the
     automation wanted. If you then put it back (fan on by hand, then off again while the
     automation wanted it off), the override ends on the spot instead of running out its
@@ -1225,6 +1230,58 @@ blueprint:
             number:
               min: 0.5
               max: 3.0
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+        precond_trigger_mode:
+          name: Pre-conditioning Trigger
+          description: 'What decides that a room is worth pre-conditioning while you are
+            heading home.
+
+
+            • **Comfort zone:** the room must be outside the normal comfort zone (above
+            the everyday cooling restart point, or below the heating one). With a wide
+            comfort zone this means an already-warm room can get no pre-cooling at all.
+
+            • **Custom:** use the two trigger temperatures below instead, so pre-conditioning
+            can start earlier than the everyday logic would. Only the START decision
+            changes; the pre-conditioning target and its end conditions are unchanged.
+
+            '
+          default: Comfort zone
+          selector:
+            select:
+              options:
+              - Comfort zone
+              - Custom
+              multiple: false
+              custom_value: false
+              sort: false
+        precond_cool_trigger_temp:
+          name: Pre-cooling Trigger Temperature (°C)
+          description: 'Custom trigger only: start pre-cooling when the room is at or
+            above this temperature (and above the target).
+
+            '
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 32
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+        precond_heat_trigger_temp:
+          name: Pre-heating Trigger Temperature (°C)
+          description: 'Custom trigger only: start pre-heating when the room is at or
+            below this temperature (and below the target).
+
+            '
+          default: 18
+          selector:
+            number:
+              min: 10
+              max: 24
               step: 0.5
               unit_of_measurement: °C
               mode: slider
@@ -5549,6 +5606,10 @@ variables:
   precond_expiry_mode: !input precond_expiry_mode
   precond_grace_period: !input precond_grace_period
   precond_temp_threshold: !input precond_temp_threshold
+  # v9.17.0: optional custom START triggers for pre-conditioning
+  precond_trigger_mode: !input precond_trigger_mode
+  precond_cool_trigger_temp: !input precond_cool_trigger_temp
+  precond_heat_trigger_temp: !input precond_heat_trigger_temp
   precond_fan_mode: !input precond_fan_mode
   precond_boost_enabled: !input precond_boost_enabled
   precond_max_runtime: !input precond_max_runtime
@@ -12846,11 +12907,17 @@ action:
         or manual_precond_needs_setup }}
 
         '
+    # v9.17.0: with the Custom trigger the START decision uses the two trigger
+    # temperatures instead of the comfort-zone edges (a wide comfort zone meant an
+    # already-warm room got no pre-cooling). The target and end conditions are unchanged.
     - condition: template
-      value_template: '{% set needs_cooling = current_temp > comfort_max_temp and
-        current_temp > target_temp and enable_cooling %} {% set needs_heating = current_temp
-        < comfort_min_temp and current_temp < target_temp and enable_heating %} {%
-        set manual_precond = (is_precond_mode | bool) and actual_ac_state == ''off''
+      value_template: '{% set custom = precond_trigger_mode == ''Custom'' %} {% set
+        cool_hit = (current_temp >= (precond_cool_trigger_temp | float(24))) if custom
+        else (current_temp > comfort_max_temp) %} {% set heat_hit = (current_temp <=
+        (precond_heat_trigger_temp | float(18))) if custom else (current_temp < comfort_min_temp)
+        %} {% set needs_cooling = cool_hit and current_temp > target_temp and enable_cooling
+        %} {% set needs_heating = heat_hit and current_temp < target_temp and enable_heating
+        %} {% set manual_precond = (is_precond_mode | bool) and actual_ac_state == ''off''
         %} {{ needs_cooling or needs_heating or manual_precond }}
 
         '
@@ -12948,8 +13015,14 @@ action:
           option: Pre-conditioning
         continue_on_error: true
     - variables:
-        precond_hvac_mode: "{% if current_temp > comfort_max_temp and enable_cooling
-          %}\n  cool\n{% elif current_temp < comfort_min_temp and enable_heating %}\n
+        # v9.17.0: judged against the same trigger the start decision used, so a Custom
+        # trigger below the comfort-zone edge still picks 'cool' rather than 'heat_cool'.
+        precond_hvac_mode: "{% set custom = precond_trigger_mode == 'Custom' %}{% set
+          cool_hit = (current_temp >= (precond_cool_trigger_temp | float(24))) if custom
+          else (current_temp > comfort_max_temp) %}{% set heat_hit = (current_temp <=
+          (precond_heat_trigger_temp | float(18))) if custom else (current_temp < comfort_min_temp)
+          %}{% if cool_hit and enable_cooling
+          %}\n  cool\n{% elif heat_hit and enable_heating %}\n
           \ heat\n{% elif enable_cooling and enable_heating %}\n  heat_cool\n{% elif
           enable_cooling %}\n  cool\n{% elif enable_heating %}\n  heat\n{% else %}\n
           \ off\n{% endif %}\n"
