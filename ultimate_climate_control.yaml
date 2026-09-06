@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.17.0
-  description: "**Ultimate Smart Climate Control v9.17.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.17.1
+  description: "**Ultimate Smart Climate Control v9.17.1**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,13 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.17.0 - Pre-conditioning can have its own trigger temperatures:**\n•
+    UPDATES:**\n\n**v9.17.1 - Pre-conditioning hands a running unit to Smart as a live run:**\n•
+    **Fixed**: when pre-conditioning ended with the unit still cooling, the room was
+    handed back to Smart as if nothing was running, so the next check parked the AC in
+    fan-only until the room climbed back past the everyday restart point. It is now handed
+    over as a live cooling (or heating) run and continues to the target.\n• **Changed**:
+    the Pre-conditioning Temperature Threshold can now be 0, meaning pre-conditioning ends
+    only when the room sensor reaches the target.\n\n**v9.17.0 - Pre-conditioning can have its own trigger temperatures:**\n•
     **New**: Pre-conditioning Trigger (Comfort zone, the previous behaviour, or Custom).
     Pre-conditioning used to start only when the room was outside the normal comfort zone,
     so with a wide zone an already-warm room got no pre-cooling on the way home. Custom
@@ -1222,13 +1228,14 @@ blueprint:
 
             Only used when Expiry Mode is "Temperature Only" or "Both".
 
-            Example: 1.0 means AC turns off when within 1°C of target.
+            Example: 1.0 means pre-conditioning ends when within 1°C of target. 0 means
+            it ends only when the room sensor reaches the target itself.
 
             '
           default: 1.0
           selector:
             number:
-              min: 0.5
+              min: 0
               max: 3.0
               step: 0.5
               unit_of_measurement: °C
@@ -6293,11 +6300,21 @@ action:
       data:
         value: none
       continue_on_error: true
+  # v9.17.1: a pre-conditioning run that ends with the unit still cooling (or heating)
+  # is handed to Smart/Auto as a LIVE run instead of 'off'. Recorded as 'off', the next
+  # Smart check saw a running unit with no run on record, took the "running but
+  # shouldn't be" branch and parked it in fan-only until the room climbed back past
+  # the everyday restart point. As 'cooling' the continue-cooling logic carries it to
+  # the target (setpoint hold and escalation apply) and stops there; the presence
+  # timeout still switches it off if the room stays empty.
   - service: input_text.set_value
     target:
       entity_id: '{{ helper_mode }}'
     data:
-      value: 'off'
+      value: "{% set unit = states(climate_list[0]) if climate_list | length > 0 else
+        'off' %}{% set handoff = from_mode == 'Pre-conditioning' and to_mode in ['Smart',
+        'Auto'] %}{% if handoff and unit == 'cool' %}cooling{% elif handoff and unit ==
+        'heat' %}heating{% else %}off{% endif %}"
     continue_on_error: true
   - service: input_datetime.set_datetime
     target:
