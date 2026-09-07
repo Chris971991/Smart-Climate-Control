@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.17.1
-  description: "**Ultimate Smart Climate Control v9.17.1**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.18.0
+  description: "**Ultimate Smart Climate Control v9.18.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,15 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.17.1 - Pre-conditioning hands a running unit to Smart as a live run:**\n•
+    UPDATES:**\n\n**v9.18.0 - Bed ECO rests with the ceiling fan, and rests longer:**\n•
+    **New**: Bed ECO Fan-Only Mode gains \"Enabled, AC off\": during the rest phase the unit is
+    switched off and the ceiling fan holds the room; the AC is commanded back on by Bed ECO
+    itself when the return threshold is crossed.\n• **New**: Fan During Bed Comfort gains
+    \"Dynamic\": the ceiling fan runs low near the target and medium as the room warms, never
+    above the in-bed cap.\n• **New**: Bed ECO Stop Point Below Target: the rest phase can start
+    below the target (e.g. 0.5 below), which with a wide Return Threshold gives the compressor
+    long rests instead of half-degree cycles.\n• **Fixed**: the fan zone can no longer take
+    over a bedroom while someone is in bed.\n\n**v9.17.1 - Pre-conditioning hands a running unit to Smart as a live run:**\n•
     **Fixed**: when pre-conditioning ended with the unit still cooling, the room was
     handed back to Smart as if nothing was running, so the next check parked the AC in
     fan-only until the room climbed back past the everyday restart point. It is now handed
@@ -1826,6 +1834,8 @@ blueprint:
                 value: disabled
               - label: Enabled - Switch to fan-only when stable
                 value: enabled
+              - label: Enabled, AC off - the ceiling fan holds the room instead of the AC fan
+                value: ceiling_fan
               multiple: false
               custom_value: false
               sort: false
@@ -1999,6 +2009,23 @@ blueprint:
             number:
               min: 0.5
               max: 2.5
+              step: 0.1
+              unit_of_measurement: °C
+              mode: slider
+        bed_eco_stop_below_target:
+          name: Bed ECO Stop Point Below Target (°C)
+          description: 'How far below the target the room sensor must be before Bed ECO
+            hands over to its rest phase (fan-only, or AC off with the ceiling fan). 0 keeps
+            the previous behaviour, the rest phase starts at the target. Together with a
+            wide Return Threshold this makes each compressor rest longer: target 22, stop
+            0.5 below, return 1.5 above = compressor off at 21.5, back on above 23.5.
+
+            '
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 1.5
               step: 0.1
               unit_of_measurement: °C
               mode: slider
@@ -4748,6 +4775,8 @@ blueprint:
                 value: low
               - label: Unchanged - Keep current speed
                 value: unchanged
+              - label: Dynamic - Low near target, medium as the room warms (bed cap applies)
+                value: dynamic
               multiple: false
               custom_value: false
               sort: false
@@ -5893,6 +5922,7 @@ variables:
   bed_eco_return_threshold: !input bed_eco_return_threshold
   bed_eco_max_overshoot: !input bed_eco_max_overshoot
   bed_eco_allow_escalation: !input bed_eco_allow_escalation
+  bed_eco_stop_below_target: !input bed_eco_stop_below_target
   bed_eco_near_target_threshold: !input bed_eco_near_target_threshold
   extreme_override: !input extreme_temp_override
   extreme_high: !input extreme_high_temp
@@ -6749,7 +6779,7 @@ action:
       %}\n{% else %}\n  {# Auto mode: low → medium → high across the fan zone #}\n
       \ {% if delta <= third %}\n    {% set ns.raw = 'low' %}\n  {% elif delta <=
       (third * 2) %}\n    {% set ns.raw = 'medium' %}\n  {% else %}\n    {% set ns.raw
-      = 'high' %}\n  {% endif %}\n{% endif %} {# v9.1.0: Cap ceiling fan speed when
+      = 'high' %}\n  {% endif %}\n{% endif %} {# v9.18.0: Dynamic in bed: low within the near-target band, medium beyond (the bed cap below still applies) #} {% if bed_occupied and fan_bed_comfort_mode == 'dynamic' %}{% set ns.raw = 'low' if ((current_temp | float(0)) - (target_temp | float(0))) <= (bed_eco_near_target_threshold | float(0.3)) else 'medium' %}{% endif %} {# v9.1.0: Cap ceiling fan speed when
       bed is occupied #} {% if bed_occupied and speed_rank.get(ns.raw, 2) > speed_rank.get(ceiling_fan_bed_max_speed,
       3) %}\n  {{ ceiling_fan_bed_max_speed }}\n{% else %}\n  {{ ns.raw }}\n{% endif
       %}\n"
@@ -6883,7 +6913,7 @@ action:
       elif last_mode != 'bed_comfort_eco' %}\n  False\n{% elif not bed_eco_at_target
       %}\n  False\n{% else %}\n  {% set stability_met = bed_eco_temp_stable and (time_in_current_mode
       | float(0)) >= bed_eco_stability_minutes %}\n  {% set overshoot_target = target_temp
-      - target_overshoot %}\n  {% set temp_met = current_temp <= overshoot_target
+      - ([target_overshoot | float(0), bed_eco_stop_below_target | float(0)] | max) %}\n  {% set temp_met = current_temp <= overshoot_target
       %}\n  {% if bed_eco_fan_only_trigger == 'temperature' %}\n    {{ temp_met }}\n
       \ {% elif bed_eco_fan_only_trigger == 'either' %}\n    {{ stability_met or temp_met
       }}\n  {% else %}\n    {{ stability_met }}\n  {% endif %}\n{% endif %}\n"
@@ -10190,12 +10220,14 @@ action:
         or ((is_precond_mode | bool) and states(climate_list[0]) == ''cool'') }}'
     - condition: template
       value_template: '{{ current_temp <= comfort_max_temp or (is_precond_mode | bool)
-        }}'
+        or (last_mode in [''bed_comfort_eco'', ''bed_comfort_quiet''] and (bed_occupied | bool)) }}'
     - condition: template
       value_template: '{% set overshoot_target = target_temp - target_overshoot %}
         {% set raw_margin = (hysteresis_tolerance | float(0.3)) / 2 %} {% set continue_margin
         = [raw_margin, 0.1] | max %} {{ (current_temp > overshoot_target and current_temp
-        < (comfort_max_temp - continue_margin)) or (is_precond_mode | bool) }}
+        < (comfort_max_temp - continue_margin)) or (is_precond_mode | bool) or (last_mode
+        in [''bed_comfort_eco'', ''bed_comfort_quiet''] and (bed_occupied | bool) and current_temp
+        > (overshoot_target - (bed_eco_stop_below_target | float(0)))) }}
 
         '
     - condition: template
@@ -11539,7 +11571,7 @@ action:
         | bool) and fan_precondition_mode == 'skip')\n   and not (enable_pre_conditioning
         and (approaching_home | bool) and not (anyone_home | bool) and not (is_precond_mode
         | bool) and fan_precondition_mode == 'skip')\n   and not (bed_occupied and
-        fan_bed_comfort_mode == 'off') }}\n"
+        fan_bed_comfort_mode == 'off')\n   and not (bed_occupied and bed_comfort_mode != 'off') }}\n"
     # v9.14.0 (bug 1): never START the ceiling fan on a phantom reading either.
     - condition: template
       value_template: '{{ temp_sensor_available | bool }}'
@@ -13483,7 +13515,7 @@ action:
               continue_on_error: true
         - conditions:
           - condition: template
-            value_template: '{{ fan_bed_comfort_mode == ''low'' and (ceiling_fan_domain
+            value_template: '{{ fan_bed_comfort_mode in [''low'', ''dynamic''] and (ceiling_fan_domain
               == ''fan'' or ceiling_fan_has_speed_switches) }}'
           sequence:
           - choose:
@@ -13783,24 +13815,101 @@ action:
         data:
           value: '{{ new_fan_mode }}'
         continue_on_error: true
-    - repeat:
-        for_each: '{{ climate_list }}'
+    # v9.18.0: with the ceiling_fan option the rest phase turns the unit OFF and lets the
+    # ceiling fan hold the room (the AC's own fan-only is pointless next to a ceiling fan,
+    # per Chris). The fan-zone entry carries a bed guard so it cannot grab the room while
+    # the unit is off in bed; the return branch above commands the unit back on itself.
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ bed_eco_fan_only_mode == ''ceiling_fan'' and ceiling_fan_configured }}'
         sequence:
-        - service: climate.set_temperature
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_hvac }}'
+            data:
+              value: 'off'
+            continue_on_error: true
+        - if:
+          - condition: template
+            value_template: '{{ helper_expected_ceiling_fan not in [none, '''', ''unavailable'', ''unknown''] }}'
+          then:
+          - service: input_text.set_value
+            target:
+              entity_id: '{{ helper_expected_ceiling_fan }}'
+            data:
+              value: 'on'
+            continue_on_error: true
+        - service: climate.turn_off
           target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ target_temp }}'
-            hvac_mode: '{{ selected_fan_only_hvac }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
-        - service: climate.set_fan_mode
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            fan_mode: '{{ new_fan_mode }}'
-          continue_on_error: false
+            entity_id: '{{ climate_list }}'
+          continue_on_error: true
+        - choose:
+          - conditions:
+            - condition: template
+              value_template: '{{ ceiling_fan_has_speed_switches }}'
+            sequence:
+            - service: switch.turn_off
+              target:
+                entity_id: '{{ ceiling_fan_other_switches }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 100
+            - service: switch.turn_on
+              target:
+                entity_id: '{{ ceiling_fan_target_switch }}'
+              continue_on_error: true
+          - conditions:
+            - condition: template
+              value_template: '{{ ceiling_fan_domain == ''fan'' }}'
+            sequence:
+            - service: fan.turn_on
+              target:
+                entity_id: '{{ ceiling_fan_entities }}'
+              continue_on_error: true
+            - delay:
+                milliseconds: 500
+            - choose:
+              - conditions:
+                - condition: template
+                  value_template: '{{ ceiling_fan_has_presets }}'
+                sequence:
+                - service: fan.set_preset_mode
+                  target:
+                    entity_id: '{{ ceiling_fan_entities }}'
+                  data:
+                    preset_mode: '{{ ceiling_fan_target_speed }}'
+                  continue_on_error: true
+              default:
+              - service: fan.set_percentage
+                target:
+                  entity_id: '{{ ceiling_fan_entities }}'
+                data:
+                  percentage: '{{ ceiling_fan_target_pct }}'
+                continue_on_error: true
+      default:
+      - repeat:
+          for_each: '{{ climate_list }}'
+          sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              temperature: '{{ target_temp }}'
+              hvac_mode: '{{ selected_fan_only_hvac }}'
+            continue_on_error: false
+          - delay:
+              milliseconds: 500
+          - service: climate.set_fan_mode
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              fan_mode: '{{ new_fan_mode }}'
+            continue_on_error: false
     - if:
       - condition: template
         value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
@@ -13865,6 +13974,113 @@ action:
           message: "[EVENT] {{ room_name }} 🛏️ | Bed Eco → Resuming Cooling | Room {{
             current_temp }}°C exceeded threshold {{ (target_temp + bed_eco_return_threshold)
             | round(1) }}°C"
+          level: warning
+    # v9.18.0: command the unit here. The continue-cooling branch used to do it on the
+    # next check, but that branch only ran while the room was at or below the comfort
+    # ceiling, and a return point above the ceiling (return threshold wider than the
+    # comfort width) never got there, so a unit that the ceiling_fan rest phase had
+    # turned OFF stayed off. Helpers first, device calls last (H11).
+    - variables:
+        bed_return_hvac: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or []) | list %}{% if 'cool' in modes %}cool{% elif 'Cool' in modes %}Cool{% else %}cool{% endif %}"
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_hvac not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_hvac }}'
+        data:
+          value: '{{ bed_return_hvac }}'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_number.set_value
+        target:
+          entity_id: '{{ helper_expected_temp }}'
+        data:
+          value: '{{ adjusted_target }}'
+        continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'', ''unknown''] }}'
+      then:
+      - service: input_text.set_value
+        target:
+          entity_id: '{{ helper_expected_fan }}'
+        data:
+          value: '{{ new_fan_mode }}'
+        continue_on_error: true
+    - repeat:
+        for_each: '{{ climate_list }}'
+        sequence:
+        - service: climate.set_temperature
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            temperature: '{{ adjusted_target }}'
+            hvac_mode: '{{ bed_return_hvac }}'
+          continue_on_error: true
+        - delay:
+            milliseconds: 500
+        - service: climate.set_fan_mode
+          target:
+            entity_id: '{{ repeat.item }}'
+          data:
+            fan_mode: '{{ new_fan_mode }}'
+          continue_on_error: true
+  # v9.18.0: while the ceiling_fan rest phase holds the room (AC off), keep the ceiling
+  # fan at the speed the in-bed rule wants (low near target, medium as it warms, capped).
+  - conditions:
+    - condition: template
+      value_template: "{{ last_mode == 'bed_eco_fan_only' and bed_eco_fan_only_mode == 'ceiling_fan'
+        and ceiling_fan_configured and not fan_override_active and (ceiling_fan_is_on | bool) }}"
+    - condition: template
+      value_template: "{% set cur = 'unknown' %}{% if ceiling_fan_has_speed_switches %}{% set cur = 'high' if is_state(ceiling_fan_high_switch, 'on') else ('medium' if is_state(ceiling_fan_medium_switch, 'on') else ('low' if is_state(ceiling_fan_low_switch, 'on') else 'off')) %}{% elif ceiling_fan_domain == 'fan' and ceiling_fan_has_presets %}{% set cur = state_attr(ceiling_fan_entity, 'preset_mode') | default('unknown') | lower %}{% elif ceiling_fan_domain == 'fan' %}{% set pct = state_attr(ceiling_fan_entity, 'percentage') | int(0) %}{% set cur = 'low' if pct <= 33 else ('medium' if pct <= 66 else 'high') %}{% endif %}{{ cur != (ceiling_fan_target_speed | trim) }}"
+    sequence:
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ ceiling_fan_has_speed_switches }}'
+        sequence:
+        - service: switch.turn_off
+          target:
+            entity_id: '{{ ceiling_fan_other_switches }}'
+          continue_on_error: true
+        - delay:
+            milliseconds: 100
+        - service: switch.turn_on
+          target:
+            entity_id: '{{ ceiling_fan_target_switch }}'
+          continue_on_error: true
+      - conditions:
+        - condition: template
+          value_template: '{{ ceiling_fan_domain == ''fan'' and ceiling_fan_has_presets }}'
+        sequence:
+        - service: fan.set_preset_mode
+          target:
+            entity_id: '{{ ceiling_fan_entities }}'
+          data:
+            preset_mode: '{{ ceiling_fan_target_speed }}'
+          continue_on_error: true
+      - conditions:
+        - condition: template
+          value_template: '{{ ceiling_fan_domain == ''fan'' }}'
+        sequence:
+        - service: fan.set_percentage
+          target:
+            entity_id: '{{ ceiling_fan_entities }}'
+          data:
+            percentage: '{{ ceiling_fan_target_pct }}'
+          continue_on_error: true
+    - if:
+      - condition: template
+        value_template: '{{ event_logging_enabled }}'
+      then:
+      - service: system_log.write
+        data:
+          message: "[EVENT] {{ room_name }} 🛏️ | Bed Eco Rest: Ceiling Fan {{ ceiling_fan_target_speed }} | Room {{ current_temp }}°C, Target {{ target_temp }}°C, compressor back on above {{ (target_temp + bed_eco_return_threshold) | round(1) }}°C"
           level: warning
   - conditions:
     - condition: template
