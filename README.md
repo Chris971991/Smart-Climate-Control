@@ -25,6 +25,9 @@ A comprehensive Home Assistant blueprint for advanced climate control featuring 
 - **Near-Target Stall Detection**: Automatically detects when system gets stuck close to target
 - **Dynamic Escalation Logic**: Increases power when progress stalls for extended periods
 - **Smart Priority System**: Escalation overrides de-escalation during stall scenarios
+- **Pull-down Strength (v9.19.0)**: the setpoint sent to the AC moves further from target the further the room is from it (strength 2 with a 22°C target: a 25°C room starts the AC at 18), and holds there until the room is within 0.5°C of target, so the AC keeps working through the last degree. The automation still stops at the target. 0 = off.
+- **AC Sensor Offset (v9.19.0)**: the AC judges how hard to work from its own built-in sensor, which often reads colder than your room sensor. Enter the usual difference and it is added to the push, so the AC never thinks it is done while the room is still warm. 0 = off.
+- **Steady setpoints (v9.19.0)**: setpoints are rounded to what the AC can show and only re-sent when they actually need to change; a harder setpoint goes at once, an easier one waits for the Setpoint Hold Time.
 - **Graduated Fan Speeds**: Automatic selection from gentle to maximum power
 - **Smart Thresholds**: Outside temperature compensation makes AC work harder on extreme days
 - **Precise Control**: Temperature boundaries with hysteresis to prevent oscillation

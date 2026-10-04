@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.18.0
-  description: "**Ultimate Smart Climate Control v9.18.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.19.0
+  description: "**Ultimate Smart Climate Control v9.19.0**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -34,7 +34,19 @@ blueprint:
     target)\n- Time-based scheduling (morning/day/evening/night + weekends)\n- Window
     detection with auto-shutoff\n- **ENHANCED v3.3.0:** Comprehensive manual override
     (detects all parameter changes via HA UI or remote)\n\n---\n\n**\U0001F4CB VERSION
-    UPDATES:**\n\n**v9.18.0 - Bed ECO rests with the ceiling fan, and rests longer:**\n•
+    UPDATES:**\n\n**v9.19.0 - The AC works hard until the room is cool:**\n•
+    **New**: Pull-down Strength: the setpoint sent to the AC is pushed further from the
+    target the further the room is from it (strength 2, target 22: a 25°C room starts at 18),
+    and is held there until the room is within half a degree of target. Default 0 keeps
+    the previous behaviour.\n• **New**: AC Sensor Offset: allows for the AC's own sensor
+    reading colder (or warmer) than your room sensor, so the AC never thinks it is done
+    while the room is still warm.\n• **Fixed**: the setpoint no longer flips back and
+    forth (20, 21, 20, 21) while the room is above its comfort band; it is only re-sent
+    when it actually needs to change, and is rounded to what the AC can show (toward the
+    cooler side when cooling).\n• **Fixed**: pre-conditioning no longer flips the AC between
+    its boost setting and the normal target in its last half degree.\n•
+    **Fixed**: Powerful boost can now engage while the room is well above target (it
+    only worked inside the comfort band before).\n\n**v9.18.0 - Bed ECO rests with the ceiling fan, and rests longer:**\n•
     **New**: Bed ECO Fan-Only Mode gains \"Enabled, AC off\": during the rest phase the unit is
     switched off and the ceiling fan holds the room; the AC is commanded back on by Bed ECO
     itself when the return threshold is crossed.\n• **New**: Fan During Bed Comfort gains
@@ -4024,6 +4036,69 @@ blueprint:
               step: 0.1
               unit_of_measurement: °C
               mode: slider
+        setpoint_pulldown_per_degree:
+          name: Pull-down Strength (°C per °C)
+          description: '**How hard the AC is pushed for each degree the room is away from
+            target.** Needs Dynamic Target Adjustment on.
+
+
+            The setpoint sent to the AC is lowered (cooling) or raised (heating) by this
+            many degrees for every degree the room sensor is from target, on top of the
+            escalation adjustment. A Daikin inverter decides how hard to run its compressor
+            from the gap between the setpoint and its OWN sensor, so a setpoint close to the
+            target lets it throttle back while the room is still warm.
+
+
+            **Example (target 22°C, strength 2, no escalation or sensor offset yet):** the AC
+            starts at 18 (its minimum) for a 25°C room, or 19 for a 23.5°C room. Escalation and
+            the AC Sensor Offset push it further on top.
+
+
+            While the room is more than 0.5°C from target the setpoint is held: it can get
+            harder but never eases off, so a pull-down that started at 18 stays at 18 until
+            the room is within half a degree. Inside that it eases (e.g. 20.5 at 22.6°C). The
+            automation still stops the AC at the target as before, so this gets you there
+            faster, not colder.
+
+
+            **0** = off (the setpoint follows the escalation level only, as before v9.19.0).
+            **2** = strong. **3** = very strong: with a 22°C target and an 18°C AC minimum,
+            any room more than about 1.3°C over starts at the minimum.
+
+            '
+          default: 0
+          selector:
+            number:
+              min: 0.0
+              max: 5.0
+              step: 0.5
+              unit_of_measurement: °C/°C
+              mode: slider
+        unit_sensor_offset:
+          name: AC Sensor Offset
+          description: '**How much colder (cooling) or warmer (heating) the AC''s own built-in
+            sensor reads than your room sensor.** Needs Dynamic Target Adjustment on.
+
+
+            The automation judges the room by your room sensor, but the AC judges how hard
+            to work by its own sensor. If the AC reads 21 while your room sensor reads 22.5,
+            a setpoint of 21 looks "done" to the AC. This many degrees are added to the push
+            whenever the AC is cooling or heating, so the AC still sees work to do.
+
+
+            Compare the AC''s current temperature with your room sensor while it runs and
+            enter the usual difference. Whole-degree AC sensors flicker by a degree, so use
+            the typical gap, not the largest. **0** = off.
+
+            '
+          default: 0
+          selector:
+            number:
+              min: 0.0
+              max: 3.0
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
         deescalation_approach_threshold:
           name: De-escalation Approach Threshold
           description: '**Degrees from target** when system can de-escalate power.
@@ -5801,6 +5876,9 @@ variables:
   deescalation_threshold: !input deescalation_approach_threshold
   enable_dynamic_target: !input enable_dynamic_target_adjustment
   escalation_offset: !input escalation_target_offset
+  # v9.19.0: setpoint drive (see setpoint_drive / adjusted_target)
+  pulldown_per_degree: !input setpoint_pulldown_per_degree
+  unit_sensor_offset: !input unit_sensor_offset
   escalation_time_factor: '{{ {1: 1.5, 2: 1.0, 3: 0.8, 4: 0.6, 5: 0.45}.get(aggressiveness
     | int(2), 1.0) }}'
   effective_escalation_offset: '{{ (escalation_offset | float(0.5)) * {1: 0.5, 2: 1.0,
@@ -7276,69 +7354,154 @@ action:
       }}
 
       '
-    adjusted_target: "{% set base = target_temp %} {# v4.0.0 FIX: Simplified mode
-      detection for unified cooling/heating modes #} {# When OFF, use current temp
-      to predict which mode will activate #} {% set mode_is_cooling = last_mode in
-      ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] %} {% set mode_is_heating
-      = last_mode == 'heating' %} {% set temp_needs_cooling = current_temp > comfort_max_temp
-      %} {% set temp_needs_heating = current_temp < comfort_min_temp %} {% set is_cooling
-      = mode_is_cooling or (not mode_is_heating and temp_needs_cooling) %} {% set
-      is_heating = mode_is_heating or (not mode_is_cooling and temp_needs_heating)
-      %} {# v7.2.0: Bed comfort modes use raw target for gentle cooling to fan_only
-      transition #} {% set in_bed_comfort = last_mode in ['bed_comfort_eco', 'bed_comfort_quiet',
-      'bed_eco_fan_only'] %}\n{# Step 1: Apply outside temperature compensation if
-      enabled #} {# v7.2.0: Skip outside compensation in bed comfort modes - use raw
-      target for gentle cooling #} {# v9.3.7 FIX: Scale compensation proportionally
-      to distance from target #} {# Full compensation when far away (aggressive approach),
-      zero at target (no overshoot) #} {% if enable_outside_temp_compensation and
-      (is_cooling or is_heating) and not in_bed_comfort %}\n  {% set outdoor = outdoor_temperature
-      | float(25) %}\n  {% set outdoor_delta = outdoor - outside_compensation_base_temp
-      %}\n\n  {% if is_cooling and outdoor_delta > 0 %}\n    {# Hot outside - scale
-      compensation by how far above target we are #}\n    {% set temp_gap = current_temp
-      - target_temp %}\n    {% if temp_gap > 0 %}\n      {% set comfort_range = (comfort_max_temp
-      | float(0)) - target_temp %}\n      {% set scale = ([temp_gap / comfort_range,
-      1.0] | min) if comfort_range > 0 else 0.0 %}\n      {% set base = base - (outside_temp_compensation_amount
-      * scale) %}\n    {% endif %}\n    {# At or below target: no compensation - prevents
-      overcooling past target #}\n  {% elif is_heating and outdoor_delta < 0 %}\n
-      \   {# Cold outside - scale compensation by how far below target we are #}\n
-      \   {% set temp_gap = target_temp - current_temp %}\n    {% if temp_gap > 0
-      %}\n      {% set comfort_range = target_temp - (comfort_min_temp | float(0))
-      %}\n      {% set scale = ([temp_gap / comfort_range, 1.0] | min) if comfort_range
-      > 0 else 0.0 %}\n      {% set base = base + (outside_temp_compensation_amount
-      * scale) %}\n    {% endif %}\n    {# At or above target: no compensation - prevents
-      overheating past target #}\n  {% endif %}\n{% endif %}\n{# Step 2: Apply dynamic
-      escalation adjustment if enabled #} {# v7.2.0: Skip escalation in bed comfort
-      modes - gentle cooling to target then fan_only #} {# v9.16.0: unless bed_eco_allow_escalation
-      is on, in which case it applies capped at bed_eco_max_overshoot below target, so a
-      unit whose own sensor is satisfied keeps working until the ROOM sensor reaches
-      target #} {% if enable_dynamic_target
-      and (final_escalation_level | int(0)) > 0 and (is_cooling or is_heating) and
-      (not in_bed_comfort or (bed_eco_allow_escalation | bool)) %}\n  {% set escalation_adj = final_escalation_level * effective_escalation_offset
-      %}\n  {% if in_bed_comfort %}\n    {% set escalation_adj = [escalation_adj, bed_eco_max_overshoot
-      | float(1.0)] | min %}\n  {% endif %}\n  {% if is_cooling %}\n    {% set base = base - escalation_adj %}\n  {%
-      elif is_heating %}\n    {% set base = base + escalation_adj %}\n  {% endif %}\n{%
-      endif %}\n{# Step 3: Apply heat source compensation if enabled (v6.5.0) #} {#
-      When devices like gaming PCs are under load, proactively lower target to counteract
-      heat #} {% if heat_source_active and is_cooling %}\n  {% set base = base - heat_source_compensation_amount
-      %}\n{% endif %}\n{# Step 4: Pre-conditioning boost - use AC min/max for fastest
-      cooling/heating (v7.1.3) #} {# When approaching home, we want to cool/heat as
-      fast as possible #} {# Note: is_precond_mode defined later, so read helper directly
-      #} {% set precond_mode_check = states(control_mode_helper) == 'Pre-conditioning'
-      %} {% set precond_boost = precond_mode_check and precond_boost_enabled %} {%
-      if precond_boost and is_cooling %}\n  {% set base = ac_min_resolved | float(18)
-      %}\n{% elif precond_boost and is_heating %}\n  {% set base = ac_max_resolved
-      | float(30) %}\n{% elif precond_mode_check and is_cooling %}\n  {% set base =
-      [base, precond_target | float(22)] | min %}\n{% elif precond_mode_check and is_heating
-      %}\n  {% set base = [base, precond_target | float(22)] | max %}\n{% endif %}\n{#
-      AC temperature limits resolved once in ac_min_resolved/ac_max_resolved
-      (user override if non-zero -> reported values -> safe defaults) #} {% set ac_min_temp
-      = ac_min_resolved | float(16) %} {% set ac_max_temp = ac_max_resolved | float(30)
-      %}\n{# Safety limits: Respect AC hardware limits while allowing escalation adjustments
-      #} {% if is_cooling %}\n  {# Allow cooling below target_temp when escalated,
-      but respect AC minimum temp #}\n  {{ [ac_min_temp, base] | max | round(1) }}\n{%
-      elif is_heating %}\n  {# Allow heating above target_temp when escalated, but
-      respect AC maximum temp #}\n  {{ [base, ac_max_temp] | min | round(1) }}\n{%
-      else %}\n  {{ target_temp }}\n{% endif %}\n"
+    # v9.19.0: the setpoint is driven by how far the room is from target, held while the
+    # room is still warm, and rounded to the unit's step. Before this the only push below
+    # target was the escalation ladder (offset x level, recomputed from scratch every run).
+    # The ladder flips between levels as the room creeps, so the Office was told 20, 21,
+    # 20, 21 (nine changes in 50 min, 04/10) and spent its last degree at a setpoint its own
+    # sensor already read as reached, at fan 5 with the compressor throttled back.
+    #   setpoint_direction  cool / heat / none, the same rule the v4.0.0 template used inline,
+    #                       plus a unit that is cooling/heating in Pre-conditioning (inside the
+    #                       comfort band that used to read 'none', so the setpoint fell back to
+    #                       the plain target every hold period and the PRE-CONDITIONING
+    #                       CORRECTION branch put the boost back: a 5-minute flip-flop, v9.15.5)
+    #   setpoint_hold_active  the pull-down hold applies (Pull-down > 0 only, room > 0.5 away)
+    #                       A target raised mid pull-down therefore takes effect once the
+    #                       room is within 0.5 of it (a bound based on the current room gap
+    #                       released the hold about 1 degree early, audit 04/10).
+    #   setpoint_drive      pull-down x room gap + unit sensor offset + level x level offset
+    #                       (capped at bed_eco_max_overshoot in bed comfort modes)
+    setpoint_direction: "{% set mode_is_cooling = last_mode in ['cooling', 'bed_comfort_eco',
+      'bed_comfort_quiet'] %}{% set mode_is_heating = last_mode == 'heating' %}{% set precond_unit
+      = (states(climate_list[0]) if climate_list | length > 0 else 'off') if states(control_mode_helper)
+      == 'Pre-conditioning' else 'off' %}{% if mode_is_cooling %}cool{% elif mode_is_heating
+      %}heat{% elif precond_unit == 'cool' %}cool{% elif precond_unit == 'heat' %}heat{% elif
+      current_temp > comfort_max_temp %}cool{% elif current_temp < comfort_min_temp %}heat{% else
+      %}none{% endif %}"
+    setpoint_in_bed_comfort: "{{ last_mode in ['bed_comfort_eco', 'bed_comfort_quiet', 'bed_eco_fan_only'] }}"
+    setpoint_room_gap: "{% if setpoint_direction == 'cool' %}{% set g = current_temp - target_temp
+      %}{% elif setpoint_direction == 'heat' %}{% set g = target_temp - current_temp %}{% else
+      %}{% set g = 0 %}{% endif %}{{ [g, 0] | max | round(2) }}"
+    setpoint_drive_proportional: "{{ ((pulldown_per_degree | float(0)) * (setpoint_room_gap
+      | float(0))) | round(2) }}"
+    setpoint_drive_stall: "{{ ((final_escalation_level | int(0)) * (effective_escalation_offset
+      | float(0))) | round(2) }}"
+    setpoint_drive: "{% if (enable_dynamic_target | bool) and setpoint_direction != 'none' and
+      (not (setpoint_in_bed_comfort | bool) or (bed_eco_allow_escalation | bool)) %}{% set d
+      = (setpoint_drive_proportional | float(0)) + (unit_sensor_offset | float(0)) + (setpoint_drive_stall
+      | float(0)) %}{% if setpoint_in_bed_comfort | bool %}{% set d = [d, bed_eco_max_overshoot
+      | float(1.0)] | min %}{% endif %}{{ d | round(2) }}{% else %}0{% endif %}"
+    setpoint_hold_active: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+      'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', ''] %}{%
+      set running = climate_list | length > 0 and states(climate_list[0]) in ['cool', 'heat',
+      'auto', 'heat_cool', 'dry'] %}{% set on = (enable_dynamic_target | bool) and (pulldown_per_degree
+      | float(0)) > 0 and exp_ok and running %}{% if on and setpoint_direction == 'cool' %}{{
+      last_mode in ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] and (current_temp - target_temp)
+      > 0.5 }}{% elif on and setpoint_direction == 'heat' %}{{ last_mode == 'heating' and (target_temp
+      - current_temp) > 0.5 }}{% else %}False{% endif %}"
+    adjusted_target: >-
+      {% set is_cooling = setpoint_direction == 'cool' %}
+      {% set is_heating = setpoint_direction == 'heat' %}
+      {% set in_bed_comfort = setpoint_in_bed_comfort | bool %}
+      {% set base = target_temp %}
+      {# Step 1: outside temperature compensation, scaled by the distance from target
+         (v9.3.7), skipped in bed comfort modes (v7.2.0) #}
+      {% if enable_outside_temp_compensation and (is_cooling or is_heating) and not in_bed_comfort %}
+        {% set outdoor = outdoor_temperature | float(25) %}
+        {% set outdoor_delta = outdoor - outside_compensation_base_temp %}
+        {% if is_cooling and outdoor_delta > 0 %}
+          {% set temp_gap = current_temp - target_temp %}
+          {% if temp_gap > 0 %}
+            {% set comfort_range = (comfort_max_temp | float(0)) - target_temp %}
+            {% set scale = ([temp_gap / comfort_range, 1.0] | min) if comfort_range > 0 else 0.0 %}
+            {% set base = base - (outside_temp_compensation_amount * scale) %}
+          {% endif %}
+        {% elif is_heating and outdoor_delta < 0 %}
+          {% set temp_gap = target_temp - current_temp %}
+          {% if temp_gap > 0 %}
+            {% set comfort_range = target_temp - (comfort_min_temp | float(0)) %}
+            {% set scale = ([temp_gap / comfort_range, 1.0] | min) if comfort_range > 0 else 0.0 %}
+            {% set base = base + (outside_temp_compensation_amount * scale) %}
+          {% endif %}
+        {% endif %}
+      {% endif %}
+      {# Step 2 (v9.19.0): the drive. With Pull-down 0 and Unit Sensor Offset 0 this is
+         exactly the old escalation adjustment (level x offset per level). #}
+      {% set drive = setpoint_drive | float(0) %}
+      {% if is_cooling %}{% set base = base - drive %}{% elif is_heating %}{% set base = base + drive %}{% endif %}
+      {# Step 3: heat source compensation (v6.5.0) #}
+      {% if heat_source_active and is_cooling %}
+        {% set base = base - heat_source_compensation_amount %}
+      {% endif %}
+      {# Step 4: pre-conditioning (v7.1.3) #}
+      {% set precond_mode_check = states(control_mode_helper) == 'Pre-conditioning' %}
+      {% set precond_boost = precond_mode_check and precond_boost_enabled %}
+      {% if precond_boost and is_cooling %}
+        {% set base = ac_min_resolved | float(18) %}
+      {% elif precond_boost and is_heating %}
+        {% set base = ac_max_resolved | float(30) %}
+      {% elif precond_mode_check and is_cooling %}
+        {% set base = [base, precond_target | float(22)] | min %}
+      {% elif precond_mode_check and is_heating %}
+        {% set base = [base, precond_target | float(22)] | max %}
+      {% endif %}
+      {# Step 5 (v9.19.0): AC limits, the unit's step (rounded toward the harder side, so
+         what we send is what the unit shows), and the hold (setpoint_hold_active, i.e.
+         Pull-down > 0): while the room is still more than 0.5 from target the setpoint never
+         moves to the easier side of the last one SENT (the expected-temp helper), so a
+         flicker in the escalation level or a 0.1 wobble on the room sensor can no longer
+         back the unit off mid pull-down. Inside 0.5 it eases (easier moves still wait for
+         the Setpoint Hold). #}
+      {% set ac_min_temp = ac_min_resolved | float(16) %}
+      {% set ac_max_temp = ac_max_resolved | float(30) %}
+      {% set step = (state_attr(climate_list[0], 'target_temp_step') | float(0.5)) if climate_list | length > 0 else 0.5 %}
+      {% set step = step if step > 0 else 0.5 %}
+      {% set exp_ok = helper_expected_temp not in [none, '', 'unavailable', 'unknown']
+         and states(helper_expected_temp) not in ['unknown', 'unavailable', ''] %}
+      {% set hold = setpoint_hold_active | bool %}
+      {% set last_sent = (states(helper_expected_temp) | float(0)) if exp_ok else 0 %}
+      {% set bed_floor = target_temp - (bed_eco_max_overshoot | float(1.0)) %}
+      {% if is_cooling %}
+        {% set base = [ac_min_temp, base] | max %}
+        {# +/- 0.0001: 15.999999999999998 must not floor a whole step down #}
+        {% set base = [ac_min_temp, ((base / step + 0.0001) | round(0, 'floor')) * step] | max %}
+        {% if hold and last_sent >= ac_min_temp and last_sent < base
+           and (not in_bed_comfort or last_sent >= bed_floor) %}
+          {% set base = last_sent %}
+        {% endif %}
+        {{ base | round(1) }}
+      {% elif is_heating %}
+        {% set base = [base, ac_max_temp] | min %}
+        {% set base = [((base / step - 0.0001) | round(0, 'ceil')) * step, ac_max_temp] | min %}
+        {% if hold and last_sent <= ac_max_temp and last_sent > base %}
+          {% set base = last_sent %}
+        {% endif %}
+        {{ base | round(1) }}
+      {% else %}
+        {{ target_temp }}
+      {% endif %}
+    # v9.19.0: ONE send decision for every branch that holds a running unit at a setpoint
+    # (cooling entry/active, continue-cooling, heating entry/active, continue-heating).
+    # The two "active" branches used to re-send adjusted_target on every run with no hold,
+    # which is where the 20/21 churn came from once the room sat above the comfort band.
+    # True when a unit's reported setpoint differs from adjusted_target by 0.3 or more
+    # (not clipped at its min/max) AND the move is to the harder side, or the hold since the
+    # last sent setpoint has elapsed. While the pull-down hold is active, harder moves go at
+    # once: the hold means they only ever step one way per pull-down. Otherwise every move
+    # waits for the Setpoint Hold, exactly as v9.15.3.
+    # A unit that is off or in the wrong mode is handled by each branch's own mode check.
+    setpoint_change_due: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+      'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', ''] %}{%
+      set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
+      / 60) if exp_ok else 999 %}{% set want = adjusted_target | float(0) %}{% set ns = namespace(due=false)
+      %}{% for e in climate_list %}{% set dev = state_attr(e, 'temperature') %}{% if dev is none
+      %}{% set ns.due = true %}{% else %}{% set dev = dev | float(0) %}{% set lo = state_attr(e,
+      'min_temp') | float(16) %}{% set hi = state_attr(e, 'max_temp') | float(30) %}{% set clipped
+      = (want < dev and dev <= lo + 0.01) or (want > dev and dev >= hi - 0.01) %}{% set harder
+      = (setpoint_direction == 'cool' and want < dev) or (setpoint_direction == 'heat' and want
+      > dev) %}{% if ((dev - want) | abs) >= 0.3 and not clipped and ((harder and (setpoint_hold_active
+      | bool)) or not exp_ok or held_min >= (setpoint_hold | float(5))) %}{% set ns.due = true %}{% endif %}{% endif %}{% endfor %}{{
+      ns.due }}"
     last_transition: "{% if helper_last_transition %}\n  {% set transition_state =
       states(helper_last_transition) | default('none') %}\n  {{ 'none' if transition_state
       in ['unknown', 'unavailable', ''] else transition_state }}\n{% else %}\n  none\n{%
@@ -9768,36 +9931,23 @@ action:
       level: warning
 - if:
   - condition: template
-    value_template: '{{ debug_enabled and enable_dynamic_target and (final_escalation_level
-      | int(0)) > 0 }}'
+    value_template: '{{ debug_enabled and enable_dynamic_target and setpoint_direction
+      != ''none'' }}'
   then:
   - service: system_log.write
     data:
-      message: "[12/18] \U0001F3AF {{ room_name | upper }} DYNAMIC TARGET ADJUSTMENT\n\U0001F527
-        Smart Escalation Boost Active:\n    • Feature Enabled: {{ enable_dynamic_target
-        }}\n    • User Desired Temperature: {{ target_temp }}°C\n    • Final Escalation
-        Level: {{ final_escalation_level }}\n    • Offset Per Level: {{ effective_escalation_offset
-        | float(0.5) | round(2) }}°C (base {{ escalation_offset }}°C × aggressiveness {{
-        aggressiveness }})\n    • Total Adjustment: {{ (final_escalation_level * effective_escalation_offset)
-        | round(1) }}°C\n\n\U0001F321️ Target Calculation:\n    • Current Mode: {{
-        last_mode }}\n    {% if last_mode == 'cooling' %}\n    • Cooling Mode: LOWERING
-        target to make AC work harder\n    • Formula: {{ target_temp }}°C - ({{ final_escalation_level
-        }} × {{ effective_escalation_offset | float(0.5) | round(2) }}°C) = {{ adjusted_target }}°C\n    • AC will cool
-        to {{ adjusted_target }}°C instead of {{ target_temp }}°C\n    • Creates {{
-        (target_temp - adjusted_target) | round(1) }}°C buffer zone below user target\n
-        \   {% elif last_mode == 'heating' %}\n    • Heating Mode: RAISING target
-        to make AC work harder\n    • Formula: {{ target_temp }}°C + ({{ final_escalation_level
-        }} × {{ effective_escalation_offset | float(0.5) | round(2) }}°C) = {{ adjusted_target }}°C\n    • AC will heat
-        to {{ adjusted_target }}°C instead of {{ target_temp }}°C\n    • Creates {{
-        (adjusted_target - target_temp) | round(1) }}°C buffer zone above user target\n
-        \   {% endif %}\n\n\U0001F4A1 Why This Helps:\n    • AC compressor works harder
-        with more aggressive target\n    • Combined with Fan Level {{ final_escalation_level
-        }} = maximum effectiveness\n    • Buffer zone prevents immediate drift back
-        when escalation reduces\n    • Auto-reverts to {{ target_temp }}°C once temperature
-        stable\n\n⚙️ Behavior:\n    • Target sent to AC: {{ adjusted_target }}°C ({{
-        \"%.1f\" | format(adjusted_target - target_temp) }}°C {% if adjusted_target
-        > target_temp %}above{% else %}below{% endif %} user target)\n    • Once stable
-        and escalation drops to 0: Returns to {{ target_temp }}°C\n"
+      message: "[12/18] \U0001F3AF {{ room_name | upper }} SETPOINT DRIVE (v9.19.0)\n
+        \   • Direction: {{ setpoint_direction }} • Room {{ current_temp }}°C, target
+        {{ target_temp }}°C, room gap {{ setpoint_room_gap }}°C\n    • Pull-down: {{
+        pulldown_per_degree }} × {{ setpoint_room_gap }} = {{ setpoint_drive_proportional
+        }}°C\n    • AC sensor offset: {{ unit_sensor_offset }}°C\n    • Escalation: L{{
+        final_escalation_level }} × {{ effective_escalation_offset | float(0) | round(2)
+        }}°C = {{ setpoint_drive_stall }}°C\n    • Total drive: {{ setpoint_drive }}°C{%
+        if setpoint_in_bed_comfort | bool %} (bed cap {{ bed_eco_max_overshoot }}°C){%
+        endif %}\n    • Setpoint: {{ adjusted_target }}°C • Last sent: {{ states(helper_expected_temp)
+        if helper_expected_temp else 'n/a' }}°C • Unit reports: {{ state_attr(climate_list[0],
+        'temperature') if climate_list | length > 0 else 'n/a' }}°C\n    • Pull-down hold
+        active (never eases): {{ setpoint_hold_active }} • Change due: {{ setpoint_change_due }}\n"
       level: warning
 - if:
   - condition: template
@@ -10268,22 +10418,19 @@ action:
         # forever. Within 0.3°C counts as equal (a BRP072C rounds 18.6 to 18.5), and a unit
         # sitting on its min/max limit with the target beyond it counts as equal (BRP084
         # clipping). The helper is still the hold clock, written just BEFORE the command.
-        setpoint_send: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
-          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
-          %}{% set want = adjusted_target | float(0) %}{% set ns = namespace(wrong=false, differs=false)
-          %}{% for e in climate_list %}{% if states(e) != continue_hvac_mode %}{% set ns.wrong
-          = true %}{% endif %}{% set dev = state_attr(e, 'temperature') %}{% if dev is none
-          %}{% set ns.differs = true %}{% else %}{% set dev = dev | float(0) %}{% set lo = state_attr(e,
-          'min_temp') | float(16) %}{% set hi = state_attr(e, 'max_temp') | float(30) %}{% set
-          clipped = (want < dev and dev <= lo + 0.01) or (want > dev and dev >= hi - 0.01) %}{%
-          if ((dev - want) | abs) >= 0.3 and not clipped %}{% set ns.differs = true %}{% endif
-          %}{% endif %}{% endfor %}{% set held_min = ((as_timestamp(now()) - as_timestamp(states[helper_expected_temp].last_changed))
-          / 60) if exp_ok else 999 %}{{ ns.wrong or (ns.differs and (not exp_ok or held_min
-          >= (setpoint_hold | float(5)))) }}"
+        # v9.19.0: the setpoint half of this decision is the shared setpoint_change_due
+        # (same 0.3 / clipping / hold rules, plus harder moves go at once).
+        setpoint_send: "{% set ns = namespace(wrong=false) %}{% for e in climate_list %}{%
+          if states(e) != continue_hvac_mode %}{% set ns.wrong = true %}{% endif %}{% endfor
+          %}{{ ns.wrong or (setpoint_change_due | bool) }}"
         commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
           'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
           %}{{ (adjusted_target | float(0)) if (setpoint_send | bool) or not exp_ok else (states(helper_expected_temp)
           | float(adjusted_target)) }}"
+        # v9.19.0: the fan command below is skipped while the unit is in Powerful; captured
+        # BEFORE the boost block can change it, so the expected-fan write matches what was sent.
+        fan_held_by_boost: "{{ state_attr(climate_list[0], 'preset_mode') == 'boost' if climate_list
+          | length > 0 else False }}"
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
@@ -10398,10 +10545,12 @@ action:
             Temperature: {{ adjusted_target }}°C\n    • Target Entity: {{ climate_list
             }}\n"
           level: warning
+    # v9.19.0: not while the unit is in Powerful boost: the fan command was skipped,
+    # so the helper would claim a fan the unit was never told.
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+          ''unknown''] and not (fan_held_by_boost | bool) }}'
       then:
       - service: input_text.set_value
         target:
@@ -10488,8 +10637,13 @@ action:
           - variables:
               boost_supported: "{{ 'boost' in (state_attr(repeat.item, 'preset_modes') or []) }}"
               boost_active: "{{ state_attr(repeat.item, 'preset_mode') == 'boost' }}"
-              boost_wanted: "{{ (final_escalation_level | int(0)) >= 4 and ((powerful_boost_in_bed
-                | bool) or not (bed_occupied | bool)) }}"
+              # v9.19.0: once on, Powerful stays on through an established cooling run until
+              # the room is within 0.5 of target, so it does not follow the escalation level's
+              # run-to-run flicker (with or without Pull-down).
+              boost_wanted: "{{ ((final_escalation_level | int(0)) >= 4 or ((boost_active | bool)
+                and last_mode in ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] and (current_temp
+                - target_temp) > 0.5)) and ((powerful_boost_in_bed | bool) or not (bed_occupied
+                | bool)) }}"
           - choose:
             - conditions:
               - condition: template
@@ -11227,6 +11381,23 @@ action:
           \ Heat/Cool\n{% else %}\n  {{ modes[0] if modes else 'cool' }}\n{% endif
           %}\n"
         selected_swing_mode: '{{ validated_swing_mode }}'
+        # v9.19.0: this branch re-sent adjusted_target on EVERY run with no hold (the
+        # continue-cooling branch has had one since v9.15.2), so once the room sat above
+        # the comfort band the escalation flicker reached the unit unfiltered: 20 / 21 / 20
+        # nine times in 50 min on the Office, 04/10. It also re-armed the integration's 45 s
+        # command grace every run (the v9.14.0 bug 3 blindness, here). Same rule as
+        # continue-cooling now: send on entry / wrong mode, or when setpoint_change_due.
+        setpoint_send: "{% set ns = namespace(wrong=false) %}{% for e in climate_list %}{%
+          if states(e) != selected_hvac_mode %}{% set ns.wrong = true %}{% endif %}{% endfor
+          %}{{ ns.wrong or (setpoint_change_due | bool) }}"
+        commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
+          %}{{ (adjusted_target | float(0)) if (setpoint_send | bool) or not exp_ok else (states(helper_expected_temp)
+          | float(adjusted_target)) }}"
+        # v9.19.0: the fan command below is skipped while the unit is in Powerful; captured
+        # BEFORE the boost block can change it, so the expected-fan write matches what was sent.
+        fan_held_by_boost: "{{ state_attr(climate_list[0], 'preset_mode') == 'boost' if climate_list
+          | length > 0 else False }}"
     - if:
       - condition: template
         value_template: '{{ debug_enabled }}'
@@ -11401,36 +11572,117 @@ action:
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ selected_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
+        # v9.19.0: send only when setpoint_send says so; the hold clock (expected-temp
+        # helper) is written just BEFORE the command, as in continue-cooling (v9.15.5).
         - if:
           - condition: template
-            value_template: '{{ fan_mode_changed }}'
+            value_template: '{{ (setpoint_send | bool) or states(repeat.item) != selected_hvac_mode
+              }}'
           then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_number.set_value
+              target:
+                entity_id: '{{ helper_expected_temp }}'
+              data:
+                value: '{{ adjusted_target }}'
+              continue_on_error: true
+          - service: climate.set_temperature
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              temperature: '{{ adjusted_target }}'
+              hvac_mode: '{{ selected_hvac_mode }}'
+            continue_on_error: false
+          - delay:
+              milliseconds: 500
+        # v9.19.0: never re-send a fan speed while the unit is in Powerful boost (a fan
+        # command cancels Powerful on a Daikin), and stamp the fan-change clock first.
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and state_attr(repeat.item, ''preset_mode'')
+              != ''boost'' }}'
+          then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_last_fan_change not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - service: climate.set_fan_mode
             target:
               entity_id: '{{ repeat.item }}'
             data:
               fan_mode: '{{ selected_fan_mode }}'
             continue_on_error: false
+    # v9.19.0: Powerful boost here too. It only lived in the continue-cooling branch,
+    # which runs inside the comfort band; since the bands were narrowed a room far enough
+    # off target to reach escalation Level 4 is always in THIS branch, so Powerful could
+    # never engage. Same rules as there (v9.15.0).
     - if:
       - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
+        value_template: '{{ powerful_boost_enabled | bool }}'
       then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
+      - repeat:
+          for_each: '{{ climate_list }}'
+          sequence:
+          - variables:
+              boost_supported: "{{ 'boost' in (state_attr(repeat.item, 'preset_modes') or []) }}"
+              boost_active: "{{ state_attr(repeat.item, 'preset_mode') == 'boost' }}"
+              # v9.19.0: once on, Powerful stays on through an established cooling run until
+              # the room is within 0.5 of target, so it does not follow the escalation level's
+              # run-to-run flicker (with or without Pull-down).
+              boost_wanted: "{{ ((final_escalation_level | int(0)) >= 4 or ((boost_active | bool)
+                and last_mode in ['cooling', 'bed_comfort_eco', 'bed_comfort_quiet'] and (current_temp
+                - target_temp) > 0.5)) and ((powerful_boost_in_bed | bool) or not (bed_occupied
+                | bool)) }}"
+          - choose:
+            - conditions:
+              - condition: template
+                value_template: '{{ (boost_supported | bool) and (boost_wanted | bool) and not
+                  (boost_active | bool) and states(repeat.item) != ''off'' }}'
+              sequence:
+              - service: climate.set_preset_mode
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  preset_mode: boost
+                continue_on_error: true
+              - if:
+                - condition: template
+                  value_template: '{{ event_logging_enabled }}'
+                then:
+                - service: system_log.write
+                  data:
+                    message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost ON | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C, {{ distance_from_target | round(1) }}°C away | {{ repeat.item }}"
+                    level: warning
+            - conditions:
+              - condition: template
+                value_template: '{{ (boost_supported | bool) and (boost_active | bool) and not
+                  (boost_wanted | bool) }}'
+              sequence:
+              - service: climate.set_preset_mode
+                target:
+                  entity_id: '{{ repeat.item }}'
+                data:
+                  preset_mode: none
+                continue_on_error: true
+              - if:
+                - condition: template
+                  value_template: '{{ event_logging_enabled }}'
+                then:
+                - service: system_log.write
+                  data:
+                    message: "[EVENT] {{ room_name }} ⚡ | Powerful Boost OFF | Escalation L{{ final_escalation_level }}, Room {{ current_temp }}°C, Target {{ target_temp }}°C | {{ repeat.item }}"
+                    level: warning
     - if:
       - condition: template
         value_template: '{{ event_logging_enabled and last_mode != ''cooling'' }}'
@@ -11438,30 +11690,21 @@ action:
       - service: system_log.write
         data:
           message: "[EVENT] {{ room_name }} ❄️ | Cooling Started | Room {{ current_temp
-            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            }}°C, Target {{ commanded_temp }}°C, Fan {{ selected_fan_mode }}, HVAC {{
             selected_hvac_mode }}"
           level: warning
+    # v9.19.0: not while the unit is in Powerful boost: the fan command was skipped,
+    # so the helper would claim a fan the unit was never told.
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+          ''unknown''] and not (fan_held_by_boost | bool) }}'
       then:
       - service: input_text.set_value
         target:
           entity_id: '{{ helper_expected_fan }}'
         data:
           value: '{{ selected_fan_mode }}'
-        continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_number.set_value
-        target:
-          entity_id: '{{ helper_expected_temp }}'
-        data:
-          value: '{{ adjusted_target }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -11505,7 +11748,7 @@ action:
       then:
       - variables:
           snapshot_hvac: '{{ selected_hvac_mode }}'
-          snapshot_temp: '{{ adjusted_target }}'
+          snapshot_temp: '{{ commanded_temp }}'
           snapshot_fan: '{{ selected_fan_mode }}'
           snapshot_swing: '{{ validated_swing_mode }}'
           update_snapshot: hvac={{ snapshot_hvac }},temp={{ snapshot_temp }},fan={{
@@ -12132,22 +12375,64 @@ action:
         continue_hvac_mode_heating: "{% set modes = (state_attr(climate_list[0], 'hvac_modes') or [])
           | list %} {% if 'heat' in modes %}\n  heat\n{% elif 'Heat' in modes %}\n
           \ Heat\n{% else %}\n  {{ modes[0] if modes else 'heat' }}\n{% endif %}\n"
+        # v9.19.0: same send rule as continue-cooling (this one re-sent every run).
+        setpoint_send: "{% set ns = namespace(wrong=false) %}{% for e in climate_list %}{%
+          if states(e) != continue_hvac_mode_heating %}{% set ns.wrong = true %}{% endif %}{% endfor
+          %}{{ ns.wrong or (setpoint_change_due | bool) }}"
+        commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
+          %}{{ (adjusted_target | float(0)) if (setpoint_send | bool) or not exp_ok else (states(helper_expected_temp)
+          | float(adjusted_target)) }}"
+        # v9.19.0: the fan command below is skipped while the unit is in Powerful; captured
+        # BEFORE the boost block can change it, so the expected-fan write matches what was sent.
+        fan_held_by_boost: "{{ state_attr(climate_list[0], 'preset_mode') == 'boost' if climate_list
+          | length > 0 else False }}"
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ continue_hvac_mode_heating }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
+        # v9.19.0: send only when setpoint_send says so (setpoint_change_due), hold
+        # clock written just before the command; fan-change clock likewise.
         - if:
           - condition: template
-            value_template: '{{ fan_mode_changed }}'
+            value_template: '{{ (setpoint_send | bool) or states(repeat.item) != continue_hvac_mode_heating
+              }}'
           then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_number.set_value
+              target:
+                entity_id: '{{ helper_expected_temp }}'
+              data:
+                value: '{{ adjusted_target }}'
+              continue_on_error: true
+          - service: climate.set_temperature
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              temperature: '{{ adjusted_target }}'
+              hvac_mode: '{{ continue_hvac_mode_heating }}'
+            continue_on_error: false
+          - delay:
+              milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and state_attr(repeat.item, ''preset_mode'')
+              != ''boost'' }}'
+          then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_last_fan_change not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - service: climate.set_fan_mode
             target:
               entity_id: '{{ repeat.item }}'
@@ -12178,10 +12463,12 @@ action:
             }} → Final: {{ final_fan_level_int }}\n    • Fan Mode: {{ continue_fan_mode_heating
             }}\n\n\U0001F4A1 Continue Mode: Using new unified fan control (v7.0.0)\n"
           level: warning
+    # v9.19.0: not while the unit is in Powerful boost: the fan command was skipped,
+    # so the helper would claim a fan the unit was never told.
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+          ''unknown''] and not (fan_held_by_boost | bool) }}'
       then:
       - service: input_text.set_value
         target:
@@ -12202,34 +12489,12 @@ action:
         continue_on_error: true
     - if:
       - condition: template
-        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_number.set_value
-        target:
-          entity_id: '{{ helper_expected_temp }}'
-        data:
-          value: '{{ adjusted_target }}'
-        continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
-      then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
-    - if:
-      - condition: template
         value_template: '{{ helper_last_command not in [none, '''', ''unavailable'', ''unknown'']
           }}'
       then:
       - variables:
           snapshot_hvac: '{{ continue_hvac_mode_heating }}'
-          snapshot_temp: '{{ adjusted_target }}'
+          snapshot_temp: '{{ commanded_temp }}'
           snapshot_fan: '{{ continue_fan_mode_heating }}'
           snapshot_swing: '{{ validated_swing_mode }}'
           update_snapshot: hvac={{ snapshot_hvac }},temp={{ snapshot_temp }},fan={{
@@ -12301,6 +12566,18 @@ action:
           \ Heat/Cool\n{% else %}\n  {{ modes[0] if modes else 'heat' }}\n{% endif
           %}\n"
         selected_swing_mode: '{{ validated_swing_mode }}'
+        # v9.19.0: same send rule as the cooling branches (this one re-sent every run).
+        setpoint_send: "{% set ns = namespace(wrong=false) %}{% for e in climate_list %}{%
+          if states(e) != selected_hvac_mode %}{% set ns.wrong = true %}{% endif %}{% endfor
+          %}{{ ns.wrong or (setpoint_change_due | bool) }}"
+        commanded_temp: "{% set exp_ok = helper_expected_temp not in [none, '', 'unavailable',
+          'unknown'] and states(helper_expected_temp) not in ['unknown', 'unavailable', '']
+          %}{{ (adjusted_target | float(0)) if (setpoint_send | bool) or not exp_ok else (states(helper_expected_temp)
+          | float(adjusted_target)) }}"
+        # v9.19.0: the fan command below is skipped while the unit is in Powerful; captured
+        # BEFORE the boost block can change it, so the expected-fan write matches what was sent.
+        fan_held_by_boost: "{{ state_attr(climate_list[0], 'preset_mode') == 'boost' if climate_list
+          | length > 0 else False }}"
     - if:
       - condition: template
         value_template: '{{ helper_mode not in [none, '''', ''unavailable'', ''unknown'']
@@ -12325,19 +12602,49 @@ action:
     - repeat:
         for_each: '{{ climate_list }}'
         sequence:
-        - service: climate.set_temperature
-          target:
-            entity_id: '{{ repeat.item }}'
-          data:
-            temperature: '{{ adjusted_target }}'
-            hvac_mode: '{{ selected_hvac_mode }}'
-          continue_on_error: false
-        - delay:
-            milliseconds: 500
+        # v9.19.0: send only when setpoint_send says so (setpoint_change_due), hold
+        # clock written just before the command; fan-change clock likewise.
         - if:
           - condition: template
-            value_template: '{{ fan_mode_changed }}'
+            value_template: '{{ (setpoint_send | bool) or states(repeat.item) != selected_hvac_mode
+              }}'
           then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_number.set_value
+              target:
+                entity_id: '{{ helper_expected_temp }}'
+              data:
+                value: '{{ adjusted_target }}'
+              continue_on_error: true
+          - service: climate.set_temperature
+            target:
+              entity_id: '{{ repeat.item }}'
+            data:
+              temperature: '{{ adjusted_target }}'
+              hvac_mode: '{{ selected_hvac_mode }}'
+            continue_on_error: false
+          - delay:
+              milliseconds: 500
+        - if:
+          - condition: template
+            value_template: '{{ fan_mode_changed and state_attr(repeat.item, ''preset_mode'')
+              != ''boost'' }}'
+          then:
+          - if:
+            - condition: template
+              value_template: '{{ helper_last_fan_change not in [none, '''', ''unavailable'',
+                ''unknown''] }}'
+            then:
+            - service: input_datetime.set_datetime
+              target:
+                entity_id: '{{ helper_last_fan_change }}'
+              data:
+                datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+              continue_on_error: true
           - service: climate.set_fan_mode
             target:
               entity_id: '{{ repeat.item }}'
@@ -12351,7 +12658,7 @@ action:
       - service: system_log.write
         data:
           message: "[EVENT] {{ room_name }} 🔥 | Heating Started | Room {{ current_temp
-            }}°C, Target {{ adjusted_target }}°C, Fan {{ selected_fan_mode }}, HVAC {{
+            }}°C, Target {{ commanded_temp }}°C, Fan {{ selected_fan_mode }}, HVAC {{
             selected_hvac_mode }}"
           level: warning
     - if:
@@ -12413,27 +12720,18 @@ action:
           target:
             entity_id: '{{ ceiling_fan_entities }}'
           continue_on_error: true
+    # v9.19.0: not while the unit is in Powerful boost: the fan command was skipped,
+    # so the helper would claim a fan the unit was never told.
     - if:
       - condition: template
         value_template: '{{ helper_expected_fan not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
+          ''unknown''] and not (fan_held_by_boost | bool) }}'
       then:
       - service: input_text.set_value
         target:
           entity_id: '{{ helper_expected_fan }}'
         data:
           value: '{{ selected_fan_mode }}'
-        continue_on_error: true
-    - if:
-      - condition: template
-        value_template: '{{ helper_expected_temp not in [none, '''', ''unavailable'',
-          ''unknown''] }}'
-      then:
-      - service: input_number.set_value
-        target:
-          entity_id: '{{ helper_expected_temp }}'
-        data:
-          value: '{{ adjusted_target }}'
         continue_on_error: true
     - if:
       - condition: template
@@ -12477,7 +12775,7 @@ action:
       then:
       - variables:
           snapshot_hvac: '{{ selected_hvac_mode }}'
-          snapshot_temp: '{{ adjusted_target }}'
+          snapshot_temp: '{{ commanded_temp }}'
           snapshot_fan: '{{ selected_fan_mode }}'
           snapshot_swing: '{{ validated_swing_mode }}'
           update_snapshot: hvac={{ snapshot_hvac }},temp={{ snapshot_temp }},fan={{
@@ -12524,17 +12822,6 @@ action:
               }}\n    • Temp: {{ snapshot_temp }}°C\n    • Fan: {{ snapshot_fan }}\n
               \   • Swing: {{ snapshot_swing }}\n"
             level: warning
-    - if:
-      - condition: template
-        value_template: '{{ fan_mode_changed and helper_last_fan_change not in [none,
-          '''', ''unavailable'', ''unknown''] }}'
-      then:
-      - service: input_datetime.set_datetime
-        target:
-          entity_id: '{{ helper_last_fan_change }}'
-        data:
-          datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
-        continue_on_error: true
   - conditions:
     - condition: template
       value_template: '{{ last_mode in [''stability_off'', ''stability_eco'', ''stability_fan_only'',
