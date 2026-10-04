@@ -87,8 +87,8 @@
         "data": {
           "away_mode_action": "🏠 Away Mode Action • What to do when everyone leaves home",
           "smart_mode_behavior": "🚪 Room Absence Behavior • What to do when room is empty",
-          "stability_behavior": "📊 Temperature Stability Action • What to do when temp is stable",
-          "enable_eco_mode": "💚 Enable Eco Mode • Use eco mode when in comfort zone",
+          "stability_mode": "📊 Temperature Stability Action • What to do when temp is stable (needs Eco in Comfort Zone)",
+          "comfort_zone_eco": "💚 Eco in Comfort Zone • Keep the AC running at the target instead of turning it off",
           "enable_notifications": "🔔 Enable Notifications • Push notifications for climate changes"
         }
       },

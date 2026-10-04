@@ -29,11 +29,13 @@ HELPER_DEFINITIONS = {
     # ========================================
     # REQUIRED HELPERS (Always Created)
     # ========================================
+    # v4.4.0: no `initial` on the trackers below. HA resets a helper to its `initial` on every
+    # restart (initial beats restore): a running unit read as 'off', the last temperature as 0,
+    # the last direction as 'none' and the last setpoint sent as 22.
     "last_mode": {
         "domain": "input_text",
         "name": "{room} Climate Last Mode",
         "icon": "mdi:thermostat",
-        "initial": "off",
         "max_length": 255,
     },
     "last_change": {
@@ -65,7 +67,6 @@ HELPER_DEFINITIONS = {
         "min": 0,
         "max": 50,
         "step": 0.1,
-        "initial": 0,
         "unit_of_measurement": "°C",
         "mode": "box",
     },
@@ -94,7 +95,6 @@ HELPER_DEFINITIONS = {
         "domain": "input_text",
         "name": "{room} Climate Last Transition",
         "icon": "mdi:swap-horizontal",
-        "initial": "none",
         "max_length": 100,
     },
 
@@ -111,7 +111,9 @@ HELPER_DEFINITIONS = {
         "domain": "input_text",
         "name": "{room} Mode Before Override",
         "icon": "mdi:backup-restore",
-        "initial": "Auto",
+        # v4.4.0: blank, not 'Auto' (a stale 'Auto' was restored into Smart rooms). The
+        # blueprint falls back to the Default Control Mode when it is blank.
+        "initial": "",
         "max_length": 50,
     },
     "override_time": {
@@ -152,7 +154,6 @@ HELPER_DEFINITIONS = {
         "min": 10,
         "max": 35,
         "step": 0.5,
-        "initial": 22,
         "unit_of_measurement": "°C",
         "mode": "box",
     },
@@ -245,8 +246,53 @@ HELPER_DEFINITIONS = {
         "domain": "input_select",
         "name": "{room} Climate Control Mode",
         "icon": "mdi:tune",
-        "options": ["Auto", "Smart", "Manual", "Override"],
+        # v4.4.0: Pre-conditioning added; the blueprint selects it and the option was missing.
+        "options": ["Auto", "Smart", "Manual", "Override", "Pre-conditioning"],
         "initial": "Smart",
+    },
+
+    # ========================================
+    # PRE-CONDITIONING AND FAN HELPERS (v4.4.0)
+    # ========================================
+    # The blueprint uses these; the wizard never created them, so pre-conditioning could not
+    # run on a wizard install and fan escalation fell back to a one-check-old reading.
+    "precond_start": {
+        "domain": "input_datetime",
+        "name": "{room} Pre-conditioning Start",
+        "icon": "mdi:home-import-outline",
+        "has_date": True,
+        "has_time": True,
+    },
+    "precond_previous_mode": {
+        "domain": "input_text",
+        "name": "{room} Pre-conditioning Previous Mode",
+        "icon": "mdi:history",
+        "max_length": 50,
+    },
+    "precond_arrival": {
+        "domain": "input_datetime",
+        "name": "{room} Pre-conditioning Arrival",
+        "icon": "mdi:home-account",
+        "has_date": True,
+        "has_time": True,
+    },
+    # v4.4.0: the AC fan-change clock (Fan Band Hold Time and the fan debounce need it).
+    "last_fan_change": {
+        "domain": "input_datetime",
+        "name": "{room} Climate Last Fan Change",
+        "icon": "mdi:fan-clock",
+        "has_date": True,
+        "has_time": True,
+    },
+    "fan_entry_temp": {
+        "domain": "input_number",
+        "name": "{room} Ceiling Fan Entry Temperature",
+        "icon": "mdi:thermometer-auto",
+        "min": 0,
+        "max": 50,
+        "step": 0.1,
+        "unit_of_measurement": "°C",
+        "mode": "box",
     },
 
     # ========================================
@@ -275,6 +321,7 @@ FEATURE_HELPERS = {
         "mode_start_time",
         "temp_stable_since",
         "last_transition",
+        "fan_entry_temp",
     ],
     "manual_override": [
         # Keep old helpers for backward compatibility (v5.0.0 - v6.0.0)
@@ -285,7 +332,7 @@ FEATURE_HELPERS = {
         # v6.4.0: UI click tracking for race condition prevention
         "last_ui_click",
     ],
-    "control_mode": ["control_mode"],
+    "control_mode": ["control_mode", "precond_start", "precond_previous_mode", "precond_arrival"],
     "smart_mode": ["presence_detected", "presence_validation_active"],
 }
 
@@ -968,7 +1015,7 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                         options=[
                             {"label": "Off - Turn AC completely off (maximum savings)", "value": "off"},
                             {"label": "Eco - Reduce to eco mode ⭐ Recommended", "value": "eco"},
-                            {"label": "Maintain - Keep current temperature", "value": "maintain"},
+                            {"label": "Maintain - Keep the AC running at the target", "value": "maintain"},
                         ],
                         mode="dropdown",
                     )
@@ -978,40 +1025,25 @@ class SmartClimateHelperCreatorConfigFlow(config_entries.ConfigFlow, domain=DOMA
                         options=[
                             {"label": "Off - Turn off completely (maximum savings)", "value": "off"},
                             {"label": "Eco - Reduce to eco mode ⭐ Recommended", "value": "eco"},
-                            {"label": "Maintain - Keep current temperature", "value": "maintain"},
+                            {"label": "Maintain - Keep the AC running at the target", "value": "maintain"},
                         ],
                         mode="dropdown",
                     )
                 ),
-                vol.Optional("stability_behavior", default="off"): selector.SelectSelector(
+                # v4.4.0: these two now reach the blueprint (stability_mode, comfort_zone_action).
+                # New keys, so a room set up before keeps what it effectively had (disabled / off).
+                vol.Optional("stability_mode", default="disabled"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=[
-                            {"label": "Off - Turn off when stable ⭐ Recommended", "value": "off"},
+                            {"label": "Disabled - No action when stable ⭐ Recommended", "value": "disabled"},
+                            {"label": "Off - Turn the AC off when stable", "value": "off"},
                             {"label": "Eco - Switch to eco mode when stable", "value": "eco"},
+                            {"label": "Fan only - Switch to fan-only when stable", "value": "fan_only"},
                         ],
                         mode="dropdown",
                     )
                 ),
-                vol.Optional("enable_eco_mode", default=True): selector.BooleanSelector(),
-                vol.Optional("fan_speed_eco", default="Level 1"): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            {"label": "Auto", "value": "Auto"},
-                            {"label": "auto", "value": "auto"},
-                            {"label": "Quiet", "value": "Quiet"},
-                            {"label": "Silence", "value": "Silence"},
-                            {"label": "Level 1 ⭐ Recommended (quietest)", "value": "Level 1"},
-                            {"label": "Level 2", "value": "Level 2"},
-                            {"label": "Level 3", "value": "Level 3"},
-                            {"label": "1", "value": "1"},
-                            {"label": "2", "value": "2"},
-                            {"label": "3", "value": "3"},
-                            {"label": "low", "value": "low"},
-                            {"label": "Low", "value": "Low"},
-                        ],
-                        mode="dropdown",
-                    )
-                ),
+                vol.Optional("comfort_zone_eco", default=False): selector.BooleanSelector(),
                 vol.Optional("enable_notifications", default=False): selector.BooleanSelector(),
             }
         )
@@ -1438,21 +1470,19 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             await asyncio.sleep(1)  # Brief pause for cleanup
 
         # Always create base helpers
-        base_helpers = ["last_mode", "last_change"]
+        base_helpers = ["last_mode", "last_change", "last_fan_change"]
         helpers_to_create = base_helpers.copy()
 
         # Add optional helpers based on features
         if config.get("enable_dynamic_adaptation", True):
             helpers_to_create.extend(FEATURE_HELPERS["dynamic_adaptation"])
 
-        if config.get("enable_manual_override", True):
-            helpers_to_create.extend(FEATURE_HELPERS["manual_override"])
-
-        if config.get("enable_control_mode", True):
-            helpers_to_create.extend(FEATURE_HELPERS["control_mode"])
-
-        if config.get("enable_smart_mode", True):
-            helpers_to_create.extend(FEATURE_HELPERS["smart_mode"])
+        # v4.4.0: the override, control-mode and presence helpers are required inputs of the
+        # blueprint, so they are always created; the feature toggles only switch the features.
+        # (With a toggle off the automation had missing required inputs and never loaded.)
+        helpers_to_create.extend(FEATURE_HELPERS["manual_override"])
+        helpers_to_create.extend(FEATURE_HELPERS["control_mode"])
+        helpers_to_create.extend(FEATURE_HELPERS["smart_mode"])
 
         # Build YAML configuration for all helpers
         helpers_config = {}
@@ -1494,13 +1524,18 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                 helper_config["min"] = helper_def.get("min", 0)
                 helper_config["max"] = helper_def.get("max", 100)
                 helper_config["step"] = helper_def.get("step", 1)
-                helper_config["initial"] = helper_def.get("initial", 0)
+                # v4.4.0: only when the template asks for one (see the input_text note above).
+                if "initial" in helper_def:
+                    helper_config["initial"] = helper_def["initial"]
                 helper_config["mode"] = helper_def.get("mode", "box")
                 if "unit_of_measurement" in helper_def:
                     helper_config["unit_of_measurement"] = helper_def["unit_of_measurement"]
 
             elif domain == "input_boolean":
-                helper_config["initial"] = helper_def.get("initial", False)
+                # v4.4.0: only when the definition asks for one (presence validation must survive a
+                # restart, or a room still occupied reads as empty at the first run).
+                if "initial" in helper_def:
+                    helper_config["initial"] = helper_def["initial"]
 
             elif domain == "input_select":
                 helper_config["options"] = helper_def.get("options", [])
@@ -1514,11 +1549,14 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             created_helpers.append(entity_id)
 
         # Add scripts for Override mode control (v3.13.1 + v5.0.0 fix)
+        # v4.4.0: return to the room's Default Control Mode (it was hardcoded Smart, which never
+        # activates in a room without presence sensors).
+        return_mode = config.get("default_control_mode", "Smart")
         if config.get("enable_control_mode", True):
             helpers_config["script"] = {
                 f"climate_clear_override_{sanitized_name}": {
                     "alias": f"Clear Override - {room_name}",
-                    "description": f"Clear manual override mode and return to Smart mode for {room_name}",
+                    "description": f"Clear manual override mode and return to {return_mode} mode for {room_name}",
                     "sequence": [
                         {
                             "service": "input_boolean.turn_off",
@@ -1530,7 +1568,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                             "service": "input_select.select_option",
                             "data": {
                                 "entity_id": f"input_select.climate_control_mode_{sanitized_name}",
-                                "option": "Smart"
+                                "option": return_mode
                             }
                         }
                     ]
@@ -1549,7 +1587,7 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                             "service": "input_select.select_option",
                             "data": {
                                 "entity_id": f"input_select.climate_control_mode_{sanitized_name}",
-                                "option": "Smart"
+                                "option": return_mode
                             }
                         },
                         {
@@ -1565,19 +1603,45 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "alias": f"Clear Fan Override - {room_name}",
                     "description": f"Clear only the ceiling fan override, leave AC override intact for {room_name}",
                     "sequence": [
+                        # v4.4.0: the new source is decided once, the fan tracker is blanked (the
+                        # blueprint then treats the state the fan last left as expected; the old
+                        # script guessed a fan entity name that often did not exist), and the
+                        # Override Active flag is turned off once no override remains (it was
+                        # left on with nothing able to clear it).
+                        {
+                            "variables": {
+                                "new_source": "{{% if states('input_text.climate_override_source_{sn}') == 'both' %}}ac{{% else %}}none{{% endif %}}".format(sn=sanitized_name)
+                            }
+                        },
                         {
                             "service": "input_text.set_value",
                             "data": {
                                 "entity_id": f"input_text.climate_override_source_{sanitized_name}",
-                                "value": "{{% if states('input_text.climate_override_source_{sn}') == 'both' %}}ac{{% else %}}none{{% endif %}}".format(sn=sanitized_name)
+                                "value": "{{ new_source }}"
                             }
                         },
                         {
                             "service": "input_text.set_value",
                             "data": {
                                 "entity_id": f"input_text.climate_expected_ceiling_fan_{sanitized_name}",
-                                "value": "{{{{ states('fan.{sn}_ceiling_fan') }}}}".format(sn=sanitized_name)
+                                "value": ""
                             }
+                        },
+                        {
+                            "if": [
+                                {
+                                    "condition": "template",
+                                    "value_template": "{{ new_source == 'none' }}"
+                                }
+                            ],
+                            "then": [
+                                {
+                                    "service": "input_boolean.turn_off",
+                                    "target": {
+                                        "entity_id": f"input_boolean.climate_manual_override_{sanitized_name}"
+                                    }
+                                }
+                            ]
                         }
                     ]
                 },
@@ -1709,16 +1773,20 @@ You can dismiss this notification once you've copied the card YAML (if desired).
         helpers = {
             "helper_last_mode": f"input_text.climate_last_mode_{sanitized_name}",
             "helper_last_change": f"input_datetime.climate_last_change_{sanitized_name}",
+            # v4.4.0: always (Fan Band Hold Time and the 30-second fan debounce need it).
+            "helper_last_fan_change": f"input_datetime.climate_last_fan_change_{sanitized_name}",
         }
 
         # Add optional helpers based on enabled features
-        if config.get("enable_control_mode", True):
-            helpers["helper_control_mode"] = f"input_select.climate_control_mode_{sanitized_name}"
+        # v4.4.0: control-mode, presence and override helpers are always wired (required inputs).
+        helpers["helper_control_mode"] = f"input_select.climate_control_mode_{sanitized_name}"
+        helpers["helper_precond_start_time"] = f"input_datetime.climate_precond_start_{sanitized_name}"
+        helpers["helper_precond_previous_mode"] = f"input_text.climate_precond_previous_mode_{sanitized_name}"
+        helpers["helper_precond_arrival_time"] = f"input_datetime.climate_precond_arrival_{sanitized_name}"
 
-        if config.get("enable_smart_mode", True):
-            helpers["helper_presence_detected"] = f"input_datetime.climate_presence_detected_{sanitized_name}"
-            helpers["helper_presence_validation_active"] = f"input_boolean.climate_presence_validation_active_{sanitized_name}"
-            helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
+        helpers["helper_presence_detected"] = f"input_datetime.climate_presence_detected_{sanitized_name}"
+        helpers["helper_presence_validation_active"] = f"input_boolean.climate_presence_validation_active_{sanitized_name}"
+        helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
 
         if config.get("enable_dynamic_adaptation", True):
             helpers["helper_temp_history"] = f"input_number.climate_temp_history_{sanitized_name}"
@@ -1727,25 +1795,27 @@ You can dismiss this notification once you've copied the card YAML (if desired).
             helpers["helper_effectiveness_score"] = f"input_number.climate_effectiveness_score_{sanitized_name}"
             helpers["helper_temp_stable_since"] = f"input_datetime.climate_temp_stable_since_{sanitized_name}"
             helpers["helper_last_transition"] = f"input_text.climate_last_transition_{sanitized_name}"
+            helpers["helper_fan_entry_temp"] = f"input_number.climate_fan_entry_temp_{sanitized_name}"
 
-        if config.get("enable_manual_override", True):
-            if "helper_proximity_override" not in helpers:
-                helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
-            helpers["helper_override_active"] = f"input_boolean.climate_manual_override_{sanitized_name}"
-            helpers["helper_mode_before_override"] = f"input_text.climate_mode_before_override_{sanitized_name}"
-            helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
-            helpers["helper_override_timeout"] = f"input_number.climate_override_timeout_{sanitized_name}"
-            helpers["helper_expected_temp"] = f"input_number.climate_expected_temp_{sanitized_name}"
-            helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
-            helpers["helper_expected_swing"] = f"input_text.climate_expected_swing_{sanitized_name}"
-            helpers["helper_expected_hvac"] = f"input_text.climate_expected_hvac_{sanitized_name}"
-            helpers["helper_expected_ceiling_fan"] = f"input_text.climate_expected_ceiling_fan_{sanitized_name}"
-            helpers["helper_override_source"] = f"input_text.climate_override_source_{sanitized_name}"
-            # v5.0.0: Add new state machine helpers
-            helpers["helper_state_machine"] = f"input_select.climate_state_machine_{sanitized_name}"
-            helpers["helper_state_start"] = f"input_datetime.climate_state_start_{sanitized_name}"
-            helpers["helper_last_command"] = f"input_text.climate_last_command_{sanitized_name}"
-            helpers["helper_state_checksum"] = f"input_number.climate_state_checksum_{sanitized_name}"
+        if "helper_proximity_override" not in helpers:
+            helpers["helper_proximity_override"] = f"input_boolean.climate_proximity_override_{sanitized_name}"
+        helpers["helper_override_active"] = f"input_boolean.climate_manual_override_{sanitized_name}"
+        helpers["helper_mode_before_override"] = f"input_text.climate_mode_before_override_{sanitized_name}"
+        helpers["helper_override_time"] = f"input_datetime.climate_override_time_{sanitized_name}"
+        helpers["helper_override_timeout"] = f"input_number.climate_override_timeout_{sanitized_name}"
+        helpers["helper_expected_temp"] = f"input_number.climate_expected_temp_{sanitized_name}"
+        helpers["helper_expected_fan"] = f"input_text.climate_expected_fan_{sanitized_name}"
+        helpers["helper_expected_swing"] = f"input_text.climate_expected_swing_{sanitized_name}"
+        helpers["helper_expected_hvac"] = f"input_text.climate_expected_hvac_{sanitized_name}"
+        helpers["helper_expected_ceiling_fan"] = f"input_text.climate_expected_ceiling_fan_{sanitized_name}"
+        helpers["helper_override_source"] = f"input_text.climate_override_source_{sanitized_name}"
+        # v5.0.0: Add new state machine helpers
+        helpers["helper_state_machine"] = f"input_select.climate_state_machine_{sanitized_name}"
+        helpers["helper_state_start"] = f"input_datetime.climate_state_start_{sanitized_name}"
+        helpers["helper_last_command"] = f"input_text.climate_last_command_{sanitized_name}"
+        helpers["helper_state_checksum"] = f"input_number.climate_state_checksum_{sanitized_name}"
+        # v4.4.0: created by the wizard but never wired into the automation.
+        helpers["helper_last_ui_click"] = f"input_datetime.climate_last_ui_click_{sanitized_name}"
 
         # Build automation config with ALL blueprint inputs explicitly written
         # This ensures transparency and prevents blueprint version changes from altering behavior
@@ -1781,7 +1851,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "cooling_target_temp": 22.0,  # Only used if enable_advanced_temp=true
                     "heating_target_temp": 22.0,  # Only used if enable_advanced_temp=true
                     "use_average_temperature": False,
-                    "comfort_zone_action": "off",  # What to do when in comfort zone
+                    # v4.4.0: the Eco in Comfort Zone answer (it was always written as off)
+                    "comfort_zone_action": "eco" if config.get("comfort_zone_eco", False) else "off",
                     "hysteresis_tolerance": 0.3,  # Prevent rapid mode switching
 
                     # ========================================
@@ -1812,11 +1883,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     # ========================================
                     # FAN SPEED SETTINGS
                     # ========================================
-                    "fan_speed_max": "Level 5",  # Maximum escalation fan speed
-                    "fan_speed_medium": "Level 3",  # Medium escalation fan speed
-                    "fan_speed_eco": config.get("fan_speed_eco", "Level 1"),  # ECO mode fan speed
-                    "fan_only_fan_speed": "Auto",  # Fan-only mode fan speed
-                    "swing_mode_active": True,  # Enable swing mode control
+                    "fan_only_fan_speed": "silence",  # v4.4.0: a real option ('Auto' was not one)
+                    "swing_mode_active": "both",  # v4.4.0: a swing mode ('True' ended up as Off)
 
                     # ========================================
                     # PRESENCE DETECTION & SMART MODE
@@ -1824,13 +1892,12 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "presence_timeout_minutes": 30,  # How long to wait before turning off
                     "presence_confirmation_delay": config.get("presence_confirmation_delay", 0),
                     "presence_validation_mode": "any",  # Will be overridden below based on sensors
-                    "adjacent_room_names": [],  # Adjacent room detection (disabled by default)
+                    "adjacent_room_names": "",  # Adjacent room detection (disabled by default)
 
-                    # Temperature stability detection
-                    "temp_stability_enabled": False,
+                    # Temperature stability detection (v4.4.0: the blueprint's real input)
+                    "stability_mode": config.get("stability_mode", "disabled"),
                     "stability_tolerance": 0.2,
                     "stability_duration": 10,
-                    "stability_behavior": config.get("stability_behavior", "off"),
                     "smart_mode_behavior": config.get("smart_mode_behavior", "eco"),
 
                     # ========================================
@@ -1838,7 +1905,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     # ========================================
                     "enable_away_mode": True,
                     "away_mode_action": config.get("away_mode_action", "eco"),
-                    "enable_pre_conditioning": False,  # Disabled by default
+                    # v4.4.0: the proximity answer (it was always written as off)
+                    "enable_pre_conditioning": config.get("enable_proximity", False),
                     "eco_mode_setpoint_offset": 2,  # °C offset for ECO mode
 
                     # ========================================
@@ -1847,8 +1915,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "bed_comfort_mode": config.get("bed_comfort_mode", "off"),
                     "bed_sensor_manual": config.get("bed_sensor_manual", None) if config.get("bed_sensor_manual") else None,
                     "bed_absence_grace_period": 30,  # Minutes grace after leaving bed
-                    "bed_eco_fan_only_mode": False,  # Use fan-only in bed ECO
-                    "bed_eco_stability_minutes": 15,  # Stability time for bed ECO
+                    "bed_eco_fan_only_mode": "disabled",  # Use fan-only in bed ECO
+                    "bed_eco_stability_minutes": 3,  # v4.4.0: within the input's 1-10 range
                     "bed_eco_stability_rate": 0.02,  # °C/min threshold
                     "bed_eco_return_threshold": 1.0,  # °C distance to exit bed ECO
                     "bed_eco_max_overshoot": 0.5,  # Max °C overshoot allowed
@@ -1879,8 +1947,8 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     # ========================================
                     "enable_window_detection": False,
                     "window_sensors": [],
-                    "window_open_delay": 120,  # Seconds before turning off
-                    "window_close_delay": 60,  # Seconds before turning back on
+                    "window_open_delay": 2,  # v4.4.0: minutes (the input is in minutes, max 10)
+                    "window_close_delay": 1,  # v4.4.0: minutes
 
                     # ========================================
                     # OUTSIDE TEMPERATURE COMPENSATION (Disabled by default)
@@ -1895,9 +1963,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     # ========================================
                     # MANUAL OVERRIDE DETECTION
                     # ========================================
-                    "enable_manual_override_detection": True,
+                    # v4.4.0: the blueprint's real inputs (enable_manual_override_detection is not one,
+                    # so the Manual Override toggle never switched detection off).
+                    "enable_ac_override_detection": config.get("enable_manual_override", True),
+                    "enable_ceiling_fan_override_detection": config.get("enable_manual_override", True),
                     "override_timeout": 2,  # Hours before auto-resuming
-                    "manual_mode_timeout": 24,  # Hours before manual mode expires
+                    "manual_mode_timeout": "24_hours",  # v4.4.0: a real option (24 read as 4 hours)
+                    "default_control_mode": config.get("default_control_mode", "Smart"),  # v4.4.0: was never written
 
                     # ========================================
                     # AC TEMPERATURE LIMITS
@@ -1929,6 +2001,13 @@ You can dismiss this notification once you've copied the card YAML (if desired).
                     "home_zone_distance": config.get("home_zone_distance", 10000),
                 },
             },
+        }
+
+        # v4.4.0: leave unset inputs to the blueprint's defaults. A None (for example a
+        # proximity or direction sensor left empty) reached the blueprint's triggers as
+        # `entity_id: null` and the automation failed to load.
+        automation_config["use_blueprint"]["input"] = {
+            k: v for k, v in automation_config["use_blueprint"]["input"].items() if v is not None
         }
 
         # Override presence validation mode based on sensor configuration (v3.4.0 enhanced modes)
@@ -3107,31 +3186,36 @@ card_mod:
             # Always created
             f"input_text.climate_last_mode_{sanitized_name}",
             f"input_datetime.climate_last_change_{sanitized_name}",
+            f"input_datetime.climate_last_fan_change_{sanitized_name}",
         ]
 
         # Conditional helpers
-        if config_entry.data.get("enable_control_mode", True):
-            helpers_to_delete.append(f"input_select.climate_control_mode_{sanitized_name}")
+        # v4.4.0: the control-mode, presence and override helpers are always created now (an older
+        # install that never made one only logs a warning when it is not found).
+        helpers_to_delete.extend([
+            f"input_select.climate_control_mode_{sanitized_name}",
+            f"input_datetime.climate_precond_start_{sanitized_name}",
+            f"input_text.climate_precond_previous_mode_{sanitized_name}",
+            f"input_datetime.climate_precond_arrival_{sanitized_name}",
+        ])
 
-        if config_entry.data.get("enable_smart_mode", True):
-            helpers_to_delete.extend([
-                f"input_datetime.climate_presence_detected_{sanitized_name}",
-                f"input_boolean.climate_presence_validation_active_{sanitized_name}",
-                f"input_boolean.climate_proximity_override_{sanitized_name}",
-            ])
+        helpers_to_delete.extend([
+            f"input_datetime.climate_presence_detected_{sanitized_name}",
+            f"input_boolean.climate_presence_validation_active_{sanitized_name}",
+            f"input_boolean.climate_proximity_override_{sanitized_name}",
+        ])
 
-        if config_entry.data.get("enable_manual_override", True):
-            helpers_to_delete.extend([
-                f"input_boolean.climate_manual_override_{sanitized_name}",
-                f"input_text.climate_mode_before_override_{sanitized_name}",
-                f"input_datetime.climate_override_time_{sanitized_name}",
-                f"input_number.climate_expected_temp_{sanitized_name}",
-                f"input_text.climate_expected_fan_{sanitized_name}",
-                f"input_text.climate_expected_swing_{sanitized_name}",
-                f"input_text.climate_expected_hvac_{sanitized_name}",
-                f"input_text.climate_expected_ceiling_fan_{sanitized_name}",
-                f"input_text.climate_override_source_{sanitized_name}",
-            ])
+        helpers_to_delete.extend([
+            f"input_boolean.climate_manual_override_{sanitized_name}",
+            f"input_text.climate_mode_before_override_{sanitized_name}",
+            f"input_datetime.climate_override_time_{sanitized_name}",
+            f"input_number.climate_expected_temp_{sanitized_name}",
+            f"input_text.climate_expected_fan_{sanitized_name}",
+            f"input_text.climate_expected_swing_{sanitized_name}",
+            f"input_text.climate_expected_hvac_{sanitized_name}",
+            f"input_text.climate_expected_ceiling_fan_{sanitized_name}",
+            f"input_text.climate_override_source_{sanitized_name}",
+        ])
 
         if config_entry.data.get("enable_dynamic_adaptation", True):
             helpers_to_delete.extend([
@@ -3141,21 +3225,13 @@ card_mod:
                 f"input_number.climate_effectiveness_score_{sanitized_name}",
                 f"input_datetime.climate_temp_stable_since_{sanitized_name}",
                 f"input_text.climate_last_transition_{sanitized_name}",
+                f"input_number.climate_fan_entry_temp_{sanitized_name}",
             ])
 
-        # Delete each helper entity
-        for helper_id in helpers_to_delete:
-            try:
-                domain, entity_id_part = helper_id.split(".", 1)
-                await hass.services.async_call(
-                    domain,
-                    "remove",
-                    {"entity_id": helper_id},
-                    blocking=True,
-                )
-                _LOGGER.info("Deleted helper: %s", helper_id)
-            except Exception as err:
-                _LOGGER.warning("Failed to delete helper %s: %s", helper_id, err)
+        # v4.4.0: the helpers live in the room's package file, which is deleted in step 4 and then
+        # the helper integrations are reloaded (input_* helpers have no "remove" service, so the old
+        # per-helper calls only logged warnings and the helpers stayed until a restart).
+        _LOGGER.info("Helpers to be removed with the package file: %s", ", ".join(helpers_to_delete))
 
         # Step 2: Delete automations from automations.yaml
         automations_file = hass.config.path("automations.yaml")
@@ -3208,7 +3284,8 @@ card_mod:
         _LOGGER.info("Reloaded automations after deletion")
 
         # Step 4: Delete helpers package file (if exists)
-        package_file = hass.config.path(f"packages/climate_helpers_{sanitized_name}.yaml")
+        # v4.4.0: the file the wizard actually writes (it looked for climate_helpers_<room>.yaml).
+        package_file = hass.config.path(f"packages/climate_control_{sanitized_name}.yaml")
 
         def delete_package():
             try:
@@ -3221,6 +3298,14 @@ card_mod:
                 _LOGGER.warning("Failed to delete package file: %s", err)
 
         await hass.async_add_executor_job(delete_package)
+
+        # v4.4.0: drop the room's helpers and scripts now instead of at the next restart.
+        for reload_domain in ("input_boolean", "input_text", "input_number", "input_datetime",
+                              "input_select", "script"):
+            try:
+                await hass.services.async_call(reload_domain, "reload", blocking=True)
+            except Exception as err:
+                _LOGGER.warning("Failed to reload %s after deleting the package: %s", reload_domain, err)
 
         # Step 5: Remove config entry
         await hass.config_entries.async_remove(config_entry.entry_id)
