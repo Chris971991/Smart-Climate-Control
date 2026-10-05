@@ -1,6 +1,6 @@
 blueprint:
-  name: Ultimate Smart Climate Control - v9.20.0
-  description: "**Ultimate Smart Climate Control v9.20.0**\n\n\U0001F321️ The most
+  name: Ultimate Smart Climate Control - v9.20.1
+  description: "**Ultimate Smart Climate Control v9.20.1**\n\n\U0001F321️ The most
     advanced Home Assistant climate automation with intelligent presence detection,
     dynamic fan control, outside temperature compensation, and 40-60% energy savings.\n\n##
     \U0001F680 EASY SETUP - Use the Setup Wizard!\n\n**⚠️ Don't create helpers manually!**
@@ -52,9 +52,8 @@ blueprint:
     stop 0.3°C above target).\n• **Fixed**: the AC fan no longer flips between two speeds
     every few minutes when the outside-temperature or heat-source boost applies, and the fan
     speed is no longer re-sent on every check.\n• **Fixed**: the ceiling fan follows the
-    room while the AC cools and does what Fan Behavior at Target says when it stops. A fan
-    switched off at the wall no longer holds the AC back until the top of the fan zone, and
-    the automation's own fan commands no longer count as a wall-switch override.\n•
+    room while the AC cools and does what Fan Behavior at Target says when it stops. The
+    automation's own fan commands no longer count as a wall-switch override.\n•
     **Fixed**: Bed ECO \"AC off, the ceiling fan holds the room\" runs the whole night: it
     starts at bedtime even with the AC already off, the rest is no longer cancelled after 30
     minutes, the room is pushed to the stop point instead of idling just above it, a room
@@ -6537,12 +6536,12 @@ action:
     heating_target_temp: '{{ base_heating_target | round(1) }}'
     ceiling_fan_zone_max: '{{ (comfort_max_temp | float(0)) + (fan_cooling_offset
       | float(3)) }}'
-    # v9.20.0: a ceiling fan held off by a fan override is no fan zone: with the fan switched
-    # off at the wall the AC waited for the top of the zone (04/10 Living Room: nothing ran
-    # from 22.0 to 25.1 with people home).
+    # v9.20.1: the fan zone holds the AC back to the top of the zone even when you switch the
+    # ceiling fan off yourself (v9.20.0 started the AC at 22.8 the moment the fan was switched
+    # off at the wall; Chris wants the AC only above the zone).
     in_ceiling_fan_zone: "{% set fan_already_active = (last_mode == 'ceiling_fan_cooling')
       %} {% set hysteresis = 0.3 if fan_already_active else 0 %} {{ ceiling_fan_configured
-      and enable_cooling and not (fan_override_active and not (ceiling_fan_is_on | bool))
+      and enable_cooling
       and (current_temp | float(0)) > ((comfort_max_temp | float(0)) - hysteresis)
       and (current_temp | float(0)) <= (ceiling_fan_zone_max | float(0)) }}"
     # v9.20.0: the speed the ceiling fan is actually on (for the hysteresis below).
